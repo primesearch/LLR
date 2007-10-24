@@ -1,0 +1,31 @@
+# Assembler command lines, without and with listings
+
+masm=ml /c /coff /I..\gwnum
+#masm=ml /c /coff /I..\gwnum /Fl /Sf /Sa
+
+# C compiler options - optimization is not necessary
+
+cl=cl /I.. /GF /W3 /MT /D_CRT_SECURE_NO_DEPRECATE /c
+#cl=cl /I.. /GF /W3 /MT /D_CRT_SECURE_NO_DEPRECATE /Zi /c
+
+# List of all buildables in this makefile
+
+all:	factor32.obj factor32p.obj
+
+# Create 32-bit object files
+
+factor32.obj: factor32.asm factor32.mac
+    $(masm) /Fofactor32.obj factor32.asm
+
+factor32p.obj: factor32p.asm factor32.mac
+    $(masm) /Fofactor32p.obj factor32p.asm
+
+
+factor32q.obj: factor32q.asm factor32.mac
+    $(masm) /Fofactor32q.obj factor32q.asm
+
+# Compile special services code
+
+service.obj: service.c
+    $(cl) service.c
+
