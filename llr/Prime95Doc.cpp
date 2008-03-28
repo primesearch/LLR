@@ -622,19 +622,21 @@ void CPrime95Doc::title (
 {
 	char buf[80];
 	CWinApp* pApp = AfxGetApp();
-static	int was_iconic = TRUE;
+//static	int was_iconic = TRUE;
 
 	sprintf (buf, "LLR - %s", str);
 	if (pApp->m_pMainWnd) {
 		if (TRAY_ICON)
 			((CPrime95App *)pApp)->
 				TrayMessage (NIM_MODIFY, buf, 0);
-		if (pApp->m_pMainWnd->IsIconic ()) {
+/*		if (pApp->m_pMainWnd->IsIconic ()) {
 			pApp->m_pMainWnd->SetWindowText (buf);
 			was_iconic = TRUE;
 		} else if (was_iconic) {
 			pApp->m_pMainWnd->SetWindowText ("LLR");
 			was_iconic = FALSE;
 		}
+		else			// Update title on opened window!! J.P. 10/03/2008 */
+			pApp->m_pMainWnd->SetWindowText (buf);
 	}
 }

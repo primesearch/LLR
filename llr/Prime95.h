@@ -23,6 +23,9 @@
 class CPrime95App : public CWinApp
 {
 public:
+	CDocTemplate*	GetDisplayTemplate() const;
+	CDocTemplate*	GetFormTemplate() const;
+	CDocTemplate*	GetSplitTemplate() const;
 	CPrime95App();
 	void TrayMessage (UINT, LPCSTR, UINT);
 
@@ -42,6 +45,11 @@ public:
 		//    DO NOT EDIT what you see in these blocks of generated code !
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
+	private:
+	CDocTemplate*	m_pDisplayTemplate;
+	CDocTemplate*	m_pFormTemplate;
+	CDocTemplate*	m_pSplitTemplate;
+
 };
 
 

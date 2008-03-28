@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "giants.h"
+#include "./gwnum/giants.h"
 
 #define  ULONG unsigned long
 #define MAXULONG 0xFFFFFF00

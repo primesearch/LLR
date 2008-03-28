@@ -7,6 +7,9 @@
 #include "MainFrm.h"
 #include "Prime95Doc.h"
 #include "Prime95View.h"
+//#include "ScrollDisplay.h"
+//#include "ScrollSplit.h"
+//#include "SplitFrame.h"
 
 #include <aclapi.h>
 #include <direct.h>
@@ -90,11 +93,17 @@ BOOL CPrime95App::InitInstance()
 	//  serve as the connection between documents, frame windows and views.
 
 	CSingleDocTemplate* pDocTemplate;
+//	CMultiDocTemplate* pDocTemplate;
 	pDocTemplate = new CSingleDocTemplate(
+//	pDocTemplate = new CMultiDocTemplate(
 		IDR_MAINFRAME,
 		RUNTIME_CLASS(CPrime95Doc),
 		RUNTIME_CLASS(CMainFrame),       // main SDI frame window
 		RUNTIME_CLASS(CPrime95View));
+//		RUNTIME_CLASS(CScrollSplit),
+//		RUNTIME_CLASS(CSplitFrame),
+//		RUNTIME_CLASS(CScrollDisplay));
+
 	AddDocTemplate(pDocTemplate);
 
 	// Parse command line for standard shell commands, DDE, file open
@@ -338,6 +347,10 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 
 	// Initialization complete
 	return TRUE;
+}
+
+CDocTemplate* CPrime95App::GetSplitTemplate() const {
+	return m_pSplitTemplate;
 }
 
 void CALLBACK EXPORT TimerCallback (

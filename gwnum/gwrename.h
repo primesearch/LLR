@@ -12,6 +12,8 @@
 #ifndef _GWRENAME_H
 #define _GWRENAME_H
 
+#if !defined (__APPLE__)
+
 #define ERRCHK		_ERRCHK
 #define MAXERR		_MAXERR
 #define GWERROR		_GWERROR
@@ -119,5 +121,7 @@
 #define emulsubhlp	_emulsubhlp
 #define emuladd2hlp	_emuladd2hlp
 #define egcdhlp		_egcdhlp
+
+#endif
 
 #endif

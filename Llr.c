@@ -93,7 +93,28 @@
 char ckstring[] = "(2^$a$b)^2-2";	// Carol/Kynea
 char cwstring[] = "$a*$b^$a$c";		// Cullen/Woodall
 char ffstring[] = "$a*2^$b+1";		// FermFact output
-char gmstring[] = "4^$a+1";		// Gaussian Mersenne norm
+char ffmstring[] = "$a*2^$b-1";		// Lei output
+char gmstring[] = "4^$a+1";			// Gaussian Mersenne norm
+
+// Fixed k forms for k*b^n+/-1
+char fkpstring[] = "%d*$a^$b+%d";
+char fkmstring[] = "%d*$a^$b-%d";
+char fkastring[]  = "%d*$a^$b$c";
+
+// Fixed b forms for k*b^n+/-1
+char fbpstring[]  = "$a*%d^$b+%d";
+char fbmstring[]  = "$a*%d^$b-%d";
+char fbastring[] = "$a*%d^$b$c";
+
+// Fixed n forms for k*b^n+/-1
+char fnpstring[] = "$a*$b^%d+%d";
+char fnmstring[] = "$a*$b^%d-%d";
+char fnastring[]  = "$a*$b^%d$c";
+
+// Any form of k*b^n+/-1
+char abcpstring[]  = "$a*$b^$c+%d";
+char abcmstring[]  = "$a*$b^$c-%d";
+char abcastring[] = "$a*$b^$c$d";
 
 /* Process a number from newpgen output file */
 /* NEWPGEN output files use the mask as defined below: */
@@ -136,6 +157,8 @@ unsigned int PRECISION = 2;
 int	CUMULATIVE_TIMING = 0;
 int	HIGH_RES_TIMER = 0; 
 
+extern double MAXDIFF;
+double maxdiffmult = 1.0;
 
 /* PRP and LLR global variables */
 
@@ -193,7 +216,13 @@ int genProthBase(giant, unsigned long);
 
 void LineFeed ()
 {
+#ifndef WIN32
+	OutputStr ("\r");
+#elif defined (_CONSOLE)
+	OutputStr ("\r");
+#else
 	OutputStr ("\n");
+#endif
 }
 
 void OutputNum (
@@ -223,6 +252,18 @@ void	trace(int n) {			// Debugging tool...
 	char buf[100];
 	sprintf(buf, "OK until number %d\n", n);
 	OutputBoth (buf); 	
+}
+
+void clearline (int size) {
+	char buf[256];
+	int i;
+
+	for (i=0; i<256; i++)
+		buf[i] = '\0';
+	for (i=0; i<size; i++)
+		buf[i] = ' ';
+	buf[size-1] = '\r';
+	OutputStr(buf);
 }
 
 int SleepFive ()
@@ -336,12 +377,12 @@ void print_timer (
 	else 
 		sprintf (buf, "%.3f ms.", t * 1000.0); 
 	OutputStr (buf); 
-	if (flags & TIMER_NL) LineFeed (); 
+	if (flags & TIMER_NL) LineFeed();
 	if (flags & TIMER_CLR) timers[i] = 0.0; 
 	if ((flags & TIMER_OPT_CLR) && !CUMULATIVE_TIMING) timers[i] = 0.0; 
 } 
- 
-void write_timer (		// JP 17/11/01
+
+void write_timer (		// JP 23/11/07
 	char* buf,
 	int	i, 
 	int	flags) 
@@ -349,23 +390,17 @@ void write_timer (		// JP 17/11/01
 	double	t; 
  
 	t = timer_value (i); 
-	if (t >= 1.0) { 
-	    if (flags & TIMER_NL)
-		sprintf (buf, "%.3f sec.\n", t); 
-	    else
+	if (t >= 1.0)  
 		sprintf (buf, "%.3f sec.", t); 
-	}
-	else { 
-	    if (flags & TIMER_NL)
-		sprintf (buf, "%.3f ms.\n", t * 1000.0); 
-	    else
+	else 
 		sprintf (buf, "%.3f ms.", t * 1000.0); 
-	}
  
+	if (flags & TIMER_NL)
+           strcat(buf, "\n");
+
 	if (flags & TIMER_CLR) timers[i] = 0.0; 
 	if ((flags & TIMER_OPT_CLR) && !CUMULATIVE_TIMING) timers[i] = 0.0; 
 } 
-
 
 void OutputTimeStamp ()
 {
@@ -2434,17 +2469,32 @@ int commonPRP (
 	gwnum	x;
 	giant	tmp;
 	char	filename[20], buf[sgkbufsize+256], fft_desc[100], oldres64[17];
+//	J.P. shadow char    filename[20], buf[512], str1[100], fft_desc[100], oldres64[17]; /* Lei: less display */
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
 	time_t	start_time, current_time;
 	double	reallyminerr = 1.0;
 	double	reallymaxerr = 0.0;
 
+/* Lei J.P. shadow
+        if ( strlen(str) > 90 ) {
+           strncpy(str1, str, 90);
+           str1[90] = '.';
+           str1[91] = '.';
+           str1[92] = '.';
+           str1[93] = '\0';
+        }
+        else strcpy(str1, str);   
+// Lei end
+
 /* Init, subtract 1 from N to compute a^(N-1) mod N */
 
 	iaddg (-1, N);
 	Nlen = bitlen (N);
 	*res = TRUE;		/* Assume it is a probable prime */
+
+	gwsetmaxmulbyconst (a);
+
 
 /* Init filename */
 
@@ -2489,8 +2539,9 @@ int commonPRP (
 /* Output a message about the FFT length */
 
 	gwfft_description (fft_desc);
-	sprintf (buf, "Using %s\n\n", fft_desc);
+	sprintf (buf, "Using %s\n", fft_desc);
 	OutputStr (buf);
+	LineFeed();
 	ReplaceableLine (1);	/* Remember where replaceable line is */
 
 /* Init the title */
@@ -2620,8 +2671,14 @@ int commonPRP (
 			char	fmt_mask[80];
 			double	pct;
 			pct = trunc_percent (bit * 100.0 / Nlen);
-			sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
-			sprintf (buf, fmt_mask, pct, Nlen);
+			if (strlen (str) < 40) {
+				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION);
+				sprintf (buf, fmt_mask, pct, str);
+			}
+			else {
+				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
+				sprintf (buf, fmt_mask, pct, Nlen);
+			}
 			title (buf);
 			ReplaceableLine (2);	/* Replace line */
 			sprintf (fmt_mask,
@@ -2732,23 +2789,47 @@ int commonPRP (
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (*res)
-		sprintf (buf, "%s is a probable prime.\n", str);
+		sprintf (buf, "%s is a probable prime.", str);
 	else if (IniGetInt (INI_FILE, "OldRes64", 1))
-		sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s\n", str, res64, oldres64);
+		sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 	else
-		sprintf (buf, "%s is not prime.  RES64: %s\n", str, res64);
+		sprintf (buf, "%s is not prime.  RES64: %s", str, res64);
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+	sprintf (buf+strlen(buf), "  Time : "); 
+	ReplaceableLine (2);	/* Replace line */ 
+
+#else
+
+	clearline(100);
+
+#ifdef _CONSOLE
+	OutputBoth(buf);
+#else
+	if (*res) {
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+	}
+	else
+		OutputBoth(buf);
+#endif
+
+	sprintf (buf, "  Time : "); 
+
+#endif
 
 /* Update the output file */
 
+// 
 	if ((*res && IniGetInt (INI_FILE, "OutputPrimes", 0)) ||
 	    (!*res && IniGetInt (INI_FILE, "OutputComposites", 0)))
-		writeResults (buf);
+		writeResults ("\n");
 
 /* Output the final timings */
 
 	end_timer (1);
-	sprintf (buf+strlen(buf)-1, "  Time: ");
-	ReplaceableLine (2);	/* Replace line */
 	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 	if ((*res && IniGetInt (INI_FILE, "OutputPrimes", 0)) ||
 	    (!*res && IniGetInt (INI_FILE, "OutputComposites", 0)))
@@ -2838,6 +2919,9 @@ int slowIsPRP (
 		gwsetup_general_mod_giant (N, 0);
 
 /* Do the PRP test */
+// Lei
+// J.P. shadow		OutputStr ("Go to commonPRP.\n");
+// Lei
 
 		retval = commonPRP (3, res, str);
 	} while (retval == -1);
@@ -2870,7 +2954,8 @@ int isPRPinternal (
 	int incr,
 	int *res)
 {
-	char	buf[sgkbufsize+256];
+//	J.P. shadow        char buf[100];
+	char	buf[sgkbufsize+256]; // Lei - not need such long char
 	unsigned long retval;
 
 	if (dk >= 1.0)
@@ -2878,10 +2963,20 @@ int isPRPinternal (
 	else if (Nlen < 50) {
 		*res = isProbablePrime();
 		if (*res)
+		{
+#ifndef	WIN32
+			OutputStr("\033[7m");
+#endif
 			sprintf (buf, "%s is a probable prime.\n", str);
-		else
+			OutputBoth(buf);
+#ifndef	WIN32
+			OutputStr("\033[0m");
+#endif
+		}
+		else {
 			sprintf (buf, "%s is not prime.\n", str);
-		OutputBoth (buf);
+			OutputBoth (buf);
+		}
 		retval = TRUE;
 	}
 	else
@@ -2898,6 +2993,17 @@ int isPRPinternal (
 #define ABCCW	4					// Cullen/Woodall ABC format
 #define ABCFF	5					// FermFact output ABC format
 #define ABCGM	6					// Gaussian Mersenne ABC format
+#define ABCLEI  7					// Lei ABC format
+
+// New ABC formats for k*b^n+/-c
+#define ABCFKGS		11				// Fixed k:  b and n specified on each input line
+#define ABCFKAS		12				// Fixed k:  b, n, and c specified on each input line
+#define ABCFBGS		13				// Fixed b:  k and n specified on each input line
+#define ABCFBAS		14				// Fixed b:  k, n, and c specified on each input line
+#define ABCFNGS		15				// Fixed n:  k and b specified on each input line
+#define ABCFNAS		16				// Fxied n:  k, b, and c specified on each input line
+#define ABCVARGS	17				// k, b, and n specified on each inpput line
+#define ABCVARAS	18				// k, b, n, and c specified on each input line
 
 int IsPRP (							// General PRP test
 	unsigned long format, 
@@ -2948,7 +3054,7 @@ int IsPRP (							// General PRP test
 	}
 
 	if (!IniGetInt (INI_FILE, "ForcePRP", 0)) {
-		sprintf (buf, "LLR tests only k*2^n�1 numbers, so, we will do a PRP test of %s\n", str); 
+		sprintf (buf, "LLR tests only k*2^n+/-1 numbers, so, we will do a PRP test of %s\n", str); 
 		if (verbose)
 			OutputBoth (buf); 
 		else
@@ -3003,7 +3109,10 @@ int IsPRP (							// General PRP test
 int isLLRP ( 
 	unsigned long format, 
 	char *sgk,
+        unsigned long b_else,	// Lei
 	unsigned long n, 
+	unsigned long binput,		// Lei
+	unsigned long ninput,		// Lei
 	unsigned long shift,
 	int	*res) 
 { 
@@ -3023,19 +3132,53 @@ int isLLRP (
 	double	reallymaxerr = 0.0; 
 	double	dk, gwn2w;
 
-
+// Lei
+	double ddk;
+	unsigned long idk = 0;
+	giant gk1;
+// Lei end
 
 	if (!(format == ABCC || format == ABCK)) {
-		gksize = strlen(sgk);
+		gksize = strlen(sgk);				// J. P. Initial gksize
+
+// Lei
+		if (b_else != 1) {					// Compute the length of b_else^ninput
+			ddk = (double) b_else;
+			ddk = ninput * log10 (ddk);
+			idk = (long) ddk + 1;
+			gksize += idk;					// J. P. Add it to gksize
+		}
+// Lei end
+
 		gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 		ctog (sgk, gk);						// Convert k string to giant
+
+// Lei
+		if (b_else != 1) {					// Compute the big multiplier
+			gk1 = newgiant ((gksize>>1) + 8);
+			ultog (b_else, gk1);		
+			power (gk1, ninput);
+			mulg (gk1, gk);
+			free (gk1);
+// J.P. shadow   gtoc (gk, sgk1, sgkbufsize);    // Updated k string
+		}
+// Lei end
+
 		if (shift > 0) {
 			gshiftleft (shift, gk);			// Shift k multiplier if requested
-			gtoc (gk, sgk1, sgkbufsize);	// Updated k string
+			if (b_else != 1)
+				strcpy (sgk1, sgk);			// Lei, J.P.
+			else
+				gtoc (gk, sgk1, sgkbufsize);// Updated k string
 		}
-		else
+		else {
 			strcpy (sgk1, sgk);
-		sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+//	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
+		}
+		if (b_else != 1)	// Lei, J.P.
+			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
+		else
+			sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
 
 //	gk must be odd for the LLR test, so, adjust gk and n if necessary.
 
@@ -3061,7 +3204,7 @@ int isLLRP (
 
 	klen = bitlen(gk);					// Bit length ok k multiplier
 	bits = n + klen;					// Bit length of N
-	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
+	N =  newgiant ((bits >> 4) + 8);	// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -3083,14 +3226,21 @@ int isLLRP (
 
 	if (N->sign == 1) {		// N is a small number, so we make a simple test...
 		if (*res = isPrime (N->n[0])) {
+#ifndef WIN32
+			OutputStr("\033[7m");
+#endif
 			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
+#ifndef WIN32
+			OutputStr("\033[0m");
+#endif
 			sprintf (res64, "0000000000000000");
 		}
 		else	{
 			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
 			sprintf (res64, "????????????????");
 		}
-		OutputBoth (buf);
 		free(gk);
 		free(N);
 		return (TRUE); 
@@ -3099,23 +3249,45 @@ int isLLRP (
 	if (klen > n) {
 	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
-		retval = isPRPinternal (str, dk, 2, n, -1, res);
+
+// Lei
+// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
+                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string		
+		retval = isPRPinternal (str, dk, binput, ninput, -1, res);
+// Lei end
+
 		free(gk);
 		free(N);
 		return retval;
 	}
 
+// Lei
+//	J.P. shadow sprintf (buf, "Should try prp?\n");
+//	J.P. shadow OutputStr (buf);
+// Lei end
 
 	if (bits > 100 && bits < 10*klen && !IniGetInt(INI_FILE, "PRPdone", 0)) {
 								// We have better to do ad first a PRP test.
-		retval = isPRPinternal (str, dk, 2, n, -1, res);
+// Lei
+// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
+		strcpy (buf, str);
+                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
+                retval = isPRPinternal (str, dk, binput, ninput, -1, res);
+// Lei end
+
 		if (!*res) {
 			free(gk);
 			free(N);
 			return retval;
 		}
 		IniWriteInt(INI_FILE, "PRPdone", 1);
+		strcpy (str, buf);	// Lei
 	}
+
+// Lei
+//	J.P. shadow sprintf (buf, "Can I get here?\n");
+//	J.P. shadow OutputStr (buf);
+// Lei end
 
 	if(abs(gk->sign) == 1) {	// k is a "small" integer
 	    k = gk->n[0];
@@ -3192,6 +3364,13 @@ restart:
 
 	tempFileName (filename, 'z'); 
  
+/* Init the title */ 
+ 
+	if (strlen (str) < 40)
+		title(str);
+	else
+		title("Running in Big k mode...");
+ 
 /* Optionally resume from save file and output a message */ 
 /* indicating we are resuming a test */ 
  
@@ -3260,10 +3439,11 @@ restart:
 			double	pct; 
 			pct = trunc_percent (100.0 - j * 100.0 / klen); 
 			sprintf (fmt_mask, 
-			 "Resuming test of %%s (computing U0) at iteration %%ld [%%.%df%%%%]\n", 
+			 "Resuming test of %%s (computing U0) at iteration %%ld [%%.%df%%%%]", 
 			 PRECISION); 
 			sprintf (buf, fmt_mask, str, klen - j, pct); 
 			OutputStr (buf); 
+			LineFeed();
 			ReplaceableLine (1);	/* Remember where replacable line is */ 
 	    } 
 	    else {
@@ -3293,12 +3473,12 @@ restart:
 					sprintf (buf, "Using General Mode (Rational Base) : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, FFTLEN);
 			if (verbose)
 				OutputBoth(buf);
-			else
+			else {
 				OutputStr(buf);
-
-			sprintf (buf, "V1 = %d ; Computing U0...\n", v1);
+			}
+			sprintf (buf, "V1 = %d ; Computing U0...", v1);
 			OutputStr (buf); 
-
+			LineFeed();
 			ReplaceableLine (1);	/* Remember where replacable line is */ 
 			dbltogw ((double) v1, x); 
 			dbltogw ((double) v1, y); 
@@ -3369,8 +3549,14 @@ restart:
 				char	fmt_mask[80]; 
 				double	pct; 
 				pct = trunc_percent (100.0 - j * 100.0 / klen); 
-				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION); 
-				sprintf (buf, fmt_mask, pct, klen); 
+				if (strlen (str) < 40) {
+					sprintf (fmt_mask, "%%s, %%.%df%%%% of %%ld", PRECISION); 
+					sprintf (buf, fmt_mask, str, pct, klen); 
+				}
+				else {
+					sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION); 
+					sprintf (buf, fmt_mask, pct, klen); 
+				}
 				title (buf); 
 				ReplaceableLine (2);	/* Replace line */ 
 				sprintf (fmt_mask, 
@@ -3449,18 +3635,11 @@ restart:
 	    filename[0] = 'z';	/* restore filename which was modified... */
 MERSENNE:
 	    j = 1;
-	    sprintf (buf, "Starting Lucas-Lehmer loop...\n"); 
+	    sprintf (buf, "Starting Lucas-Lehmer loop..."); 
 	    OutputStr (buf); 
 	} 
- 
+	LineFeed();
 	ReplaceableLine (1);	/* Remember where replacable line is */ 
- 
-/* Init the title */ 
- 
-	if (strlen (str) < 40)
-		title(str);
-	else
-		title("Running in Big k mode...");
  
 /* Do the Lucas Lehmer Riesel Prime test */ 
  
@@ -3508,8 +3687,14 @@ MERSENNE:
 			char	fmt_mask[80]; 
 			double	pct; 
 			pct = trunc_percent (j * 100.0 / n); 
-			sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION); 
-			sprintf (buf, fmt_mask, pct, n); 
+			if (strlen (str) < 40) {
+				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION); 
+				sprintf (buf, fmt_mask, pct, str); 
+			}
+			else {
+				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION); 
+				sprintf (buf, fmt_mask, pct, n); 
+			}
 			title (buf); 
 			ReplaceableLine (2);	/* Replace line */ 
 			sprintf (fmt_mask, 
@@ -3608,15 +3793,39 @@ MERSENNE:
 		sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]); 
 	} 
  
-/* Cleanup */ 
+/* Print results and cleanup */ 
  
-	end_timer (1); 
 	if (*res) 
-		sprintf (buf, "%s is prime!\n", str); 
+		sprintf (buf, "%s is prime!", str); 
 	else
-		sprintf (buf, "%s is not prime.  LLR Res64: %s\n", str, res64); 
-	sprintf (buf+strlen(buf)-1, "  Time : "); 
+		sprintf (buf, "%s is not prime.  LLR Res64: %s", str, res64); 
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+	sprintf (buf+strlen(buf), "  Time : "); 
 	ReplaceableLine (2);	/* Replace line */ 
+
+#else
+
+	clearline(100);
+
+#ifdef _CONSOLE
+	OutputBoth(buf);
+#else
+	if (*res) {
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+	}
+	else
+		OutputBoth(buf);
+#endif
+
+	sprintf (buf, "  Time : "); 
+
+#endif
+
+	end_timer (1); 
 	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 	OutputBoth (buf); 
 
@@ -3680,7 +3889,10 @@ error:
 int isProthP ( 
 	unsigned long format, 
 	char *sgk,
+        unsigned long b_else,	// Lei
 	unsigned long n,
+	unsigned long binput,		// Lei
+	unsigned long ninput,		// Lei
 	unsigned long shift,
 	int	*res) 
 { 
@@ -3699,18 +3911,51 @@ int isProthP (
 	double	reallymaxerr = 0.0; 
 	double dk;
 
-	gksize = strlen(sgk);
+// Lei
+        double ddk;
+        unsigned long idk = 0;
+        giant gk1;
+// Lei end
+
+		gksize = strlen(sgk);			// J.P. Initial gksize
+
+// Lei
+	if (b_else != 1) {					// Compute the length of b_else^ninput
+		ddk = (double) b_else;
+		ddk = ninput * log10 (ddk);
+	    idk = (long) ddk + 1;
+		gksize += idk;					// J.P. Add it to gksize
+	}
+// Lei end
+
 	gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgk, gk);						// Convert k string to giant
 
+// Lei
+	if (b_else != 1) {					// Compute the big multiplier
+		gk1 = newgiant ((gksize>>1) + 8);
+		ultog (b_else, gk1);
+		power (gk1, ninput);
+		mulg (gk1, gk);
+		free (gk1);
+	}
+// Lei end
+
 	if (shift > 0) {
 		gshiftleft (shift, gk);			// Shift k multiplier if requested
-		gtoc (gk, sgk1, sgkbufsize);	// Updated k string
+		if (b_else != 1)
+			strcpy (sgk1, sgk);			// Lei, J.P.
+		else
+			gtoc (gk, sgk1, sgkbufsize);// Updated k string
 	}
 	else
 		strcpy (sgk1, sgk);
 
-	sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
+		if (b_else != 1)	// Lei, J.P.
+			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
+		else
+			sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
+
 
 	bits = n + bitlen(gk);				// Bit length of N
 	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
@@ -3743,14 +3988,21 @@ int isProthP (
 
 	if (N->sign == 1) {					// N is a small number, so we make a simple test...
 		if (*res = isPrime (N->n[0])) {
+#ifndef WIN32
+			OutputStr("\033[7m");
+#endif
 			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
+#ifndef WIN32
+			OutputStr("\033[0m");
+#endif
 			sprintf (res64, "0000000000000000");
 		}
 		else	{
 			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
 			sprintf (res64, "????????????????");
 		}
-		OutputBoth (buf);
 		free(gk);
 		free(N);
 		return (TRUE); 
@@ -3759,12 +4011,25 @@ int isProthP (
 	if (klen > n) {
 	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
-		retval = isPRPinternal (str, dk, 2, n, 1, res);
+
+// Lei
+// Lei shadow   retval = isPRPinternal (str, dk, 2, n, 1, res);
+                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
+                retval = isPRPinternal (str, dk, binput, ninput, 1, res);
+// Lei end
+
 		free(gk);
 		free(N);
 		return (retval);
 	}
 
+/* Init the title */ 
+ 
+	if (strlen (str) < 40)
+		title(str);
+	else
+		title("Running in Big k mode...");
+ 
 /* Compute the base for the Proth algorithm. */
  
 if ((a = genProthBase(gk, n)) < 0) {
@@ -3805,7 +4070,6 @@ restart:
 	else {								// Setup the generic mode
 		gwsetup_general_mod_giant (N, fftlen);
 	}
-
 
 /* Init tmp = (N-1)/2 to compute a^(N-1)/2 mod N */
 
@@ -3851,19 +4115,13 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (fft_desc);
-	sprintf (buf, "Using %s, a = %d\n\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	OutputStr (buf);
+	LineFeed();
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	if (verbose)
 		writeResults (buf);
 	ReplaceableLine (1);	/* Remember where replaceable line is */
-
-/* Init the title */
-
-	if (strlen (str) < 40)
-		title (str);
-	else					// Avoid array overflow...
-		title("Running in Big k mode...");
 
 /* Do the Proth test */
 
@@ -3990,8 +4248,14 @@ restart:
 			char	fmt_mask[80];
 			double	pct;
 			pct = trunc_percent (bit * 100.0 / Nlen);
-			sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
-			sprintf (buf, fmt_mask, pct, Nlen);
+			if (strlen (str) < 40) {
+				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION);
+				sprintf (buf, fmt_mask, pct, str);
+			}
+			else {
+				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
+				sprintf (buf, fmt_mask, pct, Nlen);
+			}
 			title (buf);
 			ReplaceableLine (2);	/* Replace line */
 			sprintf (fmt_mask,
@@ -4101,17 +4365,40 @@ restart:
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (*res)
-		sprintf (buf, "%s is prime!\n", str);
+		sprintf (buf, "%s is prime!", str); 
 	else
-		sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
+		sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+	sprintf (buf+strlen(buf), "  Time : "); 
+	ReplaceableLine (2);	/* Replace line */ 
+
+#else
+
+	clearline(100);
+
+#ifdef _CONSOLE
+	OutputBoth(buf);
+#else
+	if (*res) {
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+	}
+	else
+		OutputBoth(buf);
+#endif
+
+	sprintf (buf, "  Time : "); 
+
+#endif
 
 /* Output the final timings */
 
 	end_timer (1);
-	sprintf (buf+strlen(buf)-1, "  Time: ");
-	ReplaceableLine (2);	/* Replace line */
 	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
-	OutputBoth (buf);
+	OutputBoth(buf);
 
 /* Cleanup and return */
 
@@ -4160,7 +4447,7 @@ long	a;
 
 The main purpose of this code is the seach for non-real Gaussian-Mersenne primes.
 
-A Gaussian-Mersenne number can be written as : GM(p) = (1켲)^p - 1
+A Gaussian-Mersenne number can be written as : GM(p) = (1+/-i)^p - 1
 It is easy to prove that such a number may be prime in the Gauss ring, only if p is prime,
 so we are only considering odd prime values for the exponent p.
 
@@ -4180,9 +4467,9 @@ The starting point is the Aurifeuillian factorization of M(p) = 4^p+1 :
 M(p) = 4^p+1 = (2^p + 2^((p+1)/2) + 1)(2^p - 2^((p+1)/2) + 1)
 
 One of these two factors is the norm N(p) of GM(p) while the other, N'(p) is the norm of another
-Gaussian integer : GF(p) = (1켲)^p + 1
-p beeing odd, such a number is always divisible by 2켲, so, N'(p) (like M(p)) has always the trivial factor 5.
-But, p beeing prime, GQ(p) = GF(p)/(2켲) may be a Gaussian prime, iff N'/5 is a rational prime...
+Gaussian integer : GF(p) = (1+/-i)^p + 1
+p beeing odd, such a number is always divisible by 2+/-i, so, N'(p) (like M(p)) has always the trivial factor 5.
+But, p beeing prime, GQ(p) = GF(p)/(2+/-i) may be a Gaussian prime, iff N'/5 is a rational prime...
 
 Now, the idea is to run the Proth algorithm, but doing the squarings modulo M(p), and then doing the modulo N
 reduction only on the final result. Then, the performances for a given p may be approximatively the same as
@@ -4324,26 +4611,40 @@ int isGMNP (
 	if (!facto && N->sign == 1 && NP->sign == 1) {	// N and NP are small numbers, so we make simple tests...
 		a = 0;
 		if (isPrime (N->n[0])) {
+#ifndef WIN32
+			OutputStr("\033[7m");
+#endif
 			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
+#ifndef WIN32
+			OutputStr("\033[0m");
+#endif
 			sprintf (res64, "0000000000000000");
 		}
 		else	{
 			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
+			OutputBoth (buf);
 			sprintf (res64, "????????????????");
 			res1 = 0;
 		}
-		OutputBoth (buf);
 		if (isPrime (NP->n[0])) {
+#ifndef WIN32
+			OutputStr("\033[7m");
+#endif
 			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", strp, NP->n[0]); 
+			OutputBoth (buf);
+#ifndef WIN32
+			OutputStr("\033[0m");
+#endif
 			sprintf (res64, "0000000000000000");
 		}
 		else	{
 			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", strp, NP->n[0]); 
+			OutputBoth (buf);
 			sprintf (res64, "????????????????");
 			res2 = 0;
 		}
 		*res = (res1 || res2);
-		OutputBoth (buf);
 		free(N);
 		free(NP);
 		free(M);
@@ -4572,7 +4873,7 @@ int isGMNP (
 
 		fres = FALSE;
 
-		if(n < LOWFACTORLIMIT || (fisok = primeFactor (n, howfar, &fres, WORK_TEST, fhandle))) {
+		if(n < LOWFACTORLIMIT || (fisok = primeFactor (n, howfar, &fres, WORK_FACTOR, fhandle))) {
 			if (fres) {
 				if (!testgq)
 					sprintf (buf, "%s has a factor : %s\n", str, facnstr);
@@ -4658,12 +4959,14 @@ primetest:
 		return(TRUE);
 	}
 
+
+	gwsetmaxmulbyconst (a);
+
 restart:
 	clear_timers ();
 	start_timer (0);
 	start_timer (1);
 	time (&start_time);
-
 
 /* Assume intermediate results of the length of N*N'. */ 
 
@@ -4747,8 +5050,9 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (fft_desc);
-	sprintf (buf, "Using %s, a = %d\n\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	OutputStr (buf);
+	LineFeed();
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	if (verbose)
 		writeResults (buf);
@@ -4892,8 +5196,14 @@ restart:
 			char	fmt_mask[80];
 			double	pct;
 			pct = trunc_percent (bit * 100.0 / expx);
-			sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
-			sprintf (buf, fmt_mask, pct, explen);
+			if (strlen (str) < 40) {
+				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION);
+				sprintf (buf, fmt_mask, pct, str);
+			}
+			else {
+				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
+				sprintf (buf, fmt_mask, pct, explen);
+			}
 			title (buf);
 			ReplaceableLine (2);	/* Replace line */
 			sprintf (fmt_mask,
@@ -5083,8 +5393,30 @@ restart:
 	else
 		sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
 
-	ReplaceableLine (2);			/* Replace line */
-	OutputBoth (buf);
+#if defined(WIN32) && !defined(_CONSOLE)
+
+	sprintf (buf+strlen(buf), "  Time : "); 
+	ReplaceableLine (2);	/* Replace line */ 
+
+#else
+
+	clearline(100);
+
+#ifdef _CONSOLE
+	OutputBoth(buf);
+#else
+	if (res1) {
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+	}
+	else
+		OutputBoth(buf);
+#endif
+
+	sprintf (buf, "  Time : "); 
+
+#endif
 
 	gtog (testn, tmp);
 	gtog (testnp, tmp2);
@@ -5120,17 +5452,33 @@ restart:
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (res2)
-		sprintf (buf, "%s is %d-PRP!\n", strp, a);
+		sprintf (buf, "%s is %d-PRP!", strp, a);
 	else
-		sprintf (buf, "%s is not prime.  RES64: %s\n", strp, res64);
+		sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
 
+#ifdef WIN32
+
+	sprintf (buf+strlen(buf), "  Time: ");
+
+#else
+
+	if (res2) {
+		OutputStr("\033[7m");
+		OutputBoth (buf);
+		OutputStr("\033[0m");
+	}
+	else
+		OutputBoth (buf);
+	sprintf (buf, "  Time: ");
+
+#endif
 
 /* Output the final timings */
 
 	end_timer (1);
-	sprintf (buf+strlen(buf)-1, "  Time: ");
 	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 	OutputBoth (buf);
+
 	*res = (res1 || res2);
 
 /* Cleanup and return */
@@ -5204,7 +5552,11 @@ int process_num (
 	int	*res)
 {
 	int	retval;
-	unsigned long ninput = n, binput = base;
+
+// Lei -remove a line and replace
+//	unsigned long ninput = n, binput = base;
+	unsigned long ninput = n, binput = base, b_2up = 1, b_else = 1, superPRP = 1;
+// Lei end
 
 	while (!(base&1) && base > 2) {	// Divide the base by two as far as possible
 		base >>= 1;
@@ -5212,19 +5564,46 @@ int process_num (
 	}
 
 	if (base != 2) {				// Test if the base was a power of two
-		base = binput;				// Do not modify it if no
-		n = ninput;
+
+// Lei
+		n -= ninput;
+	        b_else = base;			// Is odd...
+        	b_2up = binput / b_else;// binput = b_else*b_2up
+        	if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK)))) {
+			superPRP = 0;			// Then b_2up^n > b_else^n
+		}
+		else {
+// Lei end
+
+			base = binput;		// Do not modify
+			n = ninput;
+		}
 	}
+
+// Lei debug
+	
+// Lei end
 
 	if (format == ABCGM)
 		return (isGMNP (sgk, n, res));
 
-	if (base == 2 && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
+//	Replaced by Lei :
+//	if (base == 2 && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
+//		if (incr == -1)
+//			retval = isLLRP (format, sgk, n, shift, res);
+//		else
+//			retval = isProthP (format, sgk, n, shift, res);
+//	}
+
+// Lei mod
+	if (((base == 2) || (superPRP == 0)) && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
 		if (incr == -1)
-			retval = isLLRP (format, sgk, n, shift, res);
+			retval = isLLRP (format, sgk, b_else, n, binput, ninput, shift, res);
 		else
-			retval = isProthP (format, sgk, n, shift, res);
+			retval = isProthP (format, sgk, b_else, n, binput, ninput, shift, res);
 	}
+// end Lei mod
+
 	else {
 		retval = IsPRP (format, sgk, base, n, incr, shift, res);
 	}
@@ -5263,7 +5642,7 @@ void primeContinue ()
 	    char	inputfile[80], outputfile[80], sgk[sgkbufsize], buff[sgkbufsize+256];
 		char	outbuf[sgkbufsize+256];
 	    FILE *fd;
-	    unsigned long i, chainlen, n, base, nfudge, nn;
+	    unsigned long i, chainlen, n, base, k, nfudge, nn;
 	    int	firstline, line, outfd, outfdp, outfdm, res, uptoline, incr, sign;
 	    char c;
 
@@ -5326,6 +5705,49 @@ void primeContinue ()
 			else if (!strncmp (pinput, gmstring, strlen (gmstring))) {
 				format = ABCGM;
 			}
+			else if (sscanf(pinput, fkpstring, &k, &incr) == 2) {
+				format = ABCFKGS;
+                                sprintf(sgk, "%lu", k);
+			}
+			else if (sscanf(pinput, fkmstring, &k, &incr) == 2) {
+				format = ABCFKGS;
+				incr = - incr;
+                                sprintf(sgk, "%lu", k);
+			}
+			else if (sscanf(pinput, fkpstring, &k) == 1) { 
+				format = ABCFKAS;
+                                sprintf(sgk, "%lu", k);
+			}
+			else if (sscanf(pinput, fbpstring, &base, &incr) == 2) {
+				format = ABCFBGS;
+			}
+			else if (sscanf(pinput, fbmstring, &base, &incr) == 2) {
+				format = ABCFBGS;
+				incr = - incr;
+			}
+			else if (sscanf(pinput, fbpstring, &base) == 1) { 
+				format = ABCFBAS;
+			}
+			else if (sscanf(pinput, fnpstring, &n, &incr) == 2) {
+				format = ABCFNGS;
+			}
+			else if (sscanf(pinput, fnmstring, &n, &incr) == 2) {
+				format = ABCFNGS;
+				incr = - incr;
+			}
+			else if (sscanf(pinput, fnpstring, &n) == 1) { 
+				format = ABCFNAS;
+			}
+			else if (sscanf(pinput, abcpstring, &incr) == 1) {
+				format = ABCVARGS;
+			}
+			else if (sscanf(pinput, abcmstring, &incr) == 1) {
+				format = ABCVARGS;
+				incr = - incr;
+			}
+			else if (!strncmp (pinput, abcastring, strlen (ffstring))) {
+				format = ABCVARAS;
+			}
 			else if (strncmp (pinput, ckstring, strlen (ckstring))) {
 				sprintf (outbuf, "%s : Unknown ABC format.\n", buff);
 				OutputStr (outbuf);
@@ -5336,7 +5758,7 @@ void primeContinue ()
 			if (format == ABCGM) {
 				if (!facto)
 					sprintf (pinput+strlen (gmstring),
-						" // Let GM(p) = (1켲)^p-1, GQ(p) = ((1켲)^p+1)/(2켲) if p>3, (1켲)^p+1 if p<=3\n");
+						" // Let GM(p) = (1+/-i)^p-1, GQ(p) = ((1+/-i)^p+1)/(2+/-i) if p>3, (1+/-i)^p+1 if p<=3\n");
 				if (!facto && !fileExists (outpf)) {
 					outfdp = _open (outpf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
 					if (outfdp) {
@@ -5402,6 +5824,141 @@ void primeContinue ()
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							sprintf (outbuf, "%s %lu\n", sgk, n); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCLEI)       {	// Lei output
+											// allow k to be a big integer
+					if (sscanf (buff, "%s %lu", sgk, &n) != 2)
+						continue;			// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;			// Skip invalid line
+					if (! process_num (format, sgk, 2, n, -1, shift, &res))
+						goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu\n", sgk, n);
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFKGS)	{	// Fixed k:  b and n specified on each input line
+					if (sscanf (buff, "%lu %lu", &base, &n) != 2)
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%lu %lu\n", base, n); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFKAS)	{	// Fixed k:  b, n, and c specified on each input line
+					if (sscanf (buff, "%lu %lu %d", &base, &n, &incr) != 3)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%lu %lu %d\n", base, n, incr); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFBGS)	{	// Fixed b:  k and n specified on each input line
+					if (sscanf (buff, "%s %lu", sgk, &n) != 2)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu\n", sgk, n); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFBAS)	{	// Fixed b:  k, n, and c specified on each input line
+					if (sscanf (buff, "%s %lu %d", sgk, &n, &incr) != 3)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu %d\n", sgk, n, incr); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFNGS)	{	// Fixed n:  k and b specified on each input line
+					if (sscanf (buff, "%s %lu", sgk, &base) != 2)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu\n", sgk, base); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCFNAS)	{	// Fixed n:  k, b, and c specified on each input line
+					if (sscanf (buff, "%s %lu %d", sgk, &base, &incr) != 3)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu %d\n", sgk, base, incr); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCVARGS)	{	// k, b, and n specified on each input line
+					if (sscanf (buff, "%s %lu %lu", sgk, &base, &n) != 3)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu\n", sgk, base, n); 
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+					}
+				}
+				else if (format == ABCVARAS)	{	// k, b, n, and c specified on each input line
+					if (sscanf (buff, "%s %lu %lu %d", sgk, &base, &n, &incr) != 4)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (! process_num (format, sgk, base, n, incr, shift, &res)) goto done;
+					if (res) {
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							sprintf (outbuf, "%s %lu %lu %d\n", sgk, base, n, incr); 
 							_write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
@@ -5499,6 +6056,8 @@ void primeContinue ()
 					}
 				}
 				IniWriteInt (INI_FILE, "PgenLine", line + 1);
+				if(res && IniGetInt(INI_FILE, "StopOnSuccess", 0))
+					break;
 			}				// End loop
 			goto done;
 		}					// End ABC format
@@ -5683,6 +6242,8 @@ void primeContinue ()
 					}
 				}
 				IniWriteInt (INI_FILE, "PgenLine", line + 1);
+				if(res && IniGetInt(INI_FILE, "StopOnSuccess", 0))
+					break;
 			}					// End loop on input lines
 
 
@@ -5901,7 +6462,8 @@ void primeContinue ()
 					}
 				}
 				IniWriteInt (INI_FILE, "PgenLine", line + 1);
-
+				if(res && IniGetInt(INI_FILE, "StopOnSuccess", 0))
+					break;
 			}							// End of loop on input lines
 		
 	    }								// End of new section

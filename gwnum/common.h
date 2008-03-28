@@ -16,13 +16,8 @@
 #define EXTERNC
 #endif
 
-
-#ifndef TRUE
 #define TRUE	1
-#endif
-#ifndef FALSE
 #define FALSE	0
-#endif
 
 /* Define the world/group/owner read/write attributes for creating files */
 /* I've always used 0666 in Unix (everyone gets R/W access), but MSVC 8 */

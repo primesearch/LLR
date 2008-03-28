@@ -1,44 +1,44 @@
-# Makefile for Linux mprime
-# by Jeremy Buhler (jbuhler@cs.washington.edu)
-#
-# NOTE: To convert the included object files to ELF, your binutils 
-# installation must be able to read the coff-i386 object format.  
-#
-# Assuming your binutils are dynamically linked, you can add COFF support
-# by configuring binutils with the switch '--enable-targets=i386-go32'
-# and rebuilding libbfd.so .
+# Makefile for BSD llr or sllr
+# N.B. : factor32p.o and MASM outputs must have been previously build on a Linux system
 
-CC = gcc
-CFLAGS = -I.. -O2 -m486 -malign-double
-#CFLAGS for Pentium
-#CFLAGS = -O2 -m486 -malign-loops=2 -malign-jumps=2 -malign-functions=2
-
-# fixup data segment offset to accomodate asm objects
 LFLAGS = -Wl
-LIBS   = -lm -lcompat
-LIBS2  = -lm -lcompat -static
+LIBELF = ../gwnum/Linux/gwnum.a
+LIBS   = $(LIBELF) -lm -lstdc++ -lcompat
+LIBS2  = $(LIBELF) -lm -lstdc++ -lcompat -static
 
-COFFOBJS = mult.o mult1.o mult2.o mult2a.o mult3.o mult3a.o mult4.o mult2p.o mult2ap.o mult3p.o mult3ap.o mult4p.o  mult1aux.o mult2aux.o xmult1.o xmult1ax.o xmult2.o xmult2a.o xmult2ax.o xmult3.o xmult3a.o xmult3ax.o ecmhelp.o cpuid.o
-DUMMYOBJS = dummy4.o dummy8.o dummy12.o dummy16.o dummy20.o dummy24.o dummy28.o
-LINUXOBJS = lprime.o lmenu.o
-EXE      = mllr
-EXE2	 = smllr
-DUMMY1   = dummy24.o
-DUMMY2   = dummy24.o
+FACTOROBJ = factor32p.o
+DUMMYOBJS = dummy0.o dummy4.o dummy8.o dummy12.o dummy16.o dummy20.o dummy24.o dummy28.o
+COMPOBJS = lprime.o lmenu.o
+EXE = llr
+EXE2 = sllr
+
+# insert proper dummy file to get _GWDATA data segment aligned
+# on a 32 byte boundary.  Use proper dummyNN.o to do the alignment
+
+DUMMY1   = ../gwnum/gwnum.ld
+DUMMY2   = ../gwnum/gwnum.ld
 
 #########################################################################
 
-$(EXE): $(LINUXOBJS) $(COFFOBJS) $(DUMMYOBJS)
-	$(CC) $(LFLAGS) -o $(EXE) $(LINUXOBJS) $(DUMMY1) $(COFFOBJS) $(LIBS)
+$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+	$(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) $(DUMMY1) $(LIBS)
 
-$(EXE2): $(LINUXOBJS) $(COFFOBJS) $(DUMMYOBJS)
-	$(CC) $(LFLAGS) -o $(EXE2) $(LINUXOBJS) $(DUMMY2) $(COFFOBJS) $(LIBS2)
+$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+	$(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(COMPOBJS) $(DUMMY2) $(LIBS2)
+
+security:
+	[ ! -e ../security.h ] && touch ../security.h || true
+	[ ! -e ../security.c ] && touch ../security.c || true
+
+$(COMPOBJS):
+	cd .. ; make -f compile
+
+$(LIBELF):
+	cd ../gwnum/Linux ; make -f Makebsd
 
 clean:
-	rm -f $(EXE) $(EXE2) $(LINUXOBJS) $(COFFOBJS) $(DUMMYOBJS)
+	rm -f $(EXE) $(EXE2) $(COMPOBJS)
 
-.c.o:
-	$(CC) $(CFLAGS) -c $<
-
-$(COFFOBJS) $(DUMMYOBJS): %.o : ../prime95/%.obj
-	objcopy -Oelf32-i386 -Icoff-go32 $< $@
+allclean:
+	rm -f $(EXE) $(EXE2) $(COMPOBJS)
+	cd ../gwnum/Linux ; make clean

@@ -1,0 +1,49 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: LLR - Win32 Release--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP356.tmp" with contents
+[
+/nologo /MT /W3 /GX /O2 /I "..\\" /I "..\gwnum\\" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
+"I:\D\Jean\LLR\llr371zsrc\llr\Prime95Doc.cpp"
+]
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP356.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP357.tmp" with contents
+[
+Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /out:"Release/LLR.exe" /libpath:"..\gwnum\\" /DELAY:unload /delayload:advapi32.dll 
+.\Release\AffinityDlg.obj
+.\Release\ContentsDlg.obj
+.\Release\CpuDlg.obj
+.\Release\EditDropFiles.obj
+.\Release\MainFrm.obj
+.\Release\PreferencesDlg.obj
+.\Release\Prime95.obj
+.\Release\Prime95Doc.obj
+.\Release\Prime95View.obj
+.\Release\Priority.obj
+.\Release\service.obj
+.\Release\StdAfx.obj
+.\Release\TestDlg.obj
+.\factor32p.obj
+.\Release\Prime95.res
+]
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP357.tmp"
+<h3>Output Window</h3>
+Compiling...
+Prime95Doc.cpp
+..\Riesel.c(31) : warning C4244: '+=' : conversion from '__int64' to 'unsigned long', possible loss of data
+..\llr.c(4726) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(4726) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+Linking...
+
+
+
+<h3>Results</h3>
+LLR.exe - 0 error(s), 3 warning(s)
+</pre>
+</body>
+</html>

@@ -1,25 +1,18 @@
-# Makefile for Linux mprime
+# Makefile for Linux llr or sllr
 #
-# NOTE: To convert the included object files to ELF, your binutils 
-# installation must be able to read the coff-i386 object format.  
-#
-# Assuming your binutils are dynamically linked, you can add COFF support
-# by configuring binutils with the switch '--enable-targets=i386-go32'
-# and rebuilding libbfd.so .
+# objconv comes courtesy of Agner Fog.  Download available at
+# http://www.agner.org/optimize/#objconv
 
-CC = gcc
-CFLAGS = -I.. -I../gwnum -O2 -march=i486 -malign-double
-
-CPP = g++
-CPPFLAGS = -I.. -I../gwnum -O2 -march=i486 -malign-double
+CV = objconv
 
 LFLAGS = -Wl
-LIBS   = ../gwnum/gwnum.a -lm -lstdc++
-LIBS2  = ../gwnum/gwnum.a -lm -lstdc++ -static
+LIBELF = ../gwnum/Linux/gwnum.a
+LIBS   = $(LIBELF) -lm -lstdc++
+LIBS2  = $(LIBELF) -lm -lstdc++ -static
 
 FACTOROBJ = factor32p.o
 DUMMYOBJS = dummy0.o dummy4.o dummy8.o dummy12.o dummy16.o dummy20.o dummy24.o dummy28.o
-LINUXOBJS = lprime.o lmenu.o
+COMPOBJS = lprime.o lmenu.o
 EXE = llr
 EXE2 = sllr
 
@@ -31,24 +24,29 @@ DUMMY2   = ../gwnum/gwnum.ld
 
 #########################################################################
 
-$(EXE): security  $(FACTOROBJ) $(LINUXOBJS) $(DUMMYOBJS)
-	$(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(LINUXOBJS) $(DUMMY1) $(LIBS)
+$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+	$(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) $(DUMMY1) $(LIBS)
 
-$(EXE2): security  $(FACTOROBJ) $(LINUXOBJS) $(DUMMYOBJS)
-	$(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(LINUXOBJS) $(DUMMY2) $(LIBS2)
+$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+	$(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(COMPOBJS) $(DUMMY2) $(LIBS2)
 
 security:
 	[ ! -e ../security.h ] && touch ../security.h || true
 	[ ! -e ../security.c ] && touch ../security.c || true
 
+$(COMPOBJS):
+	cd .. ; make -f compile
+
+$(LIBELF):
+	cd ../gwnum/Linux ; make
+
 clean:
-	rm -f $(EXE) $(EXE2) $(LINUXOBJS) $(FACTOROBJ) $(DUMMYOBJS)
+	rm -f $(EXE) $(EXE2) $(COMPOBJS)
+
+allclean:
+	rm -f $(EXE) $(EXE2) $(COMPOBJS)
+	cd ../gwnum/Linux ; make clean
 
 $(FACTOROBJ) $(DUMMYOBJS): %.o : %.obj
-	objcopy -Oelf32-i386 -Icoff-go32 $< $@
-
-.c.o:
-	$(CC) $(CFLAGS) -c $<
-
-.cpp.o:
-	$(CPP) $(CPPFLAGS) -c $<
+#	objcopy -Oelf32-i386 -Icoff-go32 $< $@
+	$(CV) -felf32 $< $@

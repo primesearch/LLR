@@ -1,6 +1,6 @@
 /* Constants */
 
-#define VERSION		"3.7.0"
+#define VERSION		"3.7.1"
 
 /* Global variables */
 
@@ -195,12 +195,6 @@ void BlinkIcon (int);
 /* Common routines */
 
 void primeContinue ();
-
-int isBIGHLLRP (
-	giant	gk,
-	unsigned long exp,
-	char	*str,		/* string representation of N */ 
-	int	*res); 
 
 /* Routines used to time code chunks */
 extern double __timers[10];		/* 10 timers are available */
