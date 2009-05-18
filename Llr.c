@@ -93,8 +93,7 @@
 char ckstring[] = "(2^$a$b)^2-2";	// Carol/Kynea
 char cwstring[] = "$a*$b^$a$c";		// Cullen/Woodall
 char ffstring[] = "$a*2^$b+1";		// FermFact output
-char ffmstring[] = "$a*2^$b-1";		// Lei output
-char gmstring[] = "4^$a+1";			// Gaussian Mersenne norm
+char gmstring[] = "4^$a+1";		// Gaussian Mersenne norm
 
 // Fixed k forms for k*b^n+/-1
 char fkpstring[] = "%d*$a^$b+%d";
@@ -140,6 +139,7 @@ char	INI_FILE[80] = {0};
 char	RESFILE[80] = {0};
 char	LOGFILE[80] = {0};
 char	EXTENSION[8] = {0};
+char	username[100] = {0};
 
 int volatile ERRCHK = 0;
 unsigned int PRIORITY = 1;
@@ -180,9 +180,19 @@ EXTERNC unsigned long FACHSW = 0;	/* High word of found factor */
 EXTERNC unsigned long FACMSW = 0;	/* Middle word of found factor */
 EXTERNC unsigned long FACLSW = 0;	/* Low word of found factor */
 EXTERNC void *FACDATA = NULL;		/* factor data is kept in a global */
+
+/* Other gwnum globals */
+
+EXTERNC gwnum	GW_RANDOM;			/* A random number used in */
+									/* gwsquare_carefully and gwmul_carefully */
+EXTERNC double ADDIN_VALUE;
+
+EXTERNC void gw_random_number (gwnum);/* Generate random FFT data */
+
 giant testn, testnp, testf, testx;
 unsigned long facn = 0, facnp = 0;
 int resn = 0, resnp = 0;
+int k_is_square = 0;
 char facnstr[80], facnpstr[80];
 
 void setupf();
@@ -407,13 +417,21 @@ void OutputTimeStamp ()
 	time_t	this_time;
 	char	tbuf[40], buf[40];
 
-//	if (TIMESTAMPING) {
 		time (&this_time);
 		strcpy (tbuf, ctime (&this_time)+4);
 		tbuf[12] = 0;
 		sprintf (buf, "[%s] ", tbuf);
 		OutputStr (buf);
-//	}
+}
+
+void OutputTimeStampOnDisk ()
+{
+	time_t	this_time;
+	char	buf[40];
+
+		time (&this_time);
+		strftime (buf, 40, "[%Y-%m-%d %H:%M:%S]\n", localtime(&this_time));
+		writeResults (buf);
 }
 
 /* Determine the CPU speed either empirically or by user overrides. */ 
@@ -1567,6 +1585,218 @@ error:
 
 char res64[17]; /* VP : This variable has been made global */
 
+/* Test if a gwnum is zero */
+
+int
+gwiszero(
+	gwnum 	gg,
+	int 	N
+)
+{
+	int 	j, err_code;
+	long	val;
+
+	for(j=0; j<N; ++j)
+	{
+		err_code = get_fft_value (gg, j, &val);
+		if (err_code) return (err_code);
+		if (val)
+			return 0;
+	}
+	return 1;
+}
+
+/* Set a gwnum to zero */
+
+void gwzero (gwnum gg, int N) {
+	int j;
+	for(j=0; j<N; ++j)
+		set_fft_value (gg, j, 0);
+	return;
+}
+
+/* Print some words of a gwnum */
+
+int
+gwprint(
+	gwnum 	gg,
+	int 	N
+)
+{
+	int 	j, err_code;
+	long	val;
+	char buf[20];
+
+	OutputStr ("\n");
+	for(j=0; j<N; ++j)
+	{
+		err_code = get_fft_value (gg, j, &val);
+		if (err_code) return (err_code);
+		sprintf (buf, "%d ", val);
+		if (val)
+			OutputStr (buf);
+	}
+	OutputStr ("\n");
+	return 0;
+}
+
+#define gw_add()	(*GWPROCPTRS[4])()
+
+#define gw_sub()	(*GWPROCPTRS[6])()
+
+void gwaddn3 (			/* Add two numbers normalizing always */
+	gwnum	s1,		/* Source #1 */
+	gwnum	s2,		/* Source #2 */
+	gwnum	d)		/* Destination */
+{
+
+	ASSERTG (((unsigned long *) s1)[-1] >= 1);
+	ASSERTG (((unsigned long *) s2)[-1] >= 1);
+	ASSERTG (((unsigned long *) s1)[-7] == 0);
+	ASSERTG (((unsigned long *) s2)[-7] == 0);
+
+/* Set the has-been-partially-FFTed flag */
+
+	((unsigned long *) d)[-7] = 0;
+
+/* Now do the add */
+
+	SRCARG = s1;
+	SRC2ARG = s2;
+	DESTARG = d;
+	gw_add ();
+	((unsigned long *) d)[-1] = 1;
+}
+
+void gwsubn3 (			/* Compute s1 - s2 normalizing always */
+	gwnum	s1,		/* Source #1 */
+	gwnum	s2,		/* Source #2 */
+	gwnum	d)		/* Destination */
+{
+
+	ASSERTG (((unsigned long *) s1)[-1] >= 1);
+	ASSERTG (((unsigned long *) s2)[-1] >= 1);
+	ASSERTG (((unsigned long *) s1)[-7] == 0);
+	ASSERTG (((unsigned long *) s2)[-7] == 0);
+
+/* Set the has-been-partially-FFTed flag */
+
+	((unsigned long *) d)[-7] = 0;
+
+/* Now do the subtract */
+
+	SRCARG = s2;
+	SRC2ARG = s1;
+	DESTARG = d;
+	gw_sub ();
+	((unsigned long *) d)[-1] = 1;
+}
+
+
+/* Multiply numbers using a slower method that will have reduced */
+/* round-off error on non-random input data.  Caller must make sure the */
+/* input numbers have not been partially or fully FFTed. */
+
+void gwmul_carefully (
+	gwnum s, gwnum t)					/* Source and destination */
+{
+	gwnum	tmp1, tmp2, tmp3, tmp4;
+	double	saved_addin_value;
+
+/* Generate a random number, if we have't already done so */
+
+	if (GW_RANDOM == NULL) {
+		GW_RANDOM = gwalloc ();
+		gw_random_number (GW_RANDOM);
+		gwsquare (GW_RANDOM);		// To force a normalization...
+	}
+
+/* Save and clear the addin value */
+
+	saved_addin_value = ADDIN_VALUE;
+	ADDIN_VALUE = 0.0;
+
+/* Now do the multiply using four multiplies and adds */
+
+	tmp1 = gwalloc ();
+	tmp2 = gwalloc ();
+	tmp3 = gwalloc ();
+	tmp4 = gwalloc ();
+	gwcopy (s, tmp4);
+	gwstartnextfft (0);					/* Disable POSTFFT */
+	gwaddn3 (s, GW_RANDOM, tmp1);		/* Compute s+random */
+	gwaddn3 (t, GW_RANDOM, tmp3);		/* Compute t+random */
+	gwfft (GW_RANDOM, tmp2);
+	gwfftmul (tmp2, tmp4);				/* Compute s*random */
+	gwfftmul (tmp2, t);					/* Compute t*random */
+	gwfftfftmul (tmp2, tmp2, tmp2);		/* Compute random^2 */
+	ADDIN_VALUE = saved_addin_value;	/* Restore the addin value */
+	gwmul (tmp1, tmp3);					/* Compute (s+random)*(t+random) */
+	gwsubn3 (tmp3, tmp2, tmp3);			/* Subtract random^2 */
+	gwsubn3 (tmp3, t, tmp3);
+	gwsubn3 (tmp3, tmp4, t);
+
+/* Free memory and return */
+
+	gwfree (tmp1);
+	gwfree (tmp2);
+	gwfree (tmp3);
+	gwfree (tmp4);
+}
+
+
+/* Do a squaring very carefully.  This is done after a normal */
+/* iteration gets a roundoff error above 0.40.  This careful iteration */
+/* will not generate a roundoff error. */
+
+void careful_squaring (
+	gwnum s)		
+{
+	gwnum	hi, lo;
+	unsigned long i;
+	double	saved_addin_value;
+
+/* Copy the data to hi and lo.  Zero out half the FFT data in each. */
+
+	hi = gwalloc ();
+	lo = gwalloc ();
+	gwcopy (s, hi);
+	gwcopy (s, lo);
+	for (i = 0; i < FFTLEN/2; i++)
+		set_fft_value (hi, i, 0);
+	for ( ; i < FFTLEN; i++)
+		set_fft_value (lo, i, 0);
+
+/* Save and clear the addin value */
+
+	saved_addin_value = ADDIN_VALUE;
+	ADDIN_VALUE = 0.0;
+
+/* Now do the squaring using three multiplies and adds */
+
+	gwstartnextfft (FALSE);
+	gwfft (hi, hi);
+	gwfft (lo, lo);
+	gwfftfftmul (lo, hi, s);
+	gwfftfftmul (hi, hi, hi);
+	ADDIN_VALUE = saved_addin_value;	/* Restore the addin value */
+	gwfftfftmul (lo, lo, lo);
+	gwadd (s, s);
+	gwadd (hi, s);
+	gwadd (lo, s);
+
+/* Since our error recovery code cannot cope with an error during a careful */
+/* iteration, make sure the error variable is cleared.  This shouldn't */
+/* ever happen, but two users inexplicably ran into this problem. */
+
+//	gw_clear_error ();
+
+/* Free memory and return */
+
+	gwfree (hi);
+	gwfree (lo);
+}
+
 
 /* Make a string out of a 96-bit value (a found factor) */
 
@@ -2469,23 +2699,11 @@ int commonPRP (
 	gwnum	x;
 	giant	tmp;
 	char	filename[20], buf[sgkbufsize+256], fft_desc[100], oldres64[17];
-//	J.P. shadow char    filename[20], buf[512], str1[100], fft_desc[100], oldres64[17]; /* Lei: less display */
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
 	time_t	start_time, current_time;
 	double	reallyminerr = 1.0;
 	double	reallymaxerr = 0.0;
-
-/* Lei J.P. shadow
-        if ( strlen(str) > 90 ) {
-           strncpy(str1, str, 90);
-           str1[90] = '.';
-           str1[91] = '.';
-           str1[92] = '.';
-           str1[93] = '\0';
-        }
-        else strcpy(str1, str);   
-// Lei end
 
 /* Init, subtract 1 from N to compute a^(N-1) mod N */
 
@@ -2579,10 +2797,14 @@ int commonPRP (
 		} else {
 			gwsetnormroutine (0, echk, 0);
 		}
-		if ((bit+25 < Nlen) && (bit > 25) && (!maxerr_recovery_mode || (bit != maxerr_point)))
+		if (GENERAL_MOD || ((bit+25 < Nlen) && (bit > 25) && (!maxerr_recovery_mode || (bit != maxerr_point))))
 			gwsquare (x);
 		else {
-			gwsquare_carefully (x);
+			if (k_is_square)
+				gwsquare_carefully (x);
+			else
+				careful_squaring (x);
+//			careful_squaring (x);
 			maxerr_recovery_mode = FALSE;
 			maxerr_point = 0;
 		}
@@ -2788,6 +3010,12 @@ int commonPRP (
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
+	if (username[0] != '\0') {	// Test if LLRnet output format is required
+		sprintf (buf, "user=%s\n", username);
+		writeResults (buf);
+		OutputTimeStampOnDisk ();
+	}
+
 	if (*res)
 		sprintf (buf, "%s is a probable prime.", str);
 	else if (IniGetInt (INI_FILE, "OldRes64", 1))
@@ -2893,6 +3121,8 @@ int fastIsPRP (
 
 	do {
 		gwsetup (k, b, n, c, 0);
+		k_is_square = (floor(sqrt (k) * sqrt (k)) == k);
+
 
 /* Do the PRP test */
 
@@ -2919,9 +3149,6 @@ int slowIsPRP (
 		gwsetup_general_mod_giant (N, 0);
 
 /* Do the PRP test */
-// Lei
-// J.P. shadow		OutputStr ("Go to commonPRP.\n");
-// Lei
 
 		retval = commonPRP (3, res, str);
 	} while (retval == -1);
@@ -2954,14 +3181,20 @@ int isPRPinternal (
 	int incr,
 	int *res)
 {
-//	J.P. shadow        char buf[100];
-	char	buf[sgkbufsize+256]; // Lei - not need such long char
+	char	buf[sgkbufsize+256];
 	unsigned long retval;
 
 	if (dk >= 1.0)
 		retval = fastIsPRP (dk, base, n, incr, res);
 	else if (Nlen < 50) {
 		*res = isProbablePrime();
+
+		if (username[0] != '\0') {	// Test if LLRnet output format is required
+			sprintf (buf, "user=%s\n", username);
+			writeResults (buf);
+			OutputTimeStampOnDisk ();
+		}
+
 		if (*res)
 		{
 #ifndef	WIN32
@@ -2993,7 +3226,6 @@ int isPRPinternal (
 #define ABCCW	4					// Cullen/Woodall ABC format
 #define ABCFF	5					// FermFact output ABC format
 #define ABCGM	6					// Gaussian Mersenne ABC format
-#define ABCLEI  7					// Lei ABC format
 
 // New ABC formats for k*b^n+/-c
 #define ABCFKGS		11				// Fixed k:  b and n specified on each input line
@@ -3109,10 +3341,7 @@ int IsPRP (							// General PRP test
 int isLLRP ( 
 	unsigned long format, 
 	char *sgk,
-        unsigned long b_else,	// Lei
 	unsigned long n, 
-	unsigned long binput,		// Lei
-	unsigned long ninput,		// Lei
 	unsigned long shift,
 	int	*res) 
 { 
@@ -3132,53 +3361,19 @@ int isLLRP (
 	double	reallymaxerr = 0.0; 
 	double	dk, gwn2w;
 
-// Lei
-	double ddk;
-	unsigned long idk = 0;
-	giant gk1;
-// Lei end
+
 
 	if (!(format == ABCC || format == ABCK)) {
-		gksize = strlen(sgk);				// J. P. Initial gksize
-
-// Lei
-		if (b_else != 1) {					// Compute the length of b_else^ninput
-			ddk = (double) b_else;
-			ddk = ninput * log10 (ddk);
-			idk = (long) ddk + 1;
-			gksize += idk;					// J. P. Add it to gksize
-		}
-// Lei end
-
+		gksize = strlen(sgk);
 		gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 		ctog (sgk, gk);						// Convert k string to giant
-
-// Lei
-		if (b_else != 1) {					// Compute the big multiplier
-			gk1 = newgiant ((gksize>>1) + 8);
-			ultog (b_else, gk1);		
-			power (gk1, ninput);
-			mulg (gk1, gk);
-			free (gk1);
-// J.P. shadow   gtoc (gk, sgk1, sgkbufsize);    // Updated k string
-		}
-// Lei end
-
 		if (shift > 0) {
 			gshiftleft (shift, gk);			// Shift k multiplier if requested
-			if (b_else != 1)
-				strcpy (sgk1, sgk);			// Lei, J.P.
-			else
-				gtoc (gk, sgk1, sgkbufsize);// Updated k string
+			gtoc (gk, sgk1, sgkbufsize);	// Updated k string
 		}
-		else {
-			strcpy (sgk1, sgk);
-//	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
-		}
-		if (b_else != 1)	// Lei, J.P.
-			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
 		else
-			sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+			strcpy (sgk1, sgk);
+		sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
 
 //	gk must be odd for the LLR test, so, adjust gk and n if necessary.
 
@@ -3204,7 +3399,7 @@ int isLLRP (
 
 	klen = bitlen(gk);					// Bit length ok k multiplier
 	bits = n + klen;					// Bit length of N
-	N =  newgiant ((bits >> 4) + 8);	// Allocate memory for N
+	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -3222,9 +3417,17 @@ int isLLRP (
 		dk = (double)gk->n[0];
 		if (gk->sign > 1)
 			dk += 4294967296.0*(double)gk->n[1];
+			k_is_square = (floor(sqrt (dk) * sqrt (dk)) == dk);
 	}
 
 	if (N->sign == 1) {		// N is a small number, so we make a simple test...
+
+		if (username[0] != '\0') {	// Test if LLRnet output format is required
+			sprintf (buf, "user=%s\n", username);
+			writeResults (buf);
+			OutputTimeStampOnDisk ();
+		}
+
 		if (*res = isPrime (N->n[0])) {
 #ifndef WIN32
 			OutputStr("\033[7m");
@@ -3249,45 +3452,23 @@ int isLLRP (
 	if (klen > n) {
 	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
-
-// Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
-                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string		
-		retval = isPRPinternal (str, dk, binput, ninput, -1, res);
-// Lei end
-
+		retval = isPRPinternal (str, dk, 2, n, -1, res);
 		free(gk);
 		free(N);
 		return retval;
 	}
 
-// Lei
-//	J.P. shadow sprintf (buf, "Should try prp?\n");
-//	J.P. shadow OutputStr (buf);
-// Lei end
 
 	if (bits > 100 && bits < 10*klen && !IniGetInt(INI_FILE, "PRPdone", 0)) {
 								// We have better to do ad first a PRP test.
-// Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
-		strcpy (buf, str);
-                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
-                retval = isPRPinternal (str, dk, binput, ninput, -1, res);
-// Lei end
-
+		retval = isPRPinternal (str, dk, 2, n, -1, res);
 		if (!*res) {
 			free(gk);
 			free(N);
 			return retval;
 		}
 		IniWriteInt(INI_FILE, "PRPdone", 1);
-		strcpy (str, buf);	// Lei
 	}
-
-// Lei
-//	J.P. shadow sprintf (buf, "Can I get here?\n");
-//	J.P. shadow OutputStr (buf);
-// Lei end
 
 	if(abs(gk->sign) == 1) {	// k is a "small" integer
 	    k = gk->n[0];
@@ -3483,8 +3664,13 @@ restart:
 			dbltogw ((double) v1, x); 
 			dbltogw ((double) v1, y); 
 			gwsetaddin (-2);
-//			gwsquare (y); 
-			gwsquare_carefully (y); 
+			if (!GENERAL_MOD)
+				if (k_is_square)
+					gwsquare_carefully (y);
+				else
+					careful_squaring (y);
+			else
+				gwsquare (y);
 			CHECK_IF_ANY_ERROR(y, 1, klen, 0)
 			j = klen - 2;
 
@@ -3518,28 +3704,20 @@ restart:
 			}
 			else 
 				saving = 0; 
-//			gwfft (x, x);
-//			gwfft (y, y);
 			if (bit) {
 				gwsetaddin (-v1);
 				gwsafemul (y, x);
-//				gwfftfftmul (y, x, x);
 				CHECK_IF_ANY_ERROR(x, (index), klen, 1)
 				gwsetaddin (-2);
 				gwsquare (y);
-//				gwsquare_carefully (y); 
-//				gwfftfftmul (y, y, y);
 				CHECK_IF_ANY_ERROR(y, (index), klen, 2)
 			}
 			else {
 				gwsetaddin (-v1);
 				gwsafemul (x, y);
-//				gwfftfftmul (x, y, y);
 				CHECK_IF_ANY_ERROR(y, (index), klen, 3)
 				gwsetaddin (-2);
 				gwsquare (x);
-//				gwsquare_carefully (x); 
-//				gwfftfftmul (x, x, x);
 				CHECK_IF_ANY_ERROR(x, (index), klen, 4)
 			}
  
@@ -3619,11 +3797,8 @@ restart:
 			} 
 	    }
 
-//		gwfft (x, x);
-//		gwfft (y, y);
 		gwsetaddin (-v1);
 		gwmul (y, x);
-//		gwfftfftmul (y, x, x);
 		CHECK_IF_ANY_ERROR(x, klen, klen, 5)
 		ReplaceableLine (2);	/* Replace line */ 
 		sprintf (buf, "V1 = %d ; Computing U0...done.\n", v1);
@@ -3668,11 +3843,15 @@ MERSENNE:
 			!(interimResidues && ((j+1) % interimResidues < 2)) && 
 			(j >= 30) && (j < last - 31) && !maxerr_recovery_mode); 
 
-		if ((j > 30) && (j < last - 30) && (!maxerr_recovery_mode || (j != maxerr_point))) {
+		if (GENERAL_MOD || ((j > 30) && (j < last - 30) && (!maxerr_recovery_mode || (j != maxerr_point)))) {
 			gwsquare (x);
 		}
 		else {
-			gwsquare_carefully(x);
+			if (k_is_square)
+				gwsquare_carefully (x);
+			else
+				careful_squaring (x);
+//			careful_squaring (x);
 			maxerr_recovery_mode = FALSE;
 			maxerr_point = 0;
 		}
@@ -3784,8 +3963,9 @@ MERSENNE:
 			}
 		}
 	} 
-
+//	gwprint (x, FFTLEN);
 	gwtogiant (x, tmp); 
+//	trace (tmp->sign);
 	if (!isZero (tmp)) { 
 		*res = FALSE;				/* Not a prime */ 
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
@@ -3795,6 +3975,13 @@ MERSENNE:
  
 /* Print results and cleanup */ 
  
+
+	if (username[0] != '\0') {	// Test if LLRnet output format is required
+		sprintf (buf, "user=%s\n", username);
+		writeResults (buf);
+		OutputTimeStampOnDisk ();
+	}
+
 	if (*res) 
 		sprintf (buf, "%s is prime!", str); 
 	else
@@ -3889,10 +4076,7 @@ error:
 int isProthP ( 
 	unsigned long format, 
 	char *sgk,
-        unsigned long b_else,	// Lei
 	unsigned long n,
-	unsigned long binput,		// Lei
-	unsigned long ninput,		// Lei
 	unsigned long shift,
 	int	*res) 
 { 
@@ -3911,51 +4095,18 @@ int isProthP (
 	double	reallymaxerr = 0.0; 
 	double dk;
 
-// Lei
-        double ddk;
-        unsigned long idk = 0;
-        giant gk1;
-// Lei end
-
-		gksize = strlen(sgk);			// J.P. Initial gksize
-
-// Lei
-	if (b_else != 1) {					// Compute the length of b_else^ninput
-		ddk = (double) b_else;
-		ddk = ninput * log10 (ddk);
-	    idk = (long) ddk + 1;
-		gksize += idk;					// J.P. Add it to gksize
-	}
-// Lei end
-
+	gksize = strlen(sgk);
 	gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgk, gk);						// Convert k string to giant
 
-// Lei
-	if (b_else != 1) {					// Compute the big multiplier
-		gk1 = newgiant ((gksize>>1) + 8);
-		ultog (b_else, gk1);
-		power (gk1, ninput);
-		mulg (gk1, gk);
-		free (gk1);
-	}
-// Lei end
-
 	if (shift > 0) {
 		gshiftleft (shift, gk);			// Shift k multiplier if requested
-		if (b_else != 1)
-			strcpy (sgk1, sgk);			// Lei, J.P.
-		else
-			gtoc (gk, sgk1, sgkbufsize);// Updated k string
+		gtoc (gk, sgk1, sgkbufsize);	// Updated k string
 	}
 	else
 		strcpy (sgk1, sgk);
 
-		if (b_else != 1)	// Lei, J.P.
-			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
-		else
-			sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
-
+	sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
 
 	bits = n + bitlen(gk);				// Bit length of N
 	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
@@ -3984,9 +4135,17 @@ int isProthP (
 		dk = (double)gk->n[0];
 		if (gk->sign > 1)
 			dk += 4294967296.0*(double)gk->n[1];
+			k_is_square = (floor(sqrt (dk) * sqrt (dk)) == dk);
 	}
 
 	if (N->sign == 1) {					// N is a small number, so we make a simple test...
+
+		if (username[0] != '\0') {	// Test if LLRnet output format is required
+			sprintf (buf, "user=%s\n", username);
+			writeResults (buf);
+			OutputTimeStampOnDisk ();
+		}
+
 		if (*res = isPrime (N->n[0])) {
 #ifndef WIN32
 			OutputStr("\033[7m");
@@ -4011,13 +4170,7 @@ int isProthP (
 	if (klen > n) {
 	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
-
-// Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, 1, res);
-                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
-                retval = isPRPinternal (str, dk, binput, ninput, 1, res);
-// Lei end
-
+		retval = isPRPinternal (str, dk, 2, n, 1, res);
 		free(gk);
 		free(N);
 		return (retval);
@@ -4153,10 +4306,14 @@ restart:
 		} else {
 			gwsetnormroutine (0, echk, 0);
 		}
-		if ((bit > 30) && (bit < Nlen-30) && (!maxerr_recovery_mode || (bit != maxerr_point)))
+		if (GENERAL_MOD || ((bit > 30) && (bit < Nlen-30) && (!maxerr_recovery_mode || (bit != maxerr_point))))
 			gwsquare (x);
 		else {
-			gwsquare_carefully (x);
+			if (k_is_square)
+				gwsquare_carefully (x);
+			else
+				careful_squaring (x);
+//			careful_squaring (x);
 			if (maxerr_recovery_mode && (bit == maxerr_point)) {
 				maxerr_point = 0;
 				maxerr_recovery_mode = FALSE;
@@ -4363,6 +4520,13 @@ restart:
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
+
+
+	if (username[0] != '\0') {	// Test if LLRnet output format is required
+		sprintf (buf, "user=%s\n", username);
+		writeResults (buf);
+		OutputTimeStampOnDisk ();
+	}
 
 	if (*res)
 		sprintf (buf, "%s is prime!", str); 
@@ -4610,6 +4774,13 @@ int isGMNP (
 
 	if (!facto && N->sign == 1 && NP->sign == 1) {	// N and NP are small numbers, so we make simple tests...
 		a = 0;
+
+		if (username[0] != '\0') {	// Test if LLRnet output format is required
+			sprintf (buf, "user=%s\n", username);
+			writeResults (buf);
+			OutputTimeStampOnDisk ();
+		}
+
 		if (isPrime (N->n[0])) {
 #ifndef WIN32
 			OutputStr("\033[7m");
@@ -5093,10 +5264,10 @@ restart:
 
 
 		gwsetnormroutine (0, echk, 0);
-		if ((bit > (30+loopshift)) && (bit < explen-30) && (!maxerr_recovery_mode || (bit != maxerr_point)))
+		if (GENERAL_MOD || ((bit > (30+loopshift)) && (bit < explen-30) && (!maxerr_recovery_mode || (bit != maxerr_point))))
 			gwsquare (x);
 		else {
-			gwsquare_carefully (x);
+			careful_squaring (x);
 			maxerr_recovery_mode = FALSE;
 			maxerr_point = 0;
 		}
@@ -5388,6 +5559,13 @@ restart:
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
+
+	if (username[0] != '\0') {	// Test if LLRnet output format is required
+		sprintf (buf, "user=%s\n", username);
+		writeResults (buf);
+		OutputTimeStampOnDisk ();
+	}
+
 	if (res1)
 		sprintf (buf, "%s is prime!\n", str);
 	else
@@ -5395,8 +5573,8 @@ restart:
 
 #if defined(WIN32) && !defined(_CONSOLE)
 
-	sprintf (buf+strlen(buf), "  Time : "); 
 	ReplaceableLine (2);	/* Replace line */ 
+	OutputBoth (buf);
 
 #else
 
@@ -5552,11 +5730,7 @@ int process_num (
 	int	*res)
 {
 	int	retval;
-
-// Lei -remove a line and replace
-//	unsigned long ninput = n, binput = base;
-	unsigned long ninput = n, binput = base, b_2up = 1, b_else = 1, superPRP = 1;
-// Lei end
+	unsigned long ninput = n, binput = base;
 
 	while (!(base&1) && base > 2) {	// Divide the base by two as far as possible
 		base >>= 1;
@@ -5564,46 +5738,19 @@ int process_num (
 	}
 
 	if (base != 2) {				// Test if the base was a power of two
-
-// Lei
-		n -= ninput;
-	        b_else = base;			// Is odd...
-        	b_2up = binput / b_else;// binput = b_else*b_2up
-        	if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK)))) {
-			superPRP = 0;			// Then b_2up^n > b_else^n
-		}
-		else {
-// Lei end
-
-			base = binput;		// Do not modify
-			n = ninput;
-		}
+		base = binput;				// Do not modify it if no
+		n = ninput;
 	}
-
-// Lei debug
-	
-// Lei end
 
 	if (format == ABCGM)
 		return (isGMNP (sgk, n, res));
 
-//	Replaced by Lei :
-//	if (base == 2 && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
-//		if (incr == -1)
-//			retval = isLLRP (format, sgk, n, shift, res);
-//		else
-//			retval = isProthP (format, sgk, n, shift, res);
-//	}
-
-// Lei mod
-	if (((base == 2) || (superPRP == 0)) && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
+	if (base == 2 && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
 		if (incr == -1)
-			retval = isLLRP (format, sgk, b_else, n, binput, ninput, shift, res);
+			retval = isLLRP (format, sgk, n, shift, res);
 		else
-			retval = isProthP (format, sgk, b_else, n, binput, ninput, shift, res);
+			retval = isProthP (format, sgk, n, shift, res);
 	}
-// end Lei mod
-
 	else {
 		retval = IsPRP (format, sgk, base, n, incr, shift, res);
 	}
@@ -5648,6 +5795,7 @@ void primeContinue ()
 
 	    IniGetString (INI_FILE, "PgenInputFile", inputfile, 80, NULL);
 	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, 80, NULL);
+	    IniGetString (INI_FILE, "LLRnetuser", username, 100, NULL);
 	    firstline = IniGetInt (INI_FILE, "PgenLine", 1);
 	    verbose = IniGetInt (INI_FILE, "Verbose", 0);
 	    fd = fopen (inputfile, "r");
@@ -5824,23 +5972,6 @@ void primeContinue ()
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							sprintf (outbuf, "%s %lu\n", sgk, n); 
-							_write (outfd, outbuf, strlen (outbuf));
-							_close (outfd);
-						}
-					}
-				}
-				else if (format == ABCLEI)       {	// Lei output
-											// allow k to be a big integer
-					if (sscanf (buff, "%s %lu", sgk, &n) != 2)
-						continue;			// Skip invalid line
-					if (!isDigitString(sgk))
-						continue;			// Skip invalid line
-					if (! process_num (format, sgk, 2, n, -1, shift, &res))
-						goto done;
-					if (res) {
-						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
-						if (outfd) {
-							sprintf (outbuf, "%s %lu\n", sgk, n);
 							_write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
