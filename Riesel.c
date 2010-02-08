@@ -7,14 +7,16 @@
 #define MAXULONG 0xFFFFFF00
 
 void trace(int);
+EXTERNC int kronecker (uint32_t, uint32_t);
+EXTERNC ULONG gcd (ULONG, ULONG);
 
 /************************** Giants.c extensions *************************************/
 
 #define BITSINULONG 32
 
 int gmodi (	/* Returns g%i as an integer */ 
-	ULONG i, giant g) { 
-	ULONG wordweight, j, k, size, value;
+	uint32_t i, giant g) { 
+	uint32_t wordweight, j, k, size, value;
 	int sign;
 	if (i==1 || g->sign==0) return 0;
 	if (g->sign < 0) {
@@ -38,8 +40,8 @@ int gmodi (	/* Returns g%i as an integer */
 	return sign*value;
 }
 
-void uldivg (ULONG den, giant num) {
-	ULONG denval = den;
+void uldivg (uint32_t den, giant num) {
+	uint32_t denval = den;
 	giantstruct gdenstruct = {1, &denval};
 	giant gden = &gdenstruct;
 	divg (gden, num);
@@ -47,11 +49,11 @@ void uldivg (ULONG den, giant num) {
 
 /************************************************************************************/
 
-void Reduce (ULONG x, ULONG *d, ULONG *b) {
+void Reduce (uint32_t x, uint32_t *d, uint32_t *b) {
 
 // Reduce a Discriminant to a square free integer
 
-	ULONG div, sq;
+	uint32_t div, sq;
 
 	*d = x;
 	*b = 1;
@@ -68,17 +70,17 @@ void Reduce (ULONG x, ULONG *d, ULONG *b) {
 		}
 }
 
-ULONG issquare (ULONG n) {
-	ULONG s;
-	s = (ULONG)floor(sqrt(n));
+uint32_t issquare (uint32_t n) {
+	uint32_t s;
+	s = (uint32_t)floor(sqrt(n));
 	if (s*s == n)
 		return s;
 	else
 		return 0;
 }
 
-ULONG twopownmodm (ULONG n, ULONG m, ULONG *order, ULONG *nmodorder) {
-	ULONG tpnmodm, tp, i;
+uint32_t twopownmodm (uint32_t n, uint32_t m, uint32_t *order, uint32_t *nmodorder) {
+	uint32_t tpnmodm, tp, i;
 	tpnmodm = 0;
 	*order = tp = 1;
 	for (i=1; i<m; i++) {
@@ -101,13 +103,13 @@ ULONG twopownmodm (ULONG n, ULONG m, ULONG *order, ULONG *nmodorder) {
 	return tpnmodm;
 }
 
-ULONG Bachet(ULONG u, ULONG v, long *a, long *b) {
+uint32_t Bachet(uint32_t u, uint32_t v, long *a, long *b) {
 
 //  Computes a and b such as a*u+b*v = gcd(u,v),
 //  returns gcd(u,v).
 
-    ULONG n=0, m11=1, m12=0, m21=0, m22=1;
-    ULONG q, newm11, newm21, newu;
+    uint32_t n=0, m11=1, m12=0, m21=0, m22=1;
+    uint32_t q, newm11, newm21, newu;
 
     while (v!=0) {
 	q = u/v;
@@ -133,13 +135,13 @@ ULONG Bachet(ULONG u, ULONG v, long *a, long *b) {
     return u;
 }
 
-int gen_v1(giant k, ULONG n, int debug, ULONG maxres) {
+int gen_v1(giant k, uint32_t n, int debug, uint32_t maxres) {
     long sign, j2N, jNd, jNa, v, vcand;
     long idred, iared, iorderd, iordera, kdiff, ndiff;
-    ULONG nbres, kmod3, rawd, d, dred, kmodd, tpnmd, i, orderd, Nmodd;
-    ULONG V, W, dsqW, aplus, aminus, b, bcand, rplus, rminus, found, iseps2;
-    ULONG nmodorderd, ared, kmoda, tpnma, ordera, nmodordera, Nmoda;
-    ULONG dk, dn, kmod, nmod, modulk, moduln;
+    uint32_t nbres, kmod3, rawd, d, dred, kmodd, tpnmd, i, orderd, Nmodd;
+    uint32_t V, W, dsqW, aplus, aminus, b, bcand, rplus, rminus, found, iseps2;
+    uint32_t nmodorderd, ared, kmoda, tpnma, ordera, nmodordera, Nmoda;
+    uint32_t dk, dn, kmod, nmod, modulk, moduln;
     nbres = 0;
     if (n>2)
 	j2N = 1;
@@ -312,8 +314,8 @@ int gen_v1(giant k, ULONG n, int debug, ULONG maxres) {
     return -1;		// Unable to find a value for v...
 }
 
-int genProthBase(giant k, ULONG n) {
-	ULONG Nmodp, kmodp, p, tpnmp, orderp, nmodorderp, kw;
+int genProthBase(giant k, uint32_t n) {
+	uint32_t Nmodp, kmodp, p, tpnmp, orderp, nmodorderp, kw;
 	int jNp;
 
 //	Return the least prime p such Jacobi (N, p) = -1
@@ -348,4 +350,166 @@ int genProthBase(giant k, ULONG n) {
 		}
 		return (-1);
 	}
+}
+
+int genProthBase1(giant N)
+{
+	uint32_t NmodD, D, dred, Nmod8;
+	int jNp, chgsign;
+
+//	Return the least D such as kronecker (D, N) = -1
+
+//	Rem : for n>1, (N-1)/2 = k*2^(n-1) is even, so (D / N) = (N / D)
+
+//  Then, if D = 2^s*t, (N / D) = (N / 2)^s * (N / t) = (N / 2)^s * (Nmodt / t)
+
+	Nmod8 = N->n[0] & 7;
+
+	for (D = 2; D<=2147483647; D++) {
+		dred = D;
+		chgsign = 1;
+		while (!(dred&1)) {
+			dred >>= 1;					// Compute the odd part of D
+			if (Nmod8 == 3 || Nmod8 == 5)
+				chgsign = -chgsign;
+		}
+		if (dred == 1)
+			jNp = 1;
+		else {
+			NmodD = gmodi (dred, N);
+			if (!NmodD)
+				return (-(int)dred);
+			if ((jNp = kronecker(NmodD, dred)) > 1)
+				return (-jNp);
+		}
+		if ((jNp*chgsign) != -1)
+			continue;
+		return ((int)D);
+		}
+		return (-1);
+}
+
+int genLucasBaseQ(giant N, uint32_t D) {
+	uint32_t NmodD, dred, Nmod8;
+	int jNp, chgsign;
+
+//	Return the least D = 1+4*Q such as kronecker (D, N) = -1
+
+//  if D = 2^s*t, (N / D) = (N / 2)^s * (N / t) = (N / 2)^s * (Nmodt / t)
+
+	Nmod8 = N->n[0] & 7;
+
+	for (D; D<=2147483647; D+=4) {
+		dred = D;
+		chgsign = 1;
+		while (!(dred&1)) {
+			dred >>= 1;					// Compute the odd part of D
+			if (Nmod8 == 3 || Nmod8 == 5)
+				chgsign = -chgsign;
+		}
+		if (dred == 1)
+			jNp = 1;
+		else {
+			NmodD = gmodi (dred, N);
+			if (!NmodD)
+				return (-(int)dred);
+			if ((jNp = kronecker(NmodD, dred)) > 1)
+				return (-jNp);
+		}
+		ulsubg (1, N);					// Compute N-1
+		if (((dred-1) & 2) && (N->n[0] & 2))	// Quadratic reciprocity
+			chgsign = -chgsign;
+		iaddg (1, N);					// Restore N
+		if ((jNp*chgsign) != -1)
+			continue;
+		return ((int)D);
+	}
+	return (-1);
+}
+
+int genLucasBaseP(giant N, uint32_t P) {
+	uint32_t NmodD, D, dred, Nmod8;
+	int jNp, chgsign;
+
+//	Return the least P such as D = P^2-4 and kronecker (D, N) = -1
+
+//  if D = 2^s*t, (N / D) = (N / 2)^s * (N / t) = (N / 2)^s * (Nmodt / t)
+
+	Nmod8 = N->n[0] & 7;
+
+	for (P; P*P<=2147483647; P++) {
+		D = P*P-4;
+		dred = D;
+		chgsign = 1;
+		while (!(dred&1)) {
+			dred >>= 1;					// Compute the odd part of D
+			if (Nmod8 == 3 || Nmod8 == 5)
+				chgsign = -chgsign;
+		}
+		if (dred == 1)
+			jNp = 1;
+		else {
+			NmodD = gmodi (dred, N);
+			if (!NmodD)
+				return (-(int)dred);
+			if ((jNp = kronecker(NmodD, dred)) > 1)
+				return (-jNp);
+		}
+		ulsubg (1, N);					// Compute N-1
+		if (((dred-1) & 2) && (N->n[0] & 2))	// Quadratic reciprocity
+			chgsign = -chgsign;
+		iaddg (1, N);					// Restore N
+		if ((jNp*chgsign) != -1)
+			continue;
+		return ((int)P);
+	}
+	return (-1);
+}
+
+long generalLucasBase(giant N, uint32_t *P, uint32_t *Q) {
+	uint32_t NmodD, D, dred, Nmod8, NmodPQD, gcdNPQD;
+	int jNp, chgsign;
+
+//	Return the least D = P^2-4*Q such as kronecker (D, N) = -1
+
+//  if D = 2^s*t, (N / D) = (N / 2)^s * (N / t) = (N / 2)^s * (Nmodt / t)
+
+	Nmod8 = N->n[0] & 7;
+
+	for (*P; (*P)*(*P)<=2147483647; (*P)++) {
+		for ((*Q)=2; 4*(*Q)<(*P)*(*P); (*Q)++) {
+			D = (*P)*(*P)-4*(*Q);
+			if ((uint32_t)(floor(sqrt ((double)D)) * floor(sqrt ((double)D))) == D) {
+				continue;
+			}
+			dred = D;
+			chgsign = 1;
+			while (!(dred&1)) {
+				dred >>= 1;					// Compute the odd part of D
+				if (Nmod8 == 3 || Nmod8 == 5)
+					chgsign = -chgsign;
+			}
+			if (dred == 1)
+				jNp = 1;
+			else {
+				NmodD = gmodi (dred, N);
+				if (!NmodD)
+					return (-(long)dred);
+				if ((jNp = kronecker(NmodD, dred)) > 1)
+					return (-jNp);
+			}
+			ulsubg (1, N);					// Compute N-1
+			if (((dred-1) & 2) && (N->n[0] & 2))	// Quadratic reciprocity
+				chgsign = -chgsign;
+			iaddg (1, N);					// Restore N
+			if ((jNp*chgsign) != -1)
+				continue;
+			NmodPQD = gmodi ((*P)*(*Q)*D, N);
+			gcdNPQD = gcd (NmodPQD, (*P)*(*Q)*D);
+			if (gcdNPQD != 1)
+				return (-(long)gcdNPQD);
+			return (D);
+		}
+	}
+	return (-1);
 }

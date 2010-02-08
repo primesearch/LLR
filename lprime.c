@@ -75,6 +75,7 @@ int SINGLETEST = 0;
 #endif
 
 #include "Jacobi.c"
+#include "kronecker.c"
 #include "Riesel.c"
 #include "Llr.c"
 
@@ -188,7 +189,7 @@ int main (
 	char	*p2;
 	char	m_pgen_input[80], m_pgen_output[80], oldm_pgen_input[80];
 	char	keywords[10][80], values[10][80];
-	char	multiplier[80], base[80], exponent[80];
+	char	multiplier[80], base[80], exponent[80], addin[80];
 	FILE	*in;
 
 /* catch termination signals */
@@ -273,9 +274,9 @@ int main (
 		case 'O':
 		case 'o':
 			p2 = strrchr (p, '=');
-			if (p2 == NULL)			// Ignore an invalid option...
+			if (p2 == NULL)					// Ignore an invalid option...
 				break;
-			if (opcnt >= 10)			// Maximum 10 options...
+			if (opcnt >= 10)				// Maximum 10 options...
 				break;
 			strcpy (values[opcnt], p2+1);
 			p2 = keywords[opcnt];
@@ -285,17 +286,23 @@ int main (
 			opcnt++;
 			break;
 
-/* -Q - Test a single k*b^n+1 or k*b^n-1 number */
+/* -Q - Test a single k*b^n+c number */
 
 		case 'Q':
 		case 'q':
 			if (!isdigit(*p))
 				goto errexpr;
-			p2 = multiplier;
+			p2 = multiplier;				// get the expected multiplier
 			while (isdigit(*p))
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (*p++ != '*')
+			if (*p == '^')	{				// the multiplier was ommitted
+				strcpy (base, multiplier);	// get the base in place
+				strcpy (multiplier, "1");	// default multiplier = 1
+				p++;
+				goto NOMULTIPLIER;
+			}
+			else if (*p++ != '*')			// get the base
 				goto errexpr;
 			if (!isdigit(*p))
 				goto errexpr;
@@ -305,20 +312,25 @@ int main (
 			*p2 = '\0';
 			if (*p++ != '^')
 				goto errexpr;
+NOMULTIPLIER:
 			if (!isdigit(*p))
 				goto errexpr;
-			p2 = exponent;
+			p2 = exponent;					// get the exponent
 			while (isdigit(*p))
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (strcmp (p, "+1") && strcmp (p, "-1"))
+			if (*p != '+' && *p != '-')
 				goto errexpr;
-			in = fopen ("$temp.npg", "w");
-			if (*p == '+')
-				fprintf (in, "1:P:1:%s:1\n", base);
-			else
-				fprintf (in, "1:M:1:%s:2\n", base);
-			fprintf (in, "%s %s\n", multiplier, exponent);
+			p2 = addin;
+			*p2++ = *p++;					// copy the sign
+			if (!isdigit(*p))
+				goto errexpr;
+			while (isdigit(*p))				// copy the c value
+				*p2++ = *p++;
+			*p2 = '\0';
+			in = fopen ("$temp.npg", "w");	// open the temporary input file
+			fprintf (in, "ABC$a*$b^$c$d\n");// write ABC header and data
+			fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
 			fclose (in);
 			strcpy (m_pgen_input, "$temp.npg");
 			strcpy (m_pgen_output, "$temp.res");
@@ -345,7 +357,7 @@ int main (
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*2^n+/-1 Program - Version 3.7.1c\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.0\n");
 			return (0); 
 
 /* -W - use a different working directory */
@@ -466,7 +478,7 @@ usage:	printf ("Usage: cllr [-aN] [-dhmoqv] [-wDIR] [input file name]\n");
 	printf ("-h\tPrint this.\n");
 	printf ("-m\tMenu to configure llr.\n");
 	printf ("-okeyword=value\tSet an option in .ini file.\n");
-	printf ("-q\"expression\"\tTest a single number (must be k*b^n+1 or k*b^n-1).\n");
+	printf ("-q\"expression\"\tTest a single k*b^n+c number.\n");
 	printf ("-v\tPrint the version number.\n");
 	printf ("-wDIR\tRun from a different working directory.\n");
 	printf ("\n");

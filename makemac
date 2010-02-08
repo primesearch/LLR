@@ -1,0 +1,22 @@
+# Compile the LLR source files for MacIntel OS X 32 bits architecture
+
+D = ./macllr
+
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.3
+
+CC = gcc
+CFLAGS = -I. -I./gwnum -O2 -march=i686 -malign-double
+
+CPP = g++
+CPPFLAGS = -I. -I./gwnum -O2 -march=i686 -malign-double
+
+COMPOBJS = lprime.o lmenu.o
+
+compile: $(COMPOBJS)
+	mv $(COMPOBJS) $(D)
+
+.c.o:
+	$(ENVP) $(CC) $(CFLAGS) -c $<
+
+.cpp.o:
+	$(ENVP) $(CPP) $(CPPFLAGS) -c $<

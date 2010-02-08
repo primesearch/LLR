@@ -6,19 +6,34 @@
 --------------------Configuration: LLR - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9C.tmp" with contents
+Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr380src\llr\Prime95.rc"" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP247.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /I "..\\" /I "..\gwnum\\" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
-"I:\D\Jean\LLR\llr371dsrc\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr380src\llr\AffinityDlg.cpp"
+"I:\D\Jean\LLR\llr380src\llr\ContentsDlg.cpp"
+"I:\D\Jean\LLR\llr380src\llr\CpuDlg.cpp"
+"I:\D\Jean\LLR\llr380src\llr\EditDropFiles.cpp"
+"I:\D\Jean\LLR\llr380src\kronecker.c"
+"I:\D\Jean\LLR\llr380src\llr\MainFrm.cpp"
+"I:\D\Jean\LLR\llr380src\llr\PreferencesDlg.cpp"
+"I:\D\Jean\LLR\llr380src\llr\Prime95.cpp"
+"I:\D\Jean\LLR\llr380src\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr380src\llr\Prime95View.cpp"
+"I:\D\Jean\LLR\llr380src\llr\Priority.cpp"
+"I:\D\Jean\LLR\llr380src\llr\service.c"
+"I:\D\Jean\LLR\llr380src\llr\StdAfx.cpp"
+"I:\D\Jean\LLR\llr380src\llr\TestDlg.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9C.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9D.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP247.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP248.tmp" with contents
 [
 Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /out:"Release/LLR.exe" /libpath:"..\gwnum\\" /DELAY:unload /delayload:advapi32.dll 
 .\Release\AffinityDlg.obj
 .\Release\ContentsDlg.obj
 .\Release\CpuDlg.obj
 .\Release\EditDropFiles.obj
+.\Release\kronecker.obj
 .\Release\MainFrm.obj
 .\Release\PreferencesDlg.obj
 .\Release\Prime95.obj
@@ -29,21 +44,38 @@ Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/
 .\Release\StdAfx.obj
 .\Release\TestDlg.obj
 .\factor32p.obj
+.\factor32lp.obj
 .\Release\Prime95.res
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9D.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP248.tmp"
 <h3>Output Window</h3>
+Compiling resources...
 Compiling...
+AffinityDlg.cpp
+ContentsDlg.cpp
+CpuDlg.cpp
+EditDropFiles.cpp
+kronecker.c
+MainFrm.cpp
+PreferencesDlg.cpp
+Prime95.cpp
 Prime95Doc.cpp
-..\Riesel.c(31) : warning C4244: '+=' : conversion from '__int64' to 'unsigned long', possible loss of data
-..\llr.c(4897) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(4897) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\Riesel.c(33) : warning C4244: '+=' : conversion from '__int64' to 'unsigned __int32', possible loss of data
+..\llr.c(9993) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(9993) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(10886) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(10886) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+Prime95View.cpp
+Priority.cpp
+service.c
+StdAfx.cpp
+TestDlg.cpp
 Linking...
 
 
 
 <h3>Results</h3>
-LLR.exe - 0 error(s), 3 warning(s)
+LLR.exe - 0 error(s), 5 warning(s)
 </pre>
 </body>
 </html>

@@ -109,6 +109,10 @@ SOURCE=.\EditDropFiles.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=..\kronecker.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\MainFrm.cpp
 # End Source File
 # Begin Source File
@@ -227,6 +231,10 @@ SOURCE=.\Res\Yellow_i.ico
 # Begin Source File
 
 SOURCE=.\factor32p.obj
+# End Source File
+# Begin Source File
+
+SOURCE=.\factor32lp.obj
 # End Source File
 # End Target
 # End Project

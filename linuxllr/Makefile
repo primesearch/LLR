@@ -1,17 +1,12 @@
 # Makefile for Linux llr or sllr
-#
-# objconv comes courtesy of Agner Fog.  Download available at
-# http://www.agner.org/optimize/#objconv
 
-CV = objconv
-
+CC = gcc
 LFLAGS = -Wl
-LIBELF = ../gwnum/Linux/gwnum.a
-LIBS   = $(LIBELF) -lm -lstdc++
-LIBS2  = $(LIBELF) -lm -lstdc++ -static
+LIBELF = ../gwnum/gwnum.a
+LIBS   = $(LIBELF) -lm -lstdc++ -lpthread
+LIBS2  = $(LIBELF) -lm -lstdc++ -lpthread -static
 
-FACTOROBJ = factor32p.o
-DUMMYOBJS = dummy0.o dummy4.o dummy8.o dummy12.o dummy16.o dummy20.o dummy24.o dummy28.o
+FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o
 EXE = llr
 EXE2 = sllr
@@ -24,10 +19,12 @@ DUMMY2   = ../gwnum/gwnum.ld
 
 #########################################################################
 
-$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+all: gwnum $(EXE) $(EXE2)
+
+$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(LIBELF)
 	$(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) $(DUMMY1) $(LIBS)
 
-$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBELF)
+$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(LIBELF)
 	$(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(COMPOBJS) $(DUMMY2) $(LIBS2)
 
 security:
@@ -35,18 +32,14 @@ security:
 	[ ! -e ../security.c ] && touch ../security.c || true
 
 $(COMPOBJS):
-	cd .. ; make -f compile
+	cd .. ; make
 
-$(LIBELF):
-	cd ../gwnum/Linux ; make
+gwnum:
+	cd ../gwnum ; make
 
 clean:
 	rm -f $(EXE) $(EXE2) $(COMPOBJS)
 
 allclean:
 	rm -f $(EXE) $(EXE2) $(COMPOBJS)
-	cd ../gwnum/Linux ; make clean
-
-$(FACTOROBJ) $(DUMMYOBJS): %.o : %.obj
-#	objcopy -Oelf32-i386 -Icoff-go32 $< $@
-	$(CV) -felf32 $< $@
+	cd ../gwnum ; make clean

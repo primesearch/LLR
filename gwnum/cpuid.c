@@ -1,5 +1,5 @@
 /*----------------------------------------------------------------------
-| Copyright 1995-2005 Just For Fun Software, Inc., all rights reserved
+| Copyright 1995-2009 Mersenne Research, Inc.  All rights reserved
 | Author:  George Woltman
 | Email: woltman@alum.mit.edu
 |
@@ -12,7 +12,21 @@
 #include <math.h>
 #include <memory.h>
 #include <string.h>
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__EMX__) || defined (__APPLE__)
+#ifdef _WIN32
+#include "windows.h"
+#endif
+#if defined (__FreeBSD__) || defined (__APPLE__)
+#include <sys/param.h>
+#include <sys/sysctl.h>
+#endif
+#ifdef __linux__
+#include <stdio.h>
+#endif
+#ifdef __OS2__
+#define INCL_DOSPROFILE
+#include <os2.h>
+#endif
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__) || defined (__HAIKU__)
 #include <sys/time.h>
 #define _timeb	timeb
 #define _ftime	ftime
@@ -23,23 +37,86 @@
 /* Global variables describing the CPU we are running on */
 
 char	CPU_BRAND[49] = "";
-double	CPU_SPEED = 100.0;
+double	CPU_SPEED = 0.0;
 unsigned int CPU_FLAGS = 0;
+unsigned int CPU_CORES = 1;		/* Number CPU cores */
+unsigned int CPU_HYPERTHREADS = 1;	/* Number of virtual processors */
+					/* that each CPU core supports. */
+					/* Total number logical processors */
+					/* is CPU_CORES * CPU_HYPERTHREADS */
 int	CPU_L1_CACHE_SIZE = -1;
 int	CPU_L2_CACHE_SIZE = -1;
+int	CPU_L3_CACHE_SIZE = -1;
 int	CPU_L1_CACHE_LINE_SIZE = -1;
 int	CPU_L2_CACHE_LINE_SIZE = -1;
+int	CPU_L3_CACHE_LINE_SIZE = -1;
 int	CPU_L1_DATA_TLBS = -1;
 int	CPU_L2_DATA_TLBS = -1;
+int	CPU_L3_DATA_TLBS = -1;
 int	CPU_L1_SET_ASSOCIATIVE = -1;
 int	CPU_L2_SET_ASSOCIATIVE = -1;
+int	CPU_L3_SET_ASSOCIATIVE = -1;
 
-/* Internal global variables */
+unsigned int CPU_SIGNATURE = 0;		/* Vendor-specific family number, */
+					/* model number, stepping ID, etc. */
 
-unsigned long CPUID_EAX = 0;	/* For communicating to asm routines */
-unsigned long CPUID_EBX = 0;
-unsigned long CPUID_ECX = 0;
-unsigned long CPUID_EDX = 0;
+/* Return the number of CPUs in the system */
+
+unsigned int num_cpus (void)
+{
+#if defined (_WIN32)
+	SYSTEM_INFO sys;
+
+	GetSystemInfo (&sys);
+	return (sys.dwNumberOfProcessors);
+#elif defined (__APPLE__) || defined (__FreeBSD__)
+	int	mib[2];
+	int	ncpus;
+	size_t	len;
+
+	mib[0] = CTL_HW;
+	mib[1] = HW_NCPU;
+	len = sizeof (ncpus);
+	sysctl (mib, 2, &ncpus, &len, NULL, 0);
+	return (ncpus);
+#elif defined (__linux__)
+	FILE	*fd;
+	char	buf[200];
+	int	count;
+
+	count = 0;
+	fd = fopen ("/proc/cpuinfo", "r");
+	if (fd != NULL) {
+		while (fgets (buf, sizeof (buf), fd) != NULL) {
+			buf[9] = 0;
+			if (strcmp (buf, "processor") == 0) count++;
+		}
+		fclose (fd);
+	}
+	if (count == 0) count = 1;
+	return (count);
+#elif defined (__HAIKU__)
+	int	ncpus;
+
+	ncpus = sysconf(_SC_NPROCESSORS_CONF);
+	return (ncpus);
+#else
+	return (1);
+#endif
+}
+
+/* The MS 64-bit compiler does not allow inline assembly.  Fortunately, any */
+/* CPU capable of running x86-64 bit code can execute these instructions. */
+
+#ifdef X86_64
+
+int canExecInstruction (
+			unsigned long cpu_flag)
+{
+	return (TRUE);
+}
+
+#else
 
 /* Internal routines to see if CPU-specific instructions (RDTSC, CMOV */
 /* SSE, SSE2) are supported.  CPUID could report them as supported yet */
@@ -69,6 +146,8 @@ int canExecInstruction (
 		case CPU_CMOV:		/* CMOV */
 			__asm__ __volatile__ (".byte 0x0F\n .byte 0x42\n .byte 0xC0\n");
 			break;
+/* WARNING: On Mac OS X 64-bit executable, executing this PADDB instruction will cause */
+/* the next call to log in math.h to return NaN.  Submitted bug to Apple: Bug ID# 6478193. */
 		case CPU_MMX:		/* PADDB */
 			__asm__ __volatile__ (".byte 0x0F\n .byte 0xFC\n .byte 0xC0\n");
 			break;
@@ -89,19 +168,6 @@ int canExecInstruction (
 	(void) signal (SIGILL, SIG_DFL);
 	fpu_init ();
 	return (!boom);
-}
-
-#else
-
-/* The MS 64-bit compiler does not allow inline assembly.  Fortunately, any */
-/* CPU capable of running x86-64 bit code can execute these instructions. */
-
-#ifdef X86_64
-
-int canExecInstruction (
-	unsigned long cpu_flag)
-{
-	return (TRUE);
 }
 
 #else
@@ -172,10 +238,13 @@ int canExecInstruction (
 
 void guessCpuType (void)
 {
+	struct cpuid_data reg;
+	unsigned int num_logical_processors;
 	unsigned long max_cpuid_value;
 	unsigned long max_extended_cpuid_value;
 	unsigned long extended_family, extended_model, type, family_code;
 	unsigned long model_number, stepping_id, brand_index;
+	unsigned long family, model, retry_count;
 	char	vendor_id[13];
 static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			"",	/* brand_index = 0 */
@@ -205,17 +274,27 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 	};
 #define NUM_BRAND_NAMES	(sizeof (BRAND_NAMES) / sizeof (char *))
 
+/* Get the number of logical processors */
+
+	num_logical_processors = num_cpus ();
+
 /* Set up default values for features we cannot determine with CPUID */
 
 	CPU_BRAND[0] = 0;
 	CPU_SPEED = 100.0;
 	CPU_FLAGS = 0;
+	CPU_CORES = 1;
+	CPU_HYPERTHREADS = 1;
 	CPU_L1_CACHE_SIZE = -1;
 	CPU_L2_CACHE_SIZE = -1;
+	CPU_L3_CACHE_SIZE = -1;
 	CPU_L1_CACHE_LINE_SIZE = -1;
 	CPU_L2_CACHE_LINE_SIZE = -1;
+	CPU_L3_CACHE_LINE_SIZE = -1;
 	CPU_L1_DATA_TLBS = -1;
 	CPU_L2_DATA_TLBS = -1;
+	CPU_L3_DATA_TLBS = -1;
+	CPU_SIGNATURE = 0;
 
 /* If CPUID instruction is not supported, assume we have a 486 (not all */
 /* 486 chips supported CPUID.  The CPU might be something else, but that */
@@ -229,11 +308,11 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 /* Call CPUID with 0 argument.  It returns how highest argument CPUID */
 /* can accept as well as the vendor string */
 
-	Cpuid (0);
-	max_cpuid_value = CPUID_EAX;
-	memcpy (vendor_id, &CPUID_EBX, 4);
-	memcpy (vendor_id+4, &CPUID_EDX, 4);
-	memcpy (vendor_id+8, &CPUID_ECX, 4);
+	Cpuid (0, &reg);
+	max_cpuid_value = reg.EAX;
+	memcpy (vendor_id, &reg.EBX, 4);
+	memcpy (vendor_id+4, &reg.EDX, 4);
+	memcpy (vendor_id+8, &reg.ECX, 4);
 	vendor_id[12] = 0;
 
 /* So far all vendors have adopted Intel's definition of CPUID with 1 as an */
@@ -241,56 +320,82 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 /* the processor family, stepping, etc.  It also returns the feature flags. */
 
 	if (max_cpuid_value >= 1) {
-		Cpuid (1);
-		extended_family = (CPUID_EAX >> 20) & 0xFF;
-		extended_model = (CPUID_EAX >> 16) & 0xF;
-		type = (CPUID_EAX >> 12) & 0x3;
-		family_code = (CPUID_EAX >> 8) & 0xF;
-		model_number = (CPUID_EAX >> 4) & 0xF;
-		stepping_id = CPUID_EAX & 0xF;
-		brand_index = CPUID_EBX & 0xFF;
-		if ((CPUID_EDX >> 4) & 0x1 && canExecInstruction (CPU_RDTSC))
+		Cpuid (1, &reg);
+		CPU_SIGNATURE = reg.EAX & 0x0FFF3FFF;
+		extended_family = (reg.EAX >> 20) & 0xFF;
+		extended_model = (reg.EAX >> 16) & 0xF;
+		type = (reg.EAX >> 12) & 0x3;
+		family_code = (reg.EAX >> 8) & 0xF;
+		model_number = (reg.EAX >> 4) & 0xF;
+		stepping_id = reg.EAX & 0xF;
+		brand_index = reg.EBX & 0xFF;
+		if ((reg.EDX >> 4) & 0x1 && canExecInstruction (CPU_RDTSC))
 			CPU_FLAGS |= CPU_RDTSC;
-		if ((CPUID_EDX >> 15) & 0x1 && canExecInstruction (CPU_CMOV))
+		if ((reg.EDX >> 15) & 0x1 && canExecInstruction (CPU_CMOV))
 			CPU_FLAGS |= CPU_CMOV;
-		if ((CPUID_EDX >> 23) & 0x1 && canExecInstruction (CPU_MMX))
+		if ((reg.EDX >> 23) & 0x1 && canExecInstruction (CPU_MMX))
 			CPU_FLAGS |= CPU_MMX;
-		if ((CPUID_EDX >> 25) & 0x1 && canExecInstruction (CPU_PREFETCH))
+		if ((reg.EDX >> 25) & 0x1 && canExecInstruction (CPU_PREFETCH))
 			CPU_FLAGS |= CPU_PREFETCH;
-		if ((CPUID_EDX >> 25) & 0x1 && canExecInstruction (CPU_SSE))
+		if ((reg.EDX >> 25) & 0x1 && canExecInstruction (CPU_SSE))
 			CPU_FLAGS |= CPU_SSE;
-		if ((CPUID_EDX >> 26) & 0x1 && canExecInstruction (CPU_SSE2))
+		if ((reg.EDX >> 26) & 0x1 && canExecInstruction (CPU_SSE2))
 			CPU_FLAGS |= CPU_SSE2;
+		if ((reg.ECX >> 0) & 0x1)
+			CPU_FLAGS |= CPU_SSE3;
+		if ((reg.ECX >> 9) & 0x1)
+			CPU_FLAGS |= CPU_SSSE3;
+		if ((reg.ECX >> 19) & 0x1)
+			CPU_FLAGS |= CPU_SSE41;
+		if ((reg.ECX >> 20) & 0x1)
+			CPU_FLAGS |= CPU_SSE42;
 	}
 
 /* Call CPUID with 0x80000000 argument.  It tells us how many extended CPU */
 /* functions are supported. */
 
-	Cpuid (0x80000000);
-	max_extended_cpuid_value = CPUID_EAX;
+	Cpuid (0x80000000, &reg);
+	max_extended_cpuid_value = reg.EAX;
+
+/* Two users on the Mersenne forums have reported their Core 2 machines */
+/* are not getting the brand string right after a reboot.  How strange. */
+/* The only way I can see this happening is if CPUID returns the wrong */
+/* max_extended_cpuid_value or an empty brand string.  In any attempt to */
+/* "fix" this, I'll retry getting the brand string several times. */
+/* Lookup Intel errata AZ64 in Core 45 nm specification. */
+
+	for (retry_count = 0; retry_count < 100; retry_count++) {
 
 /* Although not guaranteed, all vendors have standardized on putting the */
 /* brand string (if supported) at cpuid calls 0x8000002, 0x80000003, and */
 /* 0x80000004.  We'll assume future vendors will do the same. */
 
-	if (max_extended_cpuid_value >= 0x80000004) {
-		Cpuid (0x80000002);
-		memcpy (CPU_BRAND, &CPUID_EAX, 4);
-		memcpy (CPU_BRAND+4, &CPUID_EBX, 4);
-		memcpy (CPU_BRAND+8, &CPUID_ECX, 4);
-		memcpy (CPU_BRAND+12, &CPUID_EDX, 4);
-		Cpuid (0x80000003);
-		memcpy (CPU_BRAND+16, &CPUID_EAX, 4);
-		memcpy (CPU_BRAND+20, &CPUID_EBX, 4);
-		memcpy (CPU_BRAND+24, &CPUID_ECX, 4);
-		memcpy (CPU_BRAND+28, &CPUID_EDX, 4);
-		Cpuid (0x80000004);
-		memcpy (CPU_BRAND+32, &CPUID_EAX, 4);
-		memcpy (CPU_BRAND+36, &CPUID_EBX, 4);
-		memcpy (CPU_BRAND+40, &CPUID_ECX, 4);
-		memcpy (CPU_BRAND+44, &CPUID_EDX, 4);
-		CPU_BRAND[48] = 0;
-		while (CPU_BRAND[0] == ' ') strcpy (CPU_BRAND, CPU_BRAND+1);
+		if (max_extended_cpuid_value >= 0x80000004) {
+			Cpuid (0x80000002, &reg);
+			memcpy (CPU_BRAND, &reg.EAX, 4);
+			memcpy (CPU_BRAND+4, &reg.EBX, 4);
+			memcpy (CPU_BRAND+8, &reg.ECX, 4);
+			memcpy (CPU_BRAND+12, &reg.EDX, 4);
+			Cpuid (0x80000003, &reg);
+			memcpy (CPU_BRAND+16, &reg.EAX, 4);
+			memcpy (CPU_BRAND+20, &reg.EBX, 4);
+			memcpy (CPU_BRAND+24, &reg.ECX, 4);
+			memcpy (CPU_BRAND+28, &reg.EDX, 4);
+			Cpuid (0x80000004, &reg);
+			memcpy (CPU_BRAND+32, &reg.EAX, 4);
+			memcpy (CPU_BRAND+36, &reg.EBX, 4);
+			memcpy (CPU_BRAND+40, &reg.ECX, 4);
+			memcpy (CPU_BRAND+44, &reg.EDX, 4);
+			CPU_BRAND[48] = 0;
+			while (CPU_BRAND[0] == ' ') strcpy (CPU_BRAND, CPU_BRAND+1);
+		}
+
+/* If we got the brand string, or this is a very old CPU that perhaps */
+/* doesn't support the brand string, then break the retry loop. */
+
+		if (CPU_BRAND[0] || ! (CPU_FLAGS & CPU_SSE2)) break;
+		if (max_extended_cpuid_value < 0x80000004)
+			max_extended_cpuid_value = 0x80000004;
 	}
 
 /*-------------------------------------------------------------------+
@@ -299,37 +404,75 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 
 	if (strcmp ((const char *) vendor_id, "GenuineIntel") == 0) {
 
+/* Intel wants us to start paying attention to extended family */
+/* and extended model numbers.  The AP-485 document isn't clear whether */
+/* this should always be done (the documentation) or just done for */
+/* families 6 and 15 (the sample code). */
+
+		if (family_code == 15)
+			family = extended_family + family_code;
+		else
+			family = family_code;
+		if (family_code == 15 || family_code == 6)
+			model = (extended_model << 4) + model_number;
+		else
+			model = model_number;
+
+/* Try to determine if hyperthreading is supported.  I think this code */
+/* only tells us if the hardware supports hyperthreading.  If the feature */
+/* is turned off in the BIOS, we don't detect this.  UPDATE: Detect some */
+/* of these situations, by comparing number of cores to number of logical */
+/* processors.  This test fails if the machine has multiple physical CPUs. */
+
+		if (max_cpuid_value >= 1) {
+			Cpuid (1, &reg);
+			if ((reg.EDX >> 28) & 0x1) {
+				CPU_HYPERTHREADS = (reg.EBX >> 16) & 0xFF;
+				if (CPU_HYPERTHREADS <= 1) CPU_HYPERTHREADS = 1;
+				else if (max_cpuid_value >= 4) {
+					unsigned int cores;
+					reg.ECX = 0;
+					Cpuid (4, &reg);
+					cores = (reg.EAX >> 26) + 1;
+					CPU_HYPERTHREADS /= cores;
+					if (CPU_HYPERTHREADS < 2) CPU_HYPERTHREADS = 2;
+					if (num_logical_processors <= cores) CPU_HYPERTHREADS = 1;
+				}
+				else CPU_HYPERTHREADS = 2;
+			}
+		}
+
 /* Call CPUID with 2 argument.  It returns the cache size and structure */
 /* in a series of 8-bit descriptors */
 
 		if (max_cpuid_value >= 2) {
-			Cpuid (2);
-			if ((CPUID_EAX & 0xFF) > 0) {
+			Cpuid (2, &reg);
+			if ((reg.EAX & 0xFF) > 0) {
 				unsigned int descriptors[15];
 				int i, count;
 				count = 0;
-				if (! (CPUID_EAX & 0x80000000)) {
-					descriptors[count++] = (CPUID_EAX >> 24) & 0xFF;
-					descriptors[count++] = (CPUID_EAX >> 16) & 0xFF;
-					descriptors[count++] = (CPUID_EAX >> 8) & 0xFF;
+				if (! (reg.EAX & 0x80000000)) {
+					descriptors[count++] = (reg.EAX >> 24) & 0xFF;
+					descriptors[count++] = (reg.EAX >> 16) & 0xFF;
+					descriptors[count++] = (reg.EAX >> 8) & 0xFF;
 				}
-				if (! (CPUID_EBX & 0x80000000)) {
-					descriptors[count++] = (CPUID_EBX >> 24) & 0xFF;
-					descriptors[count++] = (CPUID_EBX >> 16) & 0xFF;
-					descriptors[count++] = (CPUID_EBX >> 8) & 0xFF;
-					descriptors[count++] = CPUID_EBX & 0xFF;
+				if (! (reg.EBX & 0x80000000)) {
+					descriptors[count++] = (reg.EBX >> 24) & 0xFF;
+					descriptors[count++] = (reg.EBX >> 16) & 0xFF;
+					descriptors[count++] = (reg.EBX >> 8) & 0xFF;
+					descriptors[count++] = reg.EBX & 0xFF;
 				}
-				if (! (CPUID_ECX & 0x80000000)) {
-					descriptors[count++] = (CPUID_ECX >> 24) & 0xFF;
-					descriptors[count++] = (CPUID_ECX >> 16) & 0xFF;
-					descriptors[count++] = (CPUID_ECX >> 8) & 0xFF;
-					descriptors[count++] = CPUID_ECX & 0xFF;
+				if (! (reg.ECX & 0x80000000)) {
+					descriptors[count++] = (reg.ECX >> 24) & 0xFF;
+					descriptors[count++] = (reg.ECX >> 16) & 0xFF;
+					descriptors[count++] = (reg.ECX >> 8) & 0xFF;
+					descriptors[count++] = reg.ECX & 0xFF;
 				}
-				if (! (CPUID_EDX & 0x80000000)) {
-					descriptors[count++] = (CPUID_EDX >> 24) & 0xFF;
-					descriptors[count++] = (CPUID_EDX >> 16) & 0xFF;
-					descriptors[count++] = (CPUID_EDX >> 8) & 0xFF;
-					descriptors[count++] = CPUID_EDX & 0xFF;
+				if (! (reg.EDX & 0x80000000)) {
+					descriptors[count++] = (reg.EDX >> 24) & 0xFF;
+					descriptors[count++] = (reg.EDX >> 16) & 0xFF;
+					descriptors[count++] = (reg.EDX >> 8) & 0xFF;
+					descriptors[count++] = reg.EDX & 0xFF;
 				}
 				for (i = 0; i < count; i++) {
 					switch (descriptors[i]) {
@@ -346,6 +489,26 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 						CPU_L1_CACHE_LINE_SIZE = 32;
 						CPU_L1_SET_ASSOCIATIVE = 4;
 						break;
+					case 0x22:
+						CPU_L3_CACHE_SIZE = 512;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 4;
+						break;
+					case 0x23:
+						CPU_L3_CACHE_SIZE = 1024;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 8;
+						break;
+					case 0x25:
+						CPU_L3_CACHE_SIZE = 2048;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 8;
+						break;
+					case 0x29:
+						CPU_L3_CACHE_SIZE = 4096;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 8;
+						break;
 					case 0x2C:
 						CPU_L1_CACHE_SIZE = 32;
 						CPU_L1_CACHE_LINE_SIZE = 64;
@@ -355,6 +518,11 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 						CPU_L2_CACHE_SIZE = 128;
 						CPU_L2_CACHE_LINE_SIZE = 128;
 						CPU_L2_SET_ASSOCIATIVE = 4;
+						break;
+					case 0x3A:
+						CPU_L2_CACHE_SIZE = 192;
+						CPU_L2_CACHE_LINE_SIZE = 128;
+						CPU_L2_SET_ASSOCIATIVE = 6;
 						break;
 					case 0x3B:
 						CPU_L2_CACHE_SIZE = 128;
@@ -366,8 +534,18 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 						CPU_L2_CACHE_LINE_SIZE = 128;
 						CPU_L2_SET_ASSOCIATIVE = 4;
 						break;
+					case 0x3D:
+						CPU_L2_CACHE_SIZE = 384;
+						CPU_L2_CACHE_LINE_SIZE = 128;
+						CPU_L2_SET_ASSOCIATIVE = 6;
+						break;
+					case 0x3E:
+						CPU_L2_CACHE_SIZE = 512;
+						CPU_L2_CACHE_LINE_SIZE = 128;
+						CPU_L2_SET_ASSOCIATIVE = 6;
+						break;
 					case 0x40:
-						if (family_code == 15) {
+						if (family == 15) {
 							/* no L3 cache */
 						} else {
 							CPU_L2_CACHE_SIZE = 0;
@@ -398,6 +576,52 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 						CPU_L2_CACHE_LINE_SIZE = 32;
 						CPU_L2_SET_ASSOCIATIVE = 4;
 						break;
+					case 0x46:
+						CPU_L3_CACHE_SIZE = 4096;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 4;
+						break;
+					case 0x47:
+						CPU_L3_CACHE_SIZE = 8192;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 8;
+						break;
+					case 0x49:
+						if (family == 0x0F && model == 0x06) {
+							CPU_L3_CACHE_SIZE = 4096;
+							CPU_L3_CACHE_LINE_SIZE = 64;
+							CPU_L3_SET_ASSOCIATIVE = 16;
+						} else {
+							CPU_L2_CACHE_SIZE = 4096;
+							CPU_L2_CACHE_LINE_SIZE = 64;
+							CPU_L2_SET_ASSOCIATIVE = 16;
+						}
+						break;
+					case 0x4A:
+						CPU_L3_CACHE_SIZE = 6144;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 12;
+						break;
+					case 0x4B:
+						CPU_L3_CACHE_SIZE = 8192;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 16;
+						break;
+					case 0x4C:
+						CPU_L3_CACHE_SIZE = 12288;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 12;
+						break;
+					case 0x4D:
+						CPU_L3_CACHE_SIZE = 16384;
+						CPU_L3_CACHE_LINE_SIZE = 64;
+						CPU_L3_SET_ASSOCIATIVE = 16;
+						break;
+					case 0x4E:
+						CPU_L2_CACHE_SIZE = 6144;
+						CPU_L2_CACHE_LINE_SIZE = 64;
+						CPU_L2_SET_ASSOCIATIVE = 24;
+						break;
 					case 0x5B:
 						CPU_L2_DATA_TLBS = 64;
 						break;
@@ -406,6 +630,7 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 						CPU_L2_DATA_TLBS = 128;
 						break;
 					case 0x5D:
+					case 0xB4:
 						CPU_L2_DATA_TLBS = 256;
 						break;
 					case 0x60:
@@ -498,38 +723,96 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			}
 		}
 
+/* If we haven't figured out the L2 cache size, use 0x80000006 to deduce */
+/* the cache size. */
+
+		if (CPU_L2_CACHE_SIZE == -1 &&
+		    max_extended_cpuid_value >= 0x80000006) {
+			Cpuid (0x80000006, &reg);
+			CPU_L2_CACHE_LINE_SIZE = reg.ECX & 0xFF;
+			if ((reg.ECX >> 12 & 0xF) == 2)
+				CPU_L2_SET_ASSOCIATIVE = 2;
+			if ((reg.ECX >> 12 & 0xF) == 4)
+				CPU_L2_SET_ASSOCIATIVE = 4;
+			if ((reg.ECX >> 12 & 0xF) == 6)
+				CPU_L2_SET_ASSOCIATIVE = 8;
+			if ((reg.ECX >> 12 & 0xF) == 8)
+				CPU_L2_SET_ASSOCIATIVE = 16;
+			CPU_L2_CACHE_SIZE = (reg.ECX >> 16);
+		}
+
+/* If we still haven't figured out the L2 or L3 cache size, use 0x00000004 to deduce */
+/* the cache size. */
+
+		if ((CPU_L2_CACHE_SIZE == -1 || CPU_L3_CACHE_SIZE == -1) &&
+		    max_cpuid_value >= 4) {
+			int	i;
+			for (i = 0; i < 10; i++) {
+				int	cache_type, cache_level, cores, threads;
+				int	associativity, partitions, line_size, sets;
+				int	prefetch_stride;
+
+				reg.ECX = i;
+				Cpuid (4, &reg);
+				cache_type = reg.EAX & 0x1F;
+				if (cache_type == 0) break;
+				if (cache_type == 2) continue;  /* Ignore instruction caches */
+				cores = (reg.EAX >> 26) + 1;
+				threads = ((reg.EAX >> 14) & 0xFFF) + 1;
+				cache_level = (reg.EAX >> 5) & 0x7;
+				associativity = (reg.EBX >> 22) + 1;
+				partitions = ((reg.EBX >> 12) & 0x3FF) + 1;
+				line_size = (reg.EBX & 0xFFF) + 1;
+				sets = reg.ECX + 1;
+				prefetch_stride = (reg.EDX & 0x3FF);
+				if (prefetch_stride == 0) prefetch_stride = 64;
+				/* Not documeted, but 45nm core 2 returns prefetch_stride of 1 */
+				if (prefetch_stride == 1) prefetch_stride = 64;
+				if (CPU_L2_CACHE_SIZE == -1 && cache_level == 2) {
+					CPU_L2_CACHE_SIZE = (associativity * partitions * line_size * sets) >> 10;
+					CPU_L2_SET_ASSOCIATIVE = associativity;
+					CPU_L2_CACHE_LINE_SIZE = prefetch_stride;
+				}
+				if (CPU_L3_CACHE_SIZE == -1 && cache_level == 3) {
+					CPU_L3_CACHE_SIZE = (associativity * partitions * line_size * sets) >> 10;
+					CPU_L3_SET_ASSOCIATIVE = associativity;
+					CPU_L3_CACHE_LINE_SIZE = prefetch_stride;
+				}
+			}
+		}
+
 /* If we haven't figured out the brand string, create one based on the */
 /* sample code in Intel's AP-485 document. */
 
 		if (CPU_BRAND[0] == 0) {
 
-			if (family_code == 4)
+			if (family == 4)
 				strcpy (CPU_BRAND, "Intel 486 processor");
 
-			else if (family_code == 5) {
-				if (type == 0 && model_number <= 2)
+			else if (family == 5) {
+				if (type == 0 && model <= 2)
 					strcpy (CPU_BRAND, "Intel Pentium processor");
-				else if (type == 1 && model_number <= 3)
+				else if (type == 1 && model <= 3)
 					strcpy (CPU_BRAND, "Intel Pentium OverDrive processor");
-				else if (type == 0 && model_number >= 4)
+				else if (type == 0 && model >= 4)
 					strcpy (CPU_BRAND, "Intel Pentium MMX processor");
-				else if (type == 1 && model_number >= 4)
+				else if (type == 1 && model >= 4)
 					strcpy (CPU_BRAND, "Intel Pentium MMX OverDrive processor");
 				else
 					strcpy (CPU_BRAND, "Intel Pentium processor");
 			}
 
-			else if (family_code == 6 && model_number == 1)
+			else if (family == 6 && model == 1)
 				strcpy (CPU_BRAND, "Intel Pentium Pro processor");
 
-			else if (family_code == 6 && model_number == 3) {
+			else if (family == 6 && model == 3) {
 				if (type == 0)
 					strcpy (CPU_BRAND, "Intel Pentium II processor");
 				else
 					strcpy (CPU_BRAND, "Intel Pentium II OverDrive processor");
 			}
 
-			else if (family_code == 6 && model_number == 5) {
+			else if (family == 6 && model == 5) {
 				if (CPU_L2_CACHE_SIZE == 0)
 					strcpy (CPU_BRAND, "Intel Celeron processor");
 				else if (CPU_L2_CACHE_SIZE >= 1024)
@@ -538,25 +821,25 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 					strcpy (CPU_BRAND, "Intel Pentium II or Pentium II Xeon processor");
 			}
 
-			else if (family_code == 6 && model_number == 6)
+			else if (family == 6 && model == 6)
 				strcpy (CPU_BRAND, "Intel Celeron processor");
 
-			else if (family_code == 6 && model_number == 7) {
+			else if (family == 6 && model == 7) {
 				if (CPU_L2_CACHE_SIZE >= 1024)
 					strcpy (CPU_BRAND, "Intel Pentium III Xeon processor");
 				else
 					strcpy (CPU_BRAND, "Intel Pentium III or Pentium III Xeon processor");
 			}
 
-			else if (family_code == 6 && model_number == 0xB &&
+			else if (family == 6 && model == 0xB &&
 				 stepping_id == 1 && brand_index == 0x3)
 				strcpy (CPU_BRAND, "Intel(R) Celeron(R) processor");
 
-			else if (family_code == 15 && model_number == 1 &&
+			else if (family == 15 && model == 1 &&
 				 stepping_id == 3 && brand_index == 0xB)
 				strcpy (CPU_BRAND, "Intel(R) Xeon(TM) processor MP");
 
-			else if (family_code == 15 && model_number == 1 &&
+			else if (family == 15 && model == 1 &&
 				 stepping_id == 3 && brand_index == 0xE)
 				strcpy (CPU_BRAND, "Intel(R) Xeon(TM) processor");
 
@@ -580,13 +863,13 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 		unsigned long advanced_power_mgmt = 0;
 
 		if (max_extended_cpuid_value >= 0x80000001) {
-			Cpuid (0x80000001);
-			extended_feature_bits = CPUID_EDX;
+			Cpuid (0x80000001, &reg);
+			extended_feature_bits = reg.EDX;
 		}
 
 		if (max_extended_cpuid_value >= 0x80000007) {
-			Cpuid (0x80000007);
-			advanced_power_mgmt = CPUID_EDX;
+			Cpuid (0x80000007, &reg);
+			advanced_power_mgmt = reg.EDX;
 		}
 
 /* Deduce the cpu type given the family, model, stepping, etc.  If we */
@@ -669,8 +952,8 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 
 		if (max_extended_cpuid_value >= 0x80000001 &&
 		    ! (CPU_FLAGS & CPU_PREFETCH)) {
-			Cpuid (0x80000001);
-			if ((CPUID_EDX >> 22) & 0x1 &&
+			Cpuid (0x80000001, &reg);
+			if ((reg.EDX >> 22) & 0x1 &&
 			    canExecInstruction (CPU_PREFETCH))
 				CPU_FLAGS |= CPU_PREFETCH;
 		}
@@ -680,8 +963,8 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 
 		if (max_extended_cpuid_value >= 0x80000001 &&
 		    ! (CPU_FLAGS & CPU_3DNOW)) {
-			Cpuid (0x80000001);
-			if ((CPUID_EDX >> 31) & 0x1 &&
+			Cpuid (0x80000001, &reg);
+			if ((reg.EDX >> 31) & 0x1 &&
 			    canExecInstruction (CPU_3DNOW))
 				CPU_FLAGS |= CPU_3DNOW;
 		}
@@ -689,21 +972,63 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 /* Get the L1 cache size and number of data TLBs */
 
 		if (max_extended_cpuid_value >= 0x80000005) {
-			Cpuid (0x80000005);
-			CPU_L1_DATA_TLBS = (CPUID_EBX >> 16) & 0xFF;
-			CPU_L1_CACHE_SIZE = (CPUID_ECX >> 24) & 0xFF;
-			CPU_L1_CACHE_LINE_SIZE = CPUID_ECX & 0xFF;
+			Cpuid (0x80000005, &reg);
+			CPU_L1_DATA_TLBS = (reg.EBX >> 16) & 0xFF;
+			CPU_L1_CACHE_SIZE = (reg.ECX >> 24) & 0xFF;
+			CPU_L1_CACHE_LINE_SIZE = reg.ECX & 0xFF;
 		}
 
-/* Get the L2 cache size */
+/* Get the L2 and L3 cache sizes */
 
 		if (max_extended_cpuid_value >= 0x80000006) {
-			Cpuid (0x80000006);
-			CPU_L2_DATA_TLBS = (CPUID_EBX >> 16) & 0xFFF;
-			CPU_L2_CACHE_SIZE = (CPUID_ECX >> 16) & 0xFFFF;
+			Cpuid (0x80000006, &reg);
+			CPU_L2_DATA_TLBS = (reg.EBX >> 16) & 0xFFF;
+			CPU_L2_CACHE_SIZE = (reg.ECX >> 16) & 0xFFFF;
 			if (CPU_L2_CACHE_SIZE == 1) /* Workaround Duron bug */
 				CPU_L2_CACHE_SIZE = 64;
-			CPU_L2_CACHE_LINE_SIZE = CPUID_ECX & 0xFF;
+			CPU_L2_CACHE_LINE_SIZE = reg.ECX & 0xFF;
+			CPU_L2_SET_ASSOCIATIVE = (reg.ECX & 0xF);
+			if (CPU_L2_SET_ASSOCIATIVE == 0x2)
+				CPU_L2_SET_ASSOCIATIVE = 2;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0x4)
+				CPU_L2_SET_ASSOCIATIVE = 4;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0x6)
+				CPU_L2_SET_ASSOCIATIVE = 8;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0x8)
+				CPU_L2_SET_ASSOCIATIVE = 16;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0xA)
+				CPU_L2_SET_ASSOCIATIVE = 32;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0xB)
+				CPU_L2_SET_ASSOCIATIVE = 48;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0xC)
+				CPU_L2_SET_ASSOCIATIVE = 64;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0xD)
+				CPU_L2_SET_ASSOCIATIVE = 96;
+			else if (CPU_L2_SET_ASSOCIATIVE == 0xE)
+				CPU_L2_SET_ASSOCIATIVE = 128;
+
+			CPU_L3_DATA_TLBS = -1;
+			CPU_L3_CACHE_SIZE = (reg.EDX >> 18) * 512;
+			CPU_L3_CACHE_LINE_SIZE = reg.EDX & 0xFF;
+			CPU_L3_SET_ASSOCIATIVE = (reg.EDX & 0xF);
+			if (CPU_L3_SET_ASSOCIATIVE == 0x2)
+				CPU_L3_SET_ASSOCIATIVE = 2;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0x4)
+				CPU_L3_SET_ASSOCIATIVE = 4;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0x6)
+				CPU_L3_SET_ASSOCIATIVE = 8;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0x8)
+				CPU_L3_SET_ASSOCIATIVE = 16;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0xA)
+				CPU_L3_SET_ASSOCIATIVE = 32;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0xB)
+				CPU_L3_SET_ASSOCIATIVE = 48;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0xC)
+				CPU_L3_SET_ASSOCIATIVE = 64;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0xD)
+				CPU_L3_SET_ASSOCIATIVE = 96;
+			else if (CPU_L3_SET_ASSOCIATIVE == 0xE)
+				CPU_L3_SET_ASSOCIATIVE = 128;
 		}
 
 /* If we haven't figured out the brand string, create a default one */
@@ -721,18 +1046,18 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 /* Get the L1 cache size and number of data TLBs */
 
 		if (max_extended_cpuid_value >= 0x80000005) {
-			Cpuid (0x80000005);
-			CPU_L2_DATA_TLBS = (CPUID_EBX >> 16) & 0xFF;
-			CPU_L1_CACHE_SIZE = (CPUID_ECX >> 24) & 0xFF;
-			CPU_L1_CACHE_LINE_SIZE = CPUID_ECX & 0xFF;
+			Cpuid (0x80000005, &reg);
+			CPU_L2_DATA_TLBS = (reg.EBX >> 16) & 0xFF;
+			CPU_L1_CACHE_SIZE = (reg.ECX >> 24) & 0xFF;
+			CPU_L1_CACHE_LINE_SIZE = reg.ECX & 0xFF;
 		}
 
 /* Get the L2 cache size */
 
 		if (max_extended_cpuid_value >= 0x80000006) {
-			Cpuid (0x80000006);
-			CPU_L2_CACHE_SIZE = (CPUID_ECX >> 24) & 0xFF;
-			CPU_L2_CACHE_LINE_SIZE = CPUID_ECX & 0xFF;
+			Cpuid (0x80000006, &reg);
+			CPU_L2_CACHE_SIZE = (reg.ECX >> 24) & 0xFF;
+			CPU_L2_CACHE_LINE_SIZE = reg.ECX & 0xFF;
 		}
 
 /* If we haven't figured out the brand string, create a default one */
@@ -751,6 +1076,12 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			strcat (CPU_BRAND, vendor_id);
 		}
 	}
+
+/* Now calculate the CPU_CORES value -- the number of physical */
+/* processors/cores. */
+
+	CPU_CORES = num_logical_processors / CPU_HYPERTHREADS;
+	if (CPU_CORES < 1) CPU_CORES = 1;
 }
 
 void guessCpuSpeed (void)
@@ -768,7 +1099,7 @@ void guessCpuSpeed (void)
 /* If this machine supports a high resolution counter, use that for timing */
 
 	if (isHighResTimerAvailable ()) {
-		unsigned long start_hi, start_lo, end_hi, end_lo;
+		uint32_t start_hi, start_lo, end_hi, end_lo;
 		double	frequency, temp, start_time, end_time;
 		unsigned long iterations;
 		double	speed1, speed2, speed3, avg_speed;
@@ -812,7 +1143,7 @@ void guessCpuSpeed (void)
 				 frequency /
 				 (end_time - start_time) / 1000000.0;
 
-/* Caclulate average of last 3 speeds.  Loop if this average isn't */
+/* Calculate average of last 3 speeds.  Loop if this average isn't */
 /* very close to all of the last three speed calculations. */
 
 			avg_speed = (speed1 + speed2 + speed3) / 3.0;
@@ -831,7 +1162,7 @@ void guessCpuSpeed (void)
 
 	else {
 		struct _timeb temp, start_time, end_time;
-		unsigned long start_hi, start_lo, end_hi, end_lo;
+		uint32_t start_hi, start_lo, end_hi, end_lo;
 		double	speed1, speed2, speed3, avg_speed, elapsed_time;
 		int	tries;
 
@@ -900,15 +1231,6 @@ void guessCpuSpeed (void)
 | And now, the routines that access the high resolution performance counter.
 +-------------------------------------------------------------------------*/
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
-#ifdef __OS2__
-#define INCL_DOSPROFILE
-#include <os2.h>
-#endif
-
 int isHighResTimerAvailable (void)
 {
 #ifdef _WIN32
@@ -923,7 +1245,7 @@ int isHighResTimerAvailable (void)
 /* to the microsecond. */
         return (TRUE);
 #endif
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__) || defined (__HAIKU__)
 	struct timeval start, end;
 	struct timezone tz;
 	int	i;
@@ -952,14 +1274,14 @@ double getHighResTimer (void)
 
 	QueryPerformanceCounter (&large);
 	return ((double) large.HighPart * 4294967296.0 +
-		(double) large.LowPart);
+		(double) /*(unsigned long)*/ large.LowPart);
 #endif
 #ifdef __OS2__
         unsigned long long qwTmrTime;
         DosTmrQueryTime((PQWORD)&qwTmrTime);
         return (qwTmrTime);
 #endif
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__) || defined (__HAIKU__)
 	struct timeval x;
 	struct timezone tz;
 
@@ -975,14 +1297,14 @@ double getHighResTimerFrequency (void)
 
 	QueryPerformanceFrequency (&large);
 	return ((double) large.HighPart * 4294967296.0 +
-		(double) large.LowPart);
+		(double) /*(unsigned long)*/ large.LowPart);
 #endif
 #ifdef __OS2__
 	ULONG ulTmrFreq;
 	DosTmrQueryFreq(&ulTmrFreq);
 	return (ulTmrFreq);
 #endif
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__) || defined (__HAIKU__)
 	return (1000000.0);
 #endif
 }

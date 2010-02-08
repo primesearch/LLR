@@ -1,17 +1,14 @@
 # Makefile for MacIntel OS X llr or sllr
-#
-# objconv comes courtesy of Agner Fog.  Download available at
-# http://www.agner.org/optimize/#objconv
 
-CV = objconv
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.3
 
+CC = gcc
 LFLAGS = -Wl
-LIBMAC = ../gwnum/MacIntel/gwnum.a
+LIBMAC = ../gwnum/macosx/gwnum.a
 LIBS   = $(LIBMAC) -lm -lstdc++
 LIBS2  = $(LIBMAC) -lm -lstdc++ -static
 
-FACTOROBJ = factor32p.o
-DUMMYOBJS = dummy0.o dummy4.o dummy8.o dummy12.o dummy16.o dummy20.o dummy24.o dummy28.o
+FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o
 EXE = llr
 EXE2 = sllr
@@ -24,29 +21,29 @@ EXE2 = sllr
 
 #########################################################################
 
-$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBMAC)
-	$(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) $(LIBS)
+all: gwnum $(EXE) $(EXE2)
 
-$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(DUMMYOBJS) $(LIBMAC)
-	$(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(COMPOBJS) $(LIBS2)
+$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(LIBMAC)
+	ar -x $(LIBMAC) multutil.o
+	$(ENVP) $(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) multutil.o $(LIBS)
+
+$(EXE2): security  $(FACTOROBJ) $(COMPOBJS) $(LIBMAC)
+	ar -x $(LIBMAC) multutil.o
+	$(ENVP) $(CC) $(LFLAGS) -o $(EXE2) $(FACTOROBJ) $(COMPOBJS) multutil.o $(LIBS2)
 
 security:
 	[ ! -e ../security.h ] && touch ../security.h || true
 	[ ! -e ../security.c ] && touch ../security.c || true
 
 $(COMPOBJS):
-	cd .. ; make -f compmac
+	cd .. ; make -f makemac
 
-$(LIBMAC):
-	cd ../gwnum/MacIntel ; make
+gwnum:
+	cd ../gwnum ; make -f makemac
 
 clean:
 	rm -f $(EXE) $(EXE2) $(COMPOBJS)
 
 allclean:
 	rm -f $(EXE) $(EXE2) $(COMPOBJS)
-	cd ../gwnum/MacIntel ; make clean
-
-$(FACTOROBJ) $(DUMMYOBJS): %.o : %.obj
-#	objcopy -Oelf32-i386 -Icoff-go32 $< $@
-	$(CV) -fmacho $< $@
+	cd ../gwnum ; make -f makemac clean

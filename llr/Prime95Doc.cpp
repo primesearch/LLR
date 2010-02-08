@@ -510,15 +510,11 @@ void CPrime95Doc::ReplaceableLine (
 // CPrime95Doc public routines
 
 #define PORT	1
-//#include "cpuid.c"
 #include "giants.h"
 #include "llr.h"
-//#include "giants.c"
-//#include "gwnum.c"
-//#include "gwnum_p.c"
+#include "gwcommon.h"
 #include "jacobi.c"
 #include "Riesel.c"
-//#include "p2pow20tab.c"
 #include "llr.c"
 #include "llr95.c"
 

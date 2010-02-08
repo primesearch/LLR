@@ -15,15 +15,18 @@
 /* C compilers.  We only need to to this for global variables that */
 /* referenced by the assembly routines */
 
-#define CPU_FLAGS	_CPU_FLAGS 
+//#define CPU_FLAGS	_CPU_FLAGS 
 #define FACHSW _FACHSW
 #define FACMSW _FACMSW
 #define FACLSW _FACLSW
 #define FACPASS _FACPASS
 #define FACTEST _FACTEST
+#define SRCARG	_SRCARG
 #define CPUID_EAX _CPUID_EAX
 #define setupf _setupf
 #define factor64 _factor64
+#define psetupf _psetupf
+#define pfactor64 _pfactor64
 #define erdtsc _erdtsc
 
 #endif
@@ -54,21 +57,23 @@ void Sleep (long);
 #define _O_TRUNC	O_TRUNC
 #define _O_BINARY 	0
 #define _O_TEXT		0
-#define EXTERNC
 
 #endif
+
+#define EXTERNC
 
 /* The common include files */
 
 #include <time.h>
 #include <assert.h>
 extern int NO_GUI;
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+/* #if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 #include "gwrename.h"
-#endif
+#endif */
 #include "./gwnum/cpuid.h"
 #include "./gwnum/giants.h"
 #include "./gwnum/gwnum.h"
+#include "./gwnum/gwcommon.h"
 #include "Llr.h"
 
 /* Global variables */

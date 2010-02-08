@@ -23,7 +23,14 @@
 #include "dd_inline.h"
 #endif
 
+// This line commented out because Jean Penne says MSVC6 does not support namespaces
 // using namespace std;
+
+/* MSVC6 has trouble with the pow function using integer arguments. */
+/* For example, "(unsigned long) pow (5.0, 7.0)" returns 78124 instead */
+/* of the correct 78125.  This macro, works around this trouble. */
+
+#define intpow(b,n)	((long) floor (pow ((double)(b), (double)(n)) + 0.1))
 
 static const char *digits = "0123456789";
 
@@ -231,6 +238,7 @@ dd_real exp(const dd_real &a) {
   s += t;
   r = npwr(s, k);
   r *= pow(2.0, z);
+//  r *= intpow(2.0, z);
 
   return r;
 }

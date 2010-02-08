@@ -25,16 +25,16 @@ Class12=CTestDlg
 ResourceCount=9
 Class13=CScrollDisplay
 Class14=CScrollSplit
-Resource1=IDD_ABOUTBOX (English (U.S.))
-Resource2=IDR_MAINFRAME (English (U.S.))
-Resource3=IDD_TEST (English (U.S.))
-Resource4=IDD_CPU (English (U.S.))
-Resource5=IDD_PREFERENCES (English (U.S.))
-Resource6=IDD_PRIORITY (English (U.S.))
-Resource7=IDD_AFFINITY (English (U.S.))
-Resource8=IDD_CONTENTS (English (U.S.))
+Resource1=IDD_PREFERENCES (English (U.S.))
+Resource2=IDR_TRAYMENU (English (U.S.))
+Resource3=IDD_PRIORITY (English (U.S.))
+Resource4=IDD_AFFINITY (English (U.S.))
+Resource5=IDR_MAINFRAME (English (U.S.))
+Resource6=IDD_ABOUTBOX (English (U.S.))
+Resource7=IDD_TEST (English (U.S.))
+Resource8=IDD_CPU (English (U.S.))
 Class15=CSplitFrame
-Resource9=IDR_TRAYMENU (English (U.S.))
+Resource9=IDD_CONTENTS (English (U.S.))
 
 [CLS:CAffinityDlg]
 Type=0

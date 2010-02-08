@@ -79,8 +79,9 @@ CPrime95App theApp;
 BOOL CPrime95App::InitInstance()
 {
 	int	orig_cmdShow;
-	int	named_ini_files = -1;
-	char	*p;
+	int	i, named_ini_files = -1, opcnt = 0;
+	char	*p, *p2;
+	char	keywords[10][80], values[10][80];
 
 	// Standard initialization
 	// If you are not using these features and wish to reduce the size
@@ -150,6 +151,26 @@ BOOL CPrime95App::InitInstance()
 				named_ini_files = named_ini_files * 10 + (*p - '0');
 				p++;
 			}
+			break;
+
+// Accept -O switches to set up to 10 options.
+
+		case 'O':
+		case 'o':
+			p2 = strrchr (p, '=');
+			if (p2 == NULL)	{		// Ignore an invalid option...
+				while (!isspace (*p)) p++;
+				break;
+			}
+			if (opcnt >= 10)			// Maximum 10 options...
+				break;
+			strcpy (values[opcnt], p2+1);
+			p2 = keywords[opcnt];
+			while (*p != '=')
+				*p2++ = *p++;
+			*p2 = '\0';
+			opcnt++;
+			while (!isspace (*p)) p++;
 			break;
 
 // Accept a -W switch indicating an alternate working directory.
@@ -307,6 +328,11 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 		named_ini_files = atoi (&NTSERVICENAME[16]);
 	nameIniFiles (named_ini_files);
 	readIniFiles ();
+
+// Copy the options in the init. file
+
+	for (i=0; i< opcnt; i++)
+			IniWriteString (INI_FILE, keywords[i] , values[i]);
 
 /* Before processing the rest of the INI file, hide and/or */
 /* position the main window */
