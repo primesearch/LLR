@@ -2,13 +2,13 @@
 
 D = ./macllr
 
-ENVP= MACOSX_DEPLOYMENT_TARGET=10.3
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.4
 
 CC = gcc
-CFLAGS = -I. -I./gwnum -O2 -march=i686 -malign-double
+CFLAGS = -I. -I./gwnum -O2 -malign-double -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
 
 CPP = g++
-CPPFLAGS = -I. -I./gwnum -O2 -march=i686 -malign-double
+CPPFLAGS = -I. -I./gwnum -O2 -malign-double -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
 
 COMPOBJS = lprime.o lmenu.o
 

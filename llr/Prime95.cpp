@@ -26,6 +26,8 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
+void strace (int);
+
 // We need a global mutex handle (could be a member of WinApp)
 HANDLE	g_hMutexInst = NULL;
 LONG	g_MutexNum = 0;
@@ -80,7 +82,7 @@ BOOL CPrime95App::InitInstance()
 {
 	int	orig_cmdShow;
 	int	i, named_ini_files = -1, opcnt = 0;
-	char	*p, *p2;
+	char	*p, *p2, *p3;
 	char	keywords[10][80], values[10][80];
 
 	// Standard initialization
@@ -157,20 +159,25 @@ BOOL CPrime95App::InitInstance()
 
 		case 'O':
 		case 'o':
-			p2 = strrchr (p, '=');
-			if (p2 == NULL)	{		// Ignore an invalid option...
+			p2 = strchr (p, '=');
+			if (p2 == NULL)	{			// Ignore an invalid option...
 				while (!isspace (*p)) p++;
 				break;
 			}
 			if (opcnt >= 10)			// Maximum 10 options...
 				break;
-			strcpy (values[opcnt], p2+1);
+//			strcpy (values[opcnt], p2+1);
+			p2++;
+			p3 = values[opcnt];
+			while (!isspace (*p2))		// Copy the value
+				*p3++ = *p2++;
+			*p3 = '\0';
 			p2 = keywords[opcnt];
-			while (*p != '=')
+			while (*p != '=')			// Copy the keyword
 				*p2++ = *p++;
 			*p2 = '\0';
 			opcnt++;
-			while (!isspace (*p)) p++;
+			while (!isspace (*p)) p++;	// Skip the value in command line
 			break;
 
 // Accept a -W switch indicating an alternate working directory.
@@ -331,8 +338,10 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 
 // Copy the options in the init. file
 
-	for (i=0; i< opcnt; i++)
-			IniWriteString (INI_FILE, keywords[i] , values[i]);
+	for (i=0; i< opcnt; i++) {
+			IniWriteString (INI_FILE, keywords[i] , NULL);		// Delete the line
+			IniWriteString (INI_FILE, keywords[i] , values[i]);	// Write the new line
+	}
 
 /* Before processing the rest of the INI file, hide and/or */
 /* position the main window */

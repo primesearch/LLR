@@ -1,5 +1,20 @@
 
-		Welcome to LLR program Version 3.8.0 !
+		Welcome to LLR program Version 3.8.1 !
+
+N.B. : Three bugs from version 3.8.0 are now fixed in this version :
+
+- The PRP tests of k*b^n+c numbers with abs(c) != 1 got false negative results
+due to a misusage of gwnum's "gwsetaddin" function, they are now correct!
+
+- One "pathological" k value caused a false negative result in some very rare
+cases, when using gwnum V25.13 ; this bug has disappeared with V25.14
+
+- Round off error recovery has been improved, and infinite error loops are
+now avoided (always, I hope...) by restarting with next larger FFT length.
+
+- This version is identical to the development one at the date of July 1 2010
+It will not be further changed without changing the version number.
+
 
 1) Main features :
 
@@ -7,9 +22,10 @@
   (k < b^n), or numbers which can be rewritten in this form, like 
   Gaussian-Mersenne norms.
   It can also do strong and efficient PRP tests on more general k*b^n+c forms,
-  and on Wagstaff numbers (2^n+1)/3.
+  on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
+  (b^p-1)/(b-1), b!=2.
 
-  This version uses the most recent release (25.13) of George Woltman's Gwnum
+  This version uses the most recent release (25.14) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   Since version 25.11, gwnum library is no longer restricted to base two for
@@ -103,6 +119,12 @@
 
     Verbose=1 : Get more details in the results file (default : 1 line/result).
     StopOnSuccess=1 : Stop the job when a prime or PRP is found.
+    BeepOnSuccess=1 : Make noise at a positive result,
+      if both Stop and Beep are set, make noise until stopped by the user!
+    StopOnPrimedK=<number> : after <number> sucesses with this k value,
+      skip further pairs having the same k value (usually, <number> = 1).
+    StopOnPrimedN=<number> : Same thing, involving the value of n.
+    StopOnPrimedB=<number> : Same thing, involving the base value.
     Verify=1  : Suppress prefactoring or previous PRP test.
     NoPrefactoring=1 : Suppress prefactoring (Gaussian Mersenne or Wagstaff).
     ErrorCheck=1 : Check errors on each iteration (it's time consuming!).
@@ -132,9 +154,15 @@
 
 8) Input file formats :
 
-    - The program recognizes them when reading the first line (header).
+    - In previous versions, the format of input data was known by LLR
+    according to the very first (header) line. In this new version, you
+    may now have MULTIPLE DATA FORMATS in the same input file, because
+    data format descriptors can be inserted anywhere in the file. In
+    return of that, if an invalid descriptor is found, input lines are
+    flushed until finding the next valid one...And, indeed, the first
+    input line must be a valid descriptor!
 
-    - The NEWPGEN OUTPUT HEADER has five fields separated by colons :
+    - The NEWPGEN DESCRIPTOR has five fields separated by colons :
 
       <sieved to>:<letter code>:<chain length>:<base>:<mask>
 
@@ -148,7 +176,7 @@
     - All NewPgen file formats are accepted, except the Primorial ones.
     - For more details, consult in-line help of NeWPgen or Appendix below.
 
-    - Moreover, LLR accepts these ABC FORMATS headers :
+    - Moreover, LLR accepts these ABC FORMAT DESCRIPTORS :
 
       - Two numbers per data line formats :
 
@@ -171,6 +199,8 @@
 
 	- ABC4^$a+1 : Gaussian-Mersenne norm candidates
 	- ABC(2^$a+1)/3 : Wagstaff PRP candidates
+	- ABC(10^$a-1)/9 : Repunits PRP candidates
+	- ABC($a^$b-1)/($a-1) : Generalized Repunits PRP candidates
 	- ABC$a*$b^$a$c : (Generalized) Cullen/Woodall candidates
 	- ABC(2^$a$b)^2-2 : near-square (ex-Carol/Kynea) candidates
 
@@ -184,7 +214,7 @@
      k*b^n+1 numbers are tested using the N-1 Pocklington algorithm.
      k*b^n-1 numbers are tested using the N+1 Morrison algorithm.
 
-    - K*b^n+c numbers with |c| <> 1 or k>b^n can only be PRP tested.
+    - K*b^n+c numbers with |c| <> 1 or k > b^n can only be PRP tested.
 
 10) Special algorithms :
 
@@ -207,10 +237,20 @@
     For now, the Vrba-Reix test is only a PRP test. It has not yet
     been proved to be a primality test for Wagstaff numbers.
 
+11) Error checking and recovery :
+
+    - Error checking is done on the first and last 50 iterations, before 
+    writing an intermediate file (either user-requested stop or a
+    30 minute interval expired), and every 128th iteration.
+    - After an excessive (> 0.40) and reproducible round off error,
+    the iteration is redone using a slower and more reliable method.
+    - If this error was not reproducible, or if the iteration fails again,
+    the test is restarted from the beginning, using the next larger
+    FFT length...
 
 Appendix :
 
-    - Complements about NewPGen headers :
+    - Complements about NewPGen descriptors :
 
     - The letter is a one character code as follows :
 

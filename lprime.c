@@ -273,7 +273,7 @@ int main (
 
 		case 'O':
 		case 'o':
-			p2 = strrchr (p, '=');
+			p2 = strchr (p, '=');
 			if (p2 == NULL)					// Ignore an invalid option...
 				break;
 			if (opcnt >= 10)				// Maximum 10 options...
@@ -329,7 +329,7 @@ NOMULTIPLIER:
 				*p2++ = *p++;
 			*p2 = '\0';
 			in = fopen ("$temp.npg", "w");	// open the temporary input file
-			fprintf (in, "ABC$a*$b^$c$d\n");// write ABC header and data
+			fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
 			fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
 			fclose (in);
 			strcpy (m_pgen_input, "$temp.npg");
@@ -357,7 +357,7 @@ NOMULTIPLIER:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.0\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.1\n");
 			return (0); 
 
 /* -W - use a different working directory */
@@ -416,8 +416,10 @@ NOMULTIPLIER:
 
 // Copy the options in the init. file
 
-	for (i=0; i< opcnt; i++)
-			IniWriteString (INI_FILE, keywords[i] , values[i]);
+	for (i=0; i< opcnt; i++) {
+			IniWriteString (INI_FILE, keywords[i] , NULL);		// Delete the line
+			IniWriteString (INI_FILE, keywords[i] , values[i]);	// Make a new line
+	}
 
 #ifdef MPRIME_LOADAVG
 
@@ -442,9 +444,10 @@ NOMULTIPLIER:
 			IniWriteInt (INI_FILE, "Work", 0);
 			IniGetString (INI_FILE, "PgenInputFile", oldm_pgen_input, 80, "blablabla.bla");
 			IniWriteString (INI_FILE, "PgenInputFile", m_pgen_input);
-			if (strcmp (m_pgen_input, oldm_pgen_input)) {
+			if (strcmp (m_pgen_input, oldm_pgen_input) || IniGetInt (INI_FILE, "WorkDone", 0)) {
 				IniWriteString (INI_FILE, "PgenOutputFile", m_pgen_output);
-				IniWriteInt (INI_FILE, "PgenLine", 1);
+				if (!IniGetInt (INI_FILE, "PgenLine", 0))
+					IniWriteInt (INI_FILE, "PgenLine", 1);
 				IniWriteInt (INI_FILE, "WorkDone", 0);
 			}
 	}
@@ -494,9 +497,11 @@ void title (char *msg)
 {
 }
 
-void flashWindowAndBeep ()
+void flashWindowAndBeep (unsigned long n)
 {
-	printf ("\007");
+	while (n--)
+		printf ("\007\r");
+		Sleep (500);
 }
 
 /* Return TRUE if we should stop calculating */
@@ -632,6 +637,8 @@ ok:	IniWriteInt (INI_FILE, "Pid", my_pid);
 	IniWriteInt (INI_FILE, "Pid", 0);
 	_unlink ("$temp.npg");
 	_unlink ("$temp.res");
+	if (PROCESSFILE && IniGetInt (INI_FILE, "WorkDone", 0))
+			IniWriteString (INI_FILE, "PgenLine", NULL);
 	if (SINGLETEST)
 		_unlink (INI_FILE);
 }

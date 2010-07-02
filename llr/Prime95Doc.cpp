@@ -466,11 +466,14 @@ void title (char *str)
 	OUTPUT_STR_HACK->title (str);
 }
 
-void flashWindowAndBeep ()
+void flashWindowAndBeep (unsigned long n)
 {
 	CWinApp* pApp = AfxGetApp();
 	pApp->m_pMainWnd->FlashWindow (TRUE);
-	MessageBeep (0xFFFFFFFF);
+	while (n--) {
+		MessageBeep (0xFFFFFFFF);
+		Sleep (50);
+	}
 }
 
 void CPrime95Doc::OutputStr (
@@ -546,12 +549,10 @@ UINT threadDispatch (
 	ChangeIcon (WORKING_ICON);
 
 // Dispatch to the correct code
-//	trace (0);
+
 	switch (thread_pkt.op) {
 	case OP_CONTINUE:
-//		trace(1);
 		primeContinue ();
-//		trace(2);
 		break;
 	}
 
