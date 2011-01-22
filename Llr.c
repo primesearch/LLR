@@ -2260,7 +2260,7 @@ void gwsetsmall (gwhandle *gwdata, int value, gwnum gg) {
 	return;
 }
 
-/* Test if a gwnum is zero */
+/* Test if a gwnum is zero *
 
 #define	MAX_NZ_COUNT 10
 
@@ -2297,7 +2297,7 @@ gwiszero(
 		return 1;			// The gwnum is zero
 }
 
-/* Test two gwnums for equality */
+/* Test two gwnums for equality *
 
 int	gwequal (gwhandle *gwdata, gwnum gw1, gwnum gw2) {
 	gwnum gwdiff;
@@ -2344,38 +2344,15 @@ gwprint(
 	return 0;
 }
 
-int setupok (int errcode)	// Test if the call to gwsetup is successful
+int setupok (gwhandle *gwdata, int errcode)		// Test if the call to gwsetup is successful
 {
 	char buff[256];
 	if (!errcode)
 		return TRUE;
 	else {
-		switch (errcode) {
-		case GWERROR_VERSION:
-			sprintf (buff, "Fatal error at setup : GWNUM.H and FFT assembly code version numbers do not match.\n");
-			break;
-		case GWERROR_TOO_LARGE:
-			sprintf (buff, "Fatal error at setup : Number too large for the FFTs.\n");
-			break;
-		case GWERROR_K_TOO_SMALL:
-			sprintf (buff, "Fatal error at setup : k < 1 is not supported.\n");
-			break;
-		case GWERROR_K_TOO_LARGE:
-			sprintf (buff, "Fatal error at setup : k > 53 bits is not supported.\n");
-			break;
-		case GWERROR_MALLOC:
-			sprintf (buff, "Fatal error at setup : Insufficient memory available.\n");
-			break;
-		case GWERROR_VERSION_MISMATCH:
-			sprintf (buff, "Fatal error at setup : GWNUM_VERSION from gwinit call\ndoesn't match GWNUM_VERSION when gwnum.c was compiled.\n");
-			break;
-		case GWERROR_STRUCT_SIZE_MISMATCH:
-			sprintf (buff, "Fatal error at setup : Gwhandle structure size from gwinit call\ndoesn't match size when gwnum.c was compiled,\nCheck compiler alignment switches.\n");
-			break;
-		default:
-			sprintf (buff, "Fatal error at setup : Unknown error...\n");
-			break;
-		}
+		sprintf (buff, "Fatal error at setup : ");
+		gwerror_text (gwdata, errcode, buff+strlen(buff), 255-strlen(buff));
+		strcpy(buff+strlen(buff), "\n");
 		OutputBoth (buff);
 		return FALSE;
 	}
@@ -4069,7 +4046,7 @@ int isexpdiv (
 	unsigned long bit, bitpos, firstone = 0, iters;
 	gwnum	x;
 	giant	tmp;
-	char	filename[20], buf[sgkbufsize+256], fft_desc[100], oldres64[17];
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
 	time_t	start_time, current_time;
@@ -4408,7 +4385,7 @@ int commonFrobeniusPRP (
 	gwnum x, y, gwA, gw2;
 	giant	tmp, tmp2, tmp3, A;
 //	struct	gwasm_data *asm_data;
-	char	filename[20], buf[sgkbufsize+256], fft_desc[100];
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
 	time_t	start_time, current_time;
@@ -5105,7 +5082,7 @@ int commonPRP (
 	unsigned long bit, bitpos, firstone = 0, iters;
 	gwnum	x, gwminusone, gwone;
 	giant	tmp;
-	char	filename[20], buf[sgkbufsize+256], fft_desc[100], oldres64[17];
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping, zres;
 	time_t	start_time, current_time;
@@ -5519,7 +5496,7 @@ int commonCC1P (
 	unsigned long bit, iters, nreduced, gcdn;
 	gwnum	x;
 	giant	tmp;
-	char	filename[20], buf[sgkbufsize+256], fft_desc[100], oldres64[17];
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
 	time_t	start_time, current_time;
@@ -5905,7 +5882,7 @@ int commonCC2P (
 	int *res,
 	char *str)
 {
-	char	filename[20], buf[sgkbufsize+256], fft_desc[100]; 
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256]; 
 	unsigned long bits, explen, iters, bit, bitv, D, mask=0x80000000, frestart=FALSE;
 	unsigned long nreduced, gcdn;
 	long	write_time = DISK_WRITE_TIME * 60;
@@ -6361,7 +6338,7 @@ int fastIsPRP (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
-		if (!setupok (gwsetup (gwdata, k, b, n, c))) {
+		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6407,7 +6384,7 @@ int fastIsCC1P (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
-		if (!setupok (gwsetup (gwdata, k, b, n, c))) {
+		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6463,7 +6440,7 @@ int fastIsCC2P (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
-		if (!setupok (gwsetup (gwdata, k, b, n, c))) {
+		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6521,7 +6498,7 @@ int fastIsFrobeniusPRP (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, max (3, Q));
-		if (!setupok (gwsetup (gwdata, k, b, n, c))) {
+		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6578,7 +6555,7 @@ int slowIsFrobeniusPRP (
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, max (3, Q));
 		gwdata->force_general_mod = TRUE;
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6624,7 +6601,7 @@ int slowIsWieferich (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
-		if (!setupok (gwsetup_general_mod_giant (gwdata, M))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, M))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6695,7 +6672,7 @@ int slowIsPRP (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6735,7 +6712,7 @@ int slowIsCC1P (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -6787,7 +6764,7 @@ int slowIsCC2P (
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
 		}
@@ -7297,7 +7274,7 @@ int Lucasequence (
 	gwnum x, y, gwinvD, gwinv2;
 	gwnum a11, a12, a21, a22, b11, b12, b21, b22, c11, c12, c21, c22, p, pp, s;
 	giant	tmp, tmp2;
-	char	filename[20], fft_desc[100];
+	char	filename[20], fft_desc[256];
 	long	write_time = DISK_WRITE_TIME * 60;
 	long	j;
 	int	echk, saving, stopping;
@@ -7972,7 +7949,7 @@ int plusminustest (
 	unsigned long shift,
 	int	*res) 
 { 
-	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256], sgk1[sgkbufsize], fft_desc[100], oldres64[17]; 
+	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256], sgk1[sgkbufsize], fft_desc[256], oldres64[17]; 
 	unsigned long bits, explen, bbits, iters, bit, a, mask=0x80000000, frestart=FALSE;
 	unsigned long newa, maxrestarts, P, rem, ulone, factored_part = 0;
 	uint32_t hi = 0, lo = 0, nincr = 1;
@@ -8129,7 +8106,7 @@ restart:
 		uldivg (base, tmp);				// tmp = (N-1)/base
 		explen = bitlen (tmp);
 		if (dk >= 1.0) {
-			if (!setupok (gwsetup (gwdata, dk, base, n, +1))) {
+			if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, +1))) {
 				free(gk);
 				free(N);
 				free (M);
@@ -8142,7 +8119,7 @@ restart:
 			}
 		}
 		else {
-			if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+			if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 				free(gk);
 				free(N);
 				free (M);
@@ -8161,7 +8138,7 @@ restart:
 		iaddg (1, M);
 		explen = bitlen (tmp);
 		if (dk >= 1.0) {
-			if (!setupok (gwsetup (gwdata, dk, base, n, -1))) {
+			if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, -1))) {
 				free(gk);
 				free(N);
 				free (M);
@@ -8174,7 +8151,7 @@ restart:
 			}
 		}
 		else {
-			if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+			if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 				free(gk);
 				free(N);
 				free (M);
@@ -8533,7 +8510,7 @@ DoLucas:
 				gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 				gwsetmaxmulbyconst (gwdata, max(a, P));
 				if (dk >= 1.0) {
-					if (!setupok (gwsetup (gwdata, dk, base, n, -1))) {
+					if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, -1))) {
 						free(gk);
 						free(N);
 						free (M);
@@ -8546,7 +8523,7 @@ DoLucas:
 					}
 				}
 				else {
-					if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+					if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 						free(gk);
 						free(N);
 						free (M);
@@ -8794,7 +8771,7 @@ int isLLRP (
 	int	*res) 
 { 
 	unsigned long iters, index; 
-	unsigned long p, fftlen, fftlmers, gksize, j, k; 
+	unsigned long p, gksize, j, k; 
 	unsigned long mask, last, bit, bits; 
 	long	vindex, retval;
 	gwhandle *gwdata;
@@ -8802,7 +8779,7 @@ int isLLRP (
 	gwnum	x, y; 
 	giant	tmp; 
 	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256],
-			sgk1[sgkbufsize]; 
+			sgk1[sgkbufsize], fft_desc[256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
 	int		echk, saving, stopping, v1, first = 1, inc = -1; 
 	time_t	start_time, current_time; 
@@ -8988,18 +8965,13 @@ restart:
 
 	vindex = 1;					// First attempt
 
-/* Assume intermediate results of the length of N. */ 
-/* Compute the fftlen for a Mersenne number of this size. */
-	
 	p = Nlen; 
-	fftlmers = gwmap_to_fftlen (1.0, 2, p, -1);
-	fftlen = 0;			// for first attempt...
 
 	*res = TRUE;		/* Assume it is prime */ 
 
 	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (dk >= 1.0) {
-		if (!setupok (gwsetup (gwdata, dk, binput, ninput, -1))) { 
+		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, -1))) { 
 			free(gk);
 			free(N);
 			free(gwdata);
@@ -9008,7 +8980,7 @@ restart:
 		}
 	}
 	else {
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free(gk);
 			free(N);
 			free(gwdata);
@@ -9141,23 +9113,8 @@ restart:
 				sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s\n", str);
 				OutputStr (buf); 
 			}
-			if (!gwdata->GENERAL_MOD)
-				if (!gwdata->ZERO_PADDED_FFT)
-					if (!gwdata->RATIONAL_FFT)
-						sprintf (buf, "Using Irrational Base DWT : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-					else
-						sprintf (buf, "Using Rational Base DWT : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-				else
-					if (!gwdata->RATIONAL_FFT)
-						sprintf (buf, "Using Zero Padded IBDWT : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-					else
-						sprintf (buf, "Using Zero Padded RBDWT : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-			else
-				if (!gwdata->RATIONAL_FFT)
-					sprintf (buf, "Using General Mode (Irrational Base) : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-				else
-					sprintf (buf, "Using General Mode (Rational Base) : Mersenne fftlen = %d, Used fftlen = %d\n", fftlmers, gwdata->FFTLEN);
-
+			gwfft_description (gwdata, fft_desc);
+			sprintf (buf, "Using %s\n", fft_desc);
 			if (setuponly) {
 				if (gwdata->FFTLEN != OLDFFTLEN) {
 					OutputBoth(buf);
@@ -9771,7 +9728,7 @@ int isProthP (
 	int	*res) 
 { 
 	unsigned long iters, gksize; 
-	unsigned long p, fftlen, fftlmers; 
+	unsigned long p; 
 	unsigned long bit, bits; 
 	long	a, retval;
 	gwhandle *gwdata;
@@ -9779,7 +9736,7 @@ int isProthP (
 	gwnum	x; 
 	giant	tmp, tmp2; 
 	char	filename[20], buf[sgkbufsize+256], 
-		str[sgkbufsize+256], fft_desc[100], sgk1[sgkbufsize]; 
+		str[sgkbufsize+256], fft_desc[256], sgk1[sgkbufsize]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
 	int	echk, saving, stopping, inc = +1; 
 	time_t	start_time, current_time; 
@@ -9930,20 +9887,13 @@ if ((a = genProthBase(gk, n)) < 0) {
 
 restart:
 
-/* Assume intermediate results of the length of N. */ 
-/* Compute the fftlen for a Mersenne number of this size. */
-	
 	p = Nlen; 
-
-	fftlmers = gwmap_to_fftlen (1.0, 2, p, -1);
-
-	fftlen = 0;							// Let gwsetup find the fft length
 
 	*res = TRUE;						/* Assume it is a prime */ 
 
 	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (dk >= 1.0) {					// Setup the DWT mode
-		if (!setupok (gwsetup (gwdata, dk, binput, ninput, +1))) {
+		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) {
 			free(gk);
 			free(N);
 			free(gwdata);
@@ -9952,7 +9902,7 @@ restart:
 		}
 	}
 	else {								// Setup the generic mode
-		if (!setupok (gwsetup_general_mod_giant (gwdata, N))) {
+		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free(gk);
 			free(N);
 			free(gwdata);
@@ -10425,7 +10375,7 @@ int isGMNP (
 	int	*res) 
 { 
 	unsigned long iters; 
-	unsigned long fftlen, ubx, uby, atemp, abits = 0; 
+	unsigned long ubx, uby, atemp, abits = 0; 
 	uint32_t hi, lo;
 	unsigned long bit, bits, explen, expx, expy, loopshift, howfar; 
 	gwhandle *gwdata;
@@ -10433,7 +10383,7 @@ int isGMNP (
 	gwnum	x, y; 
 	giant	tmp, tmp2, tmp3, apow4; 
 	char	filename[20], buf[sgkbufsize+256], 
-		str[sgkbufsize+256], strp[sgkbufsize+256], fft_desc[100]; 
+		str[sgkbufsize+256], strp[sgkbufsize+256], fft_desc[256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
 	int	echk, saving, stopping, sign, fisok, fres, fhandle = 0, inc = +1; 
 	time_t	start_time, current_time; 
@@ -10866,12 +10816,10 @@ restart:
 
 /* Assume intermediate results of the length of N*N'. */ 
 
-	fftlen = 0;							// Let gwsetup find the fft length
-
 	*res = TRUE;						/* Assume it is a prime */ 
 
 	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
-	if (!setupok (gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
+	if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
 		*res = res1 = res2 = FALSE;
 		free(gk);
 		free(N);
@@ -11472,7 +11420,7 @@ int isWSPRP (
 	gwnum	x, y; 
 	giant	tmp, tmp2, gx0; 
 	char	filename[20], buf[sgkbufsize+256], 
-		fft_desc[100], oldres64[17]; 
+		fft_desc[256], oldres64[17]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
 	int	echk, saving, stopping, fisok, fres, fhandle = 0, inc = +1; 
 	time_t	start_time, current_time; 
@@ -11645,7 +11593,7 @@ restart:
 	*res = TRUE;						/* Assume it is a prime */ 
 
 	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
-	if (!setupok (gwsetup (gwdata, 1.0, 2, n, +1))) { 	// Setup the DWT mode
+	if (!setupok (gwdata, gwsetup (gwdata, 1.0, 2, n, +1))) { 	// Setup the DWT mode
 		*res = FALSE;
 		free(NP);
 		free(M);
@@ -12353,8 +12301,8 @@ void primeContinue ()
 // Skip this line if requested (we processed it on an earlier run)
 // (but don't ignore last header line found!)
 
-			if ((line < firstline) && (line != hline))
-				continue;
+//			if ((line < firstline) && (line != hline))
+//				continue;
 
 			if (hiline && line > hiline) {
 				IniWriteInt (INI_FILE, "WorkDone", 1);
@@ -12461,6 +12409,7 @@ void primeContinue ()
 						}
 					}
 				}
+				continue;				// Read next line, but do not change PgenLine!
 			}							// End ABC format header found
 
 			else if (((argcnt = sscanf (buff, $LLF":%c:%lu:%lu:%lu\n", &li, &c, &chainlen, &base, &mask)) > 1) || !line) {
@@ -12477,14 +12426,18 @@ void primeContinue ()
 					hline = line;
 					format = NPG;
 					if (mask & 0x40) {
-						OutputStr ("Primoral NewPgen files are not supported...\n");
+						OutputStr ("Primorial NewPgen files are not supported...\n");
 						validheader = FALSE;
 					}
 					if (chainlen == 0) chainlen = 1;
 				}
-			}										// End NewPGen header found
+				continue;				// Read next line, but do not change PgenLine!
+			}							// End NewPGen header found
 
 			else {						// Processing a data line
+
+				if (line < firstline)	// Skip this line if requested (we processed it on an earlier run)
+					continue;
 
 				if (!validheader)
 					continue;			// Flush data until a valid header is found...

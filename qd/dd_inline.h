@@ -13,7 +13,7 @@
 #ifndef _DD_INLINE_H_
 #define _DD_INLINE_H_
 
-#include "math.h"
+#include <cmath>
 #include "inline.h"
 
 #ifdef NO_INLINE

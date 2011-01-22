@@ -3,7 +3,7 @@
 
 /* Constants */
 
-#define VERSION		"3.8.0"
+#define VERSION		"3.8.4"
 
 /* Global variables */
 

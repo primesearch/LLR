@@ -357,7 +357,7 @@ NOMULTIPLIER:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.1\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.4\n");
 			return (0); 
 
 /* -W - use a different working directory */
@@ -451,6 +451,8 @@ NOMULTIPLIER:
 				IniWriteInt (INI_FILE, "WorkDone", 0);
 			}
 	}
+
+	readIniFiles ();	// Read again the ini files that may have been updated...
 
 /* Bring up the main menu */
 

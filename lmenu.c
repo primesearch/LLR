@@ -275,8 +275,8 @@ void options_preferences ()
 
 void help_about ()
 {
-	printf ("Primality Testing of k*b^n+/-1 Program - PC/MacIntel Version 3.8.1\n");
-	printf ("Using new Gwnums library (V25.14) and IBDWT for k's up to 22 bits\n"); 
+	printf ("Primality Testing of k*b^n+/-1 Program - PC/MacIntel Version 3.8.4\n");
+	printf ("Using new Gwnum library (V26.4) and IBDWT for k's up to 22 bits\n"); 
 	printf ("(Copyright 1996-2010 Just For Fun Software, Inc.\n");
 	printf ("Author: George Woltman\n");
 	printf ("Email:  woltman@alum.mit.edu)\n");

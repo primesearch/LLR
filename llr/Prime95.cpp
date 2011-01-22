@@ -343,6 +343,8 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 			IniWriteString (INI_FILE, keywords[i] , values[i]);	// Write the new line
 	}
 
+	readIniFiles ();	// Read again the ini files that may have been updated...
+
 /* Before processing the rest of the INI file, hide and/or */
 /* position the main window */
 

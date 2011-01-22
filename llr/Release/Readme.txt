@@ -1,20 +1,5 @@
 
-		Welcome to LLR program Version 3.8.1 !
-
-N.B. : Three bugs from version 3.8.0 are now fixed in this version :
-
-- The PRP tests of k*b^n+c numbers with abs(c) != 1 got false negative results
-due to a misusage of gwnum's "gwsetaddin" function, they are now correct!
-
-- One "pathological" k value caused a false negative result in some very rare
-cases, when using gwnum V25.13 ; this bug has disappeared with V25.14
-
-- Round off error recovery has been improved, and infinite error loops are
-now avoided (always, I hope...) by restarting with next larger FFT length.
-
-- This version is identical to the development one at the date of July 1 2010
-It will not be further changed without changing the version number.
-
+		Welcome to LLR program Version 3.8.4 !
 
 1) Main features :
 
@@ -25,7 +10,7 @@ It will not be further changed without changing the version number.
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
   (b^p-1)/(b-1), b!=2.
 
-  This version uses the most recent release (25.14) of George Woltman's Gwnum
+  This version uses the most recent release (26.4) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   Since version 25.11, gwnum library is no longer restricted to base two for
