@@ -5,7 +5,7 @@
 | in the multi-precision arithmetic routines.  That is, all routines
 | that deal with the gwnum data type.
 | 
-|  Copyright 2002-2010 Mersenne Research, Inc.  All rights reserved.
+|  Copyright 2002-2011 Mersenne Research, Inc.  All rights reserved.
 +---------------------------------------------------------------------*/
 
 /* Include files */
@@ -3494,12 +3494,21 @@ int calculate_bif (
 	gwhandle *gwdata,	/* Gwnum global data */
 	unsigned long fftlen)
 {
-	int	retval;
+	int	cpu_arch, retval;
+
+/* If the architecture and CPU flags are inconsistent, correct the architecture.  This shouldn't */
+/* ever happen unless the results from CPUID are overridden. */
+
+	cpu_arch = CPU_ARCHITECTURE;
+	if (cpu_arch == CPU_ARCHITECTURE_AMD_K8 && ! (gwdata->cpu_flags & CPU_3DNOW))
+		cpu_arch = CPU_ARCHITECTURE_CORE_2;
+	if (cpu_arch == CPU_ARCHITECTURE_AMD_K10 && ! (gwdata->cpu_flags & CPU_3DNOW))
+		cpu_arch = CPU_ARCHITECTURE_CORE_2;
 
 /* Map the CPU architecture as determined by CPUID to one of the CPU architectures */
 /* that the FFT assembly code is optimized for. */
 
-	switch (CPU_ARCHITECTURE) {
+	switch (cpu_arch) {
 	case CPU_ARCHITECTURE_PENTIUM_M:	/* Not sure what is best for these three architectures */
 	case CPU_ARCHITECTURE_CORE:
 	case CPU_ARCHITECTURE_ATOM:
@@ -3521,10 +3530,10 @@ int calculate_bif (
 		retval = 0;			/* Look for FFTs optimized for Core 2 */
 		break;
 	case CPU_ARCHITECTURE_CORE_I7:
-		retval = 1;			/* Look for FFTs optimized for Core i3/i5/i7/i9 */
+		retval = 1;			/* Look for FFTs optimized for Core i3/i5/i7 */
 		break;
 	case CPU_ARCHITECTURE_INTEL_OTHER:	/* This is probably one of Intel's next generation CPUs */ 
-		retval = 1;			/* Look for FFTs optimized for Core i3/i5/i7/i9 */
+		retval = 1;			/* Look for FFTs optimized for Core i3/i5/i7 */
 		break;
 	case CPU_ARCHITECTURE_AMD_K8:
 		retval = 6;			/* Look for FFTs optimized for K8 */
@@ -3545,7 +3554,9 @@ int calculate_bif (
 /* are asked to run one of these large FFTs, select an FFT optimized for a different */
 /* CPU architecture. */
 
-	if (fftlen > 4194304 && (retval == 3 || retval == 4))
+	if (fftlen > 1572864 && retval == 4)
+		retval = 2;		/* Tiny cache P4s have best FFT implementations up to 1536K */
+	if (fftlen > 4194304 && retval == 3)
 		retval = 2;		/* Small cache P4s have best FFT implementations up to 4M */
 	if (fftlen > 6291456 && retval == 2)
 		retval = 0;		/* P4s have best FFT implementations up to 6M */
@@ -3945,16 +3956,16 @@ next1:			while (zpad_jmptab->flags & 0x80000000) INC_JMPTAB_1 (zpad_jmptab);
 /* fewer bits.  The correction is if log2b is 3 you can get 1 more output bit than */
 /* expected, if log2b is 6 you get about 2 extra bits, if log2b is 12 you can get */
 /* 3 extra bits. */
-/* Also, some examples such as 19464*19^31895+1 still raise round off errors. */
-/* For added safety we assume an extra 0.25 bits of output are needed when */
-/* base is not 2. */
+/* Also, some examples such as 19464*19^31895+1 and 245*830^492-1 (worst case we */
+/* know of) still raise round off errors.  For added safety we assume an extra */
+/* 0.3 bits of output are needed when base is not 2. */
 
 		else if (! is_pathological_distribution (num_big_words, num_small_words)) {
 			weighted_bits_per_output_word -=
 					((log2b <= 3.0) ? (log2b - 1.0) / 2.0 :
 					 (log2b <= 6.0) ? 1.0 + (log2b - 3.0) / 3.0 :
 							  2.0 + (log2b - 6.0) / 6.0);
-			if (b != 2) weighted_bits_per_output_word += 0.25;
+			if (b != 2) weighted_bits_per_output_word += 0.3;
 		}
 
 /* If the bits in an output word is less than the maximum allowed, we can */

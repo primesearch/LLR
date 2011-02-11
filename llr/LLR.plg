@@ -6,27 +6,27 @@
 --------------------Configuration: LLR - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr384devsrc\llr\Prime95.rc"" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP63B.tmp" with contents
+Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr385src\llr\Prime95.rc"" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP8B1.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /I "..\\" /I "..\gwnum\\" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
-"I:\D\Jean\LLR\llr384devsrc\llr\AffinityDlg.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\ContentsDlg.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\CpuDlg.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\EditDropFiles.cpp"
-"I:\D\Jean\LLR\llr384devsrc\kronecker.c"
-"I:\D\Jean\LLR\llr384devsrc\llr\MainFrm.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\PreferencesDlg.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\Prime95.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\Prime95Doc.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\Prime95View.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\Priority.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\service.c"
-"I:\D\Jean\LLR\llr384devsrc\llr\StdAfx.cpp"
-"I:\D\Jean\LLR\llr384devsrc\llr\TestDlg.cpp"
+"I:\D\Jean\LLR\llr385src\llr\AffinityDlg.cpp"
+"I:\D\Jean\LLR\llr385src\llr\ContentsDlg.cpp"
+"I:\D\Jean\LLR\llr385src\llr\CpuDlg.cpp"
+"I:\D\Jean\LLR\llr385src\llr\EditDropFiles.cpp"
+"I:\D\Jean\LLR\llr385src\kronecker.c"
+"I:\D\Jean\LLR\llr385src\llr\MainFrm.cpp"
+"I:\D\Jean\LLR\llr385src\llr\PreferencesDlg.cpp"
+"I:\D\Jean\LLR\llr385src\llr\Prime95.cpp"
+"I:\D\Jean\LLR\llr385src\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr385src\llr\Prime95View.cpp"
+"I:\D\Jean\LLR\llr385src\llr\Priority.cpp"
+"I:\D\Jean\LLR\llr385src\llr\service.c"
+"I:\D\Jean\LLR\llr385src\llr\StdAfx.cpp"
+"I:\D\Jean\LLR\llr385src\llr\TestDlg.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP63B.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP63C.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP8B1.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP8B2.tmp" with contents
 [
 Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /out:"Release/LLR.exe" /libpath:"..\gwnum\\" /DELAY:unload /delayload:advapi32.dll 
 .\Release\AffinityDlg.obj
@@ -47,7 +47,7 @@ Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/
 .\factor32lp.obj
 .\Release\Prime95.res
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP63C.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP8B2.tmp"
 <h3>Output Window</h3>
 Compiling resources...
 Compiling...
@@ -61,10 +61,10 @@ PreferencesDlg.cpp
 Prime95.cpp
 Prime95Doc.cpp
 ..\Riesel.c(33) : warning C4244: '+=' : conversion from '__int64' to 'unsigned __int32', possible loss of data
-..\llr.c(10566) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(10566) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(11490) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(11490) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(10606) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(10606) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(11530) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(11530) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
 Prime95View.cpp
 Priority.cpp
 service.c

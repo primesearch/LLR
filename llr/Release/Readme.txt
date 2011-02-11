@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.4 !
+		Welcome to LLR program Version 3.8.5 !
 
 1) Main features :
 
@@ -10,7 +10,7 @@
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
   (b^p-1)/(b-1), b!=2.
 
-  This version uses the most recent release (26.4) of George Woltman's Gwnum
+  This version uses the most recent release (26.5) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   Since version 25.11, gwnum library is no longer restricted to base two for
@@ -19,6 +19,14 @@
 
   LLR can run on all machines where gwnum code can run, so, on all Intel x86
   compatible machines.
+
+  - Two bugs have been fixed since previous 3.8.4 version :
+
+  -oErrorCheck=1 was ignored in command line, due to a bug in user interface.
+  - Base Two CC chains processing was incorrect.
+
+  - The option -oNoSaveFile=1 has been added at the request of an user.
+    Indeed, if it is set, any test is restarted at beginning if stopped...
 
 2) User interfaces of LLR :
 

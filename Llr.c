@@ -255,12 +255,15 @@ unsigned int vrbareix = FALSE;
 unsigned int dualtest = FALSE;
 unsigned int verbose = FALSE;
 unsigned int setuponly = FALSE;
+unsigned int nosaving = FALSE;
 unsigned int abonillsum = FALSE;
 unsigned int abonmismatch = FALSE;
 unsigned int testgm = FALSE;
 unsigned int testgq = FALSE;
 unsigned int testfac = FALSE;
 unsigned int nofac = FALSE;
+unsigned int debug = FALSE;
+unsigned int generic = FALSE;
 unsigned int abonroundoff = FALSE;
 unsigned int will_try_larger_fft = FALSE;
 unsigned int checknumber = 0;
@@ -1470,6 +1473,9 @@ int writeToFile (
 	unsigned long magicnum, version;
 	long	sum = 0, i;
 
+	if (nosaving)				// Requested new option... 11/02/11
+		return (TRUE);
+
 /* If we are allowed to create multiple intermediate files, then */
 /* write to a file called yNNNNNNN. */
 
@@ -1621,6 +1627,9 @@ int writeToFileB (
 	int	fd;
 	unsigned long magicnum, version;
 	long	sum = 0, i;
+
+	if (nosaving)				// Requested new option... 11/02/11
+		return (TRUE);
 
 /* If we are allowed to create multiple intermediate files, then */
 /* write to a file called yNNNNNNN. */
@@ -1786,6 +1795,9 @@ int gmwriteToFile (
 	unsigned long magicnum, version;
 	long	sum = 0, i;
 
+	if (nosaving)				// Requested new option... 11/02/11
+		return (TRUE);
+
 /* If we are allowed to create multiple intermediate files, then */
 /* write to a file called yNNNNNNN. */
 
@@ -1945,6 +1957,9 @@ int LwriteToFile (					// To save a Lucas sequence matrix and its Discriminant
 	int	fd;
 	unsigned long magicnum, version;
 	long	sum = 0, i;
+
+	if (nosaving)				// Requested new option... 11/02/11
+		return (TRUE);
 
 /* If we are allowed to create multiple intermediate files, then */
 /* write to a file called yNNNNNNN. */
@@ -4032,6 +4047,29 @@ endfac:
 	return (TRUE);
 }
 
+void writeresidue (
+	gwhandle *gwdata,
+	gwnum s,			// The gwpnum data
+	giant m,			// The current external modulus
+	giant t,			// A temporary giant file	
+	char *b,			// The output buffer
+	const char *str,	// The tested number as a string
+	const int bit		// The iteration bit number
+)
+{
+	char restr[20];
+
+	gwtogiant (gwdata, s, t);	// The modulo reduction is done here
+	modg (m, t);				// External modulus and gwnums one may be different...
+	if (abs(t->sign) < 1)		// make a 32 bit residue correct !!
+		sprintf (restr, "%08lX%08lX", 0, 0);
+	else if (abs(t->sign) < 2)
+		sprintf (restr, "%08lX%08lX", 0, t->n[0]);
+	else
+		sprintf (restr, "%08lX%08lX", t->n[1], t->n[0]);
+	sprintf (b, "%s interim residue %s at bit %ld\n", str, restr, bit);
+	OutputBoth (b);
+}
 
 /* Test if M divides a^(N-1) - 1 -- gwsetup has already been called. */
 
@@ -8832,6 +8870,7 @@ int isLLRP (
 
 		if (shift > 0) {
 			gshiftleft (shift, gk);			// Shift k multiplier if requested
+			dk *= (double) (1<<shift);		// Update dk... J.P. 11/02/11
 			if (b_else != 1)
 				strcpy (sgk1, sgk);			// Lei, J.P.
 			else
@@ -9787,6 +9826,7 @@ int isProthP (
 
 	if (shift > 0) {
 		gshiftleft (shift, gk);			// Shift k multiplier if requested
+		dk *= (double) (1<<shift);		// Update dk... J.P. 11/02/11
 		if (b_else != 1)
 			strcpy (sgk1, sgk);			// Lei, J.P.
 		else
@@ -12234,6 +12274,7 @@ void primeContinue ()
 	    hline = IniGetInt (INI_FILE, "HeaderLine", 0);
 	    verbose = IniGetInt (INI_FILE, "Verbose", 0);
 	    setuponly = IniGetInt (INI_FILE, "SetupOnly", 0);
+	    nosaving = IniGetInt (INI_FILE, "NoSaveFile", 0);
 	    fd = fopen (inputfile, "r");
 
 	    if (fd == NULL) {
@@ -12247,6 +12288,8 @@ void primeContinue ()
 		testfac  = IniGetInt(INI_FILE, "TestFac", 0);
 		facfrom =  IniGetInt(INI_FILE, "FacFrom", 0);
 		facto =  IniGetInt(INI_FILE, "FacTo", 0);
+		debug =  IniGetInt(INI_FILE, "Debug", 0);
+		generic =  IniGetInt(INI_FILE, "ForceGeneric", 0);
 		vrbareix  = IniGetInt(INI_FILE, "VrbaReixTest", 0);
 		dualtest = IniGetInt(INI_FILE, "DualTest", 0);
 		hiline =  IniGetInt(INI_FILE, "HiLine", 0);
