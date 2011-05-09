@@ -1,5 +1,6 @@
 
-		Welcome to LLR program Version 3.8.5 !
+		Welcome to LLR program Version 3.8.6 !
+
 
 1) Main features :
 
@@ -10,7 +11,7 @@
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
   (b^p-1)/(b-1), b!=2.
 
-  This version uses the most recent release (26.5) of George Woltman's Gwnum
+  This version uses the most recent release (26.6) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   Since version 25.11, gwnum library is no longer restricted to base two for
@@ -27,6 +28,19 @@
 
   - The option -oNoSaveFile=1 has been added at the request of an user.
     Indeed, if it is set, any test is restarted at beginning if stopped...
+
+  - In this new version, three new bugs have been fixed, concerning
+  Fermat, Lucas and Frobenius PRP tests on non base two numbers and/or abs(c)!=1
+
+  - 28/03/11 : New bug fixed, concerning Frobenius PRP test on integer quotients
+  such as Repunits or generalized repunits(final modular reduction was missing).
+
+  - 02/04/11 : Roundoff errors recovery has been improved ; continuing with
+  careful squarings or multiplications when more than 5 have been found...
+
+  - The new option -oBPSW=1 allows to replace the standard Lucas PRP test by
+  the Baillie-PSW one (see http://www.trnicely.net/misc/bpsw.html for details)
+  the Frobenius test then follows as usual.
 
 2) User interfaces of LLR :
 

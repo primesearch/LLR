@@ -755,7 +755,7 @@ int gwnum_ecmStage1 (
 |                             GWNUM INTERNALS                          |
 +---------------------------------------------------------------------*/
 
-#define MAX_AUXILLARY_THREADS	31
+#define MAX_AUXILIARY_THREADS	31
 
 /* This structure mimics a jmptable entry defined in the assembly code */
 /* We use C code to read the entry and do lots of initialization. */
@@ -918,12 +918,12 @@ struct gwhandle_struct {
 	unsigned long num_postfft_blocks; /* Number of data blocks that */
 				/* must delay the forward fft because */
 				/* POSTFFT is set. */
-	gwevent	pass1_norm_events[MAX_AUXILLARY_THREADS];
+	gwevent	pass1_norm_events[MAX_AUXILIARY_THREADS];
 				/* These events serialize execution */
 				/* of the normalization code */
 	gwevent	gwcarries_complete; /* This event is signalled when the */
 				/* gwcarries at the end of pass 1 completes */
-	gwthread thread_id[MAX_AUXILLARY_THREADS];
+	gwthread thread_id[MAX_AUXILIARY_THREADS];
 				/* Array of auxillary thread ids */
 	uint32_t ASM_TIMERS[32];/* Internal timers used by me to */
 				/* optimize code */

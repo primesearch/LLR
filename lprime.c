@@ -357,7 +357,7 @@ NOMULTIPLIER:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.5\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.6\n");
 			return (0); 
 
 /* -W - use a different working directory */

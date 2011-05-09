@@ -427,6 +427,45 @@ int genLucasBaseQ(giant N, uint32_t D) {
 	return (-1);
 }
 
+
+int isLucasBaseQ(giant N, uint32_t D, int sign) {
+	uint32_t NmodD, dred, Nmod8;
+	int jNp, chgsign;
+
+//	Return TRUE if D = 1+4*Q is such as kronecker (D, N) = sign
+
+//  if D = 2^s*t, (N / D) = (N / 2)^s * (N / t) = (N / 2)^s * (Nmodt / t)
+
+	Nmod8 = N->n[0] & 7;
+
+//	for (D; D<=2147483647; D+=4) {
+		dred = D;
+		chgsign = 1;
+		while (!(dred&1)) {
+			dred >>= 1;					// Compute the odd part of D
+			if (Nmod8 == 3 || Nmod8 == 5)
+				chgsign = -chgsign;
+		}
+		if (dred == 1)
+			jNp = 1;
+		else {
+			NmodD = gmodi (dred, N);
+			if (!NmodD)
+				return (-(int)dred);
+			if ((jNp = kronecker(NmodD, dred)) > 1)
+				return (-jNp);
+		}
+		iaddg (-1, N);					// Compute N-1
+		if (((dred-1) & 2) && (N->n[0] & 2))	// Quadratic reciprocity
+			chgsign = -chgsign;
+		iaddg (1, N);					// Restore N
+		if ((jNp*chgsign) == sign)
+			return (TRUE);
+		else
+			return (FALSE);
+//	}
+}
+
 int genLucasBaseP(giant N, uint32_t P) {
 	uint32_t NmodD, D, dred, Nmod8;
 	int jNp, chgsign;

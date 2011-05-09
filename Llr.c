@@ -61,7 +61,13 @@
 				OutputBoth (ERROK);\
 				gwdata->GWERROR = 0;\
 				clearline(100);\
-				OutputBoth (ERRMSG6);\
+				IniWriteInt(INI_FILE, "Error_Count", error_count = IniGetInt(INI_FILE, "Error_Count", 0) + 1);\
+				if (error_count > MAX_ERROR_COUNT) {\
+					OutputBoth (ERRMSG9);\
+					care = TRUE;\
+				}\
+				else\
+					OutputBoth (ERRMSG6);\
 				maxerr_recovery_mode[K] = TRUE;\
 				sleep5 = FALSE;\
 				goto error;\
@@ -232,7 +238,7 @@ giant testn, testnp, testf, testx;
 unsigned long facn = 0, facnp = 0;
 int resn = 0, resnp = 0;
 char facnstr[80], facnpstr[80];
-char sgq[sgkbufsize];
+char sgd[sgkbufsize];
 
 void setupf();
 int factor64();
@@ -251,8 +257,10 @@ static unsigned long mask;
 
 unsigned int Fermat_only = FALSE;
 unsigned int strong = TRUE;
+unsigned int quotient = FALSE;
 unsigned int vrbareix = FALSE;
 unsigned int dualtest = FALSE;
+unsigned int bpsw = FALSE;
 unsigned int verbose = FALSE;
 unsigned int setuponly = FALSE;
 unsigned int nosaving = FALSE;
@@ -263,10 +271,12 @@ unsigned int testgq = FALSE;
 unsigned int testfac = FALSE;
 unsigned int nofac = FALSE;
 unsigned int debug = FALSE;
+unsigned int care = FALSE;
 unsigned int generic = FALSE;
 unsigned int abonroundoff = FALSE;
 unsigned int will_try_larger_fft = FALSE;
 unsigned int checknumber = 0;
+unsigned int error_count = 0;
 unsigned int sleep5 = FALSE;
 unsigned int maxerr_recovery_mode [10] = {0};
 unsigned int lasterr_point = 0;
@@ -309,7 +319,7 @@ void OutputNum (
 	OutputStr (buf);
 }
 
-/* Sleep five minutes before restarting */
+#define MAX_ERROR_COUNT 5
 
 char ERROK[] = "Disregard last error.  Result is reproducible and thus not a hardware problem.\n";
 char ERRMSG0L[] = "Iter: %ld/%ld, %s";
@@ -324,18 +334,16 @@ char ERRMSG5[] = "Fatal Error, Check Number = %d, test of %s aborted\n";
 char ERRMSG6[] = "For added safety, redoing iteration using a slower, more reliable method.\n";
 char ERRMSG7[] = "Fatal Error, divisibility test of %d^(N-1)-1 aborted\n";
 char ERRMSG8[] = "Unrecoverable error, Restarting with next larger FFT length...\n";
+char ERRMSG9[] = "Too much errors while using the standard method ; continuing with a slower, more reliable one.\n";
 char WRITEFILEERR[] = "Error writing intermediate file: %s\n";
 
 void	trace(int n) {			// Debugging tool...
 	char buf[100];
 	sprintf(buf, "OK until number %d\n", n);
-	OutputBoth (buf); 	
-}
-
-void	strace(int n) {			// Debugging tool...
-	char buf[100];
-	sprintf(buf, "OK until number %d\n", n);
-	OutputStr (buf); 	
+	if (verbose)
+		OutputBoth (buf); 
+	else
+		OutputStr (buf); 	
 }
 
 void clearline (int size) {
@@ -2142,7 +2150,8 @@ void careful_squaring (
 
 /* Clear the addin value */
 
-	gwsetaddin (gwdata, 0);
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, 0);
 
 /* Now do the squaring using three multiplies and adds */
 
@@ -2151,7 +2160,8 @@ void careful_squaring (
 	gwfft (gwdata, lo, lo);
 	gwfftfftmul (gwdata, lo, hi, s);
 	gwfftfftmul (gwdata, hi, hi, hi);
-	gwsetaddin (gwdata, addin);	/* Set the addin value */
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, addin);	/* Set the addin value */
 	gwfftfftmul (gwdata, lo, lo, lo);
 	gwadd (gwdata, s, s);
 	gwadd (gwdata, hi, s);
@@ -2204,7 +2214,8 @@ void careful_multiply (
 
 /* Clear the addin value */
 
-	gwsetaddin (gwdata, 0);
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, 0);
 
 /* Now do the multiply using four multiplies and adds */
 
@@ -2216,7 +2227,8 @@ void careful_multiply (
 	gwfftfftmul (gwdata, hi, hi2, t);
 	gwfftfftmul (gwdata, lo, lo2, u);
 	gwfftfftmul (gwdata, hi, lo2, hi);
-	gwsetaddin (gwdata, addin);	/* Set the addin value */
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, addin);	/* Set the addin value */
 	gwfftfftmul (gwdata, lo, hi2, lo);
 	gwadd (gwdata, u, t);
 	gwadd (gwdata, hi, t);
@@ -2275,14 +2287,15 @@ void gwsetsmall (gwhandle *gwdata, int value, gwnum gg) {
 	return;
 }
 
-/* Test if a gwnum is zero *
+/* Test if a gwnum is zero */
 
-#define	MAX_NZ_COUNT 10
+#define	MAX_NZ_COUNT 16
 
 int
-gwiszero(
+gwpiszero(
 	gwhandle *gwdata,
-	gwnum 	gg
+	gwnum 	gg,
+	giant	extmod
 )
 {
 	unsigned long j;
@@ -2291,7 +2304,7 @@ gwiszero(
 	giant	gtest;
 	ghandle *gdata;
 
-	if (!gwdata->GENERAL_MOD)
+	if (!gwdata->GENERAL_MOD && !quotient)
 		for(j=0; j<gwdata->FFTLEN; ++j) {
 			err_code = get_fft_value (gwdata, gg, j, &val);
 			if (err_code) return (-err_code);
@@ -2300,10 +2313,11 @@ gwiszero(
 			else if (val)
 				count++;		// Update the count of non-zero words.
 		}
-	if (count || gwdata->GENERAL_MOD) {			// The gwnum is likely to be zero but needs a more accurate test...
+	if (count || gwdata->GENERAL_MOD || quotient) {	// The gwnum may be zero but needs a more accurate test...
 		gdata = &gwdata->gdata;
 		gtest = popg (gdata, gwdata->FFTLEN);	// Allocate memory for the giant
 		gwtogiant (gwdata, gg, gtest);
+		modg (extmod, gtest);
 		result = isZero (gtest);
 		pushg (gdata, 1);						// Free memory
 		return (result);
@@ -2314,7 +2328,7 @@ gwiszero(
 
 /* Test two gwnums for equality *
 
-int	gwequal (gwhandle *gwdata, gwnum gw1, gwnum gw2) {
+int	gwpequal (gwhandle *gwdata, gwnum gw1, gwnum gw2) {
 	gwnum gwdiff;
 	unsigned long savenormcount1, savenormcount2;
 	int result;
@@ -2324,7 +2338,7 @@ int	gwequal (gwhandle *gwdata, gwnum gw1, gwnum gw2) {
 	savenormcount2 = ((unsigned long *) gw2) [-1];
 	((unsigned long *) gw1) [-1] = ((unsigned long *) gw2) [-1] = 100; // Set high counts
 	gwsub3 (gwdata, gw1, gw2, gwdiff);				// to force a normalization...
-	result = gwiszero (gwdata, gwdiff);				// Test for zero difference
+	result = gwpiszero (gwdata, gwdiff);				// Test for zero difference
 	((unsigned long *) gw1) [-1] = savenormcount1;	// Restore the norm. counts
 	((unsigned long *) gw2) [-1] = savenormcount2;
 	gwfree (gwdata, gwdiff);						// Free memory
@@ -4047,28 +4061,35 @@ endfac:
 	return (TRUE);
 }
 
+#define BIT 1
+#define ITER 0
+
 void writeresidue (
 	gwhandle *gwdata,
-	gwnum s,			// The gwpnum data
+	gwnum s,			// The gwnum data
 	giant m,			// The current external modulus
 	giant t,			// A temporary giant file	
 	char *b,			// The output buffer
 	const char *str,	// The tested number as a string
-	const int bit		// The iteration bit number
+	const int bit,		// The iteration bit number
+	const int kind		// Bit or Iteration
 )
 {
 	char restr[20];
 
 	gwtogiant (gwdata, s, t);	// The modulo reduction is done here
-	modg (m, t);				// External modulus and gwnums one may be different...
+	modg (m, t);				// External modulus and gwnum's one may be different...
 	if (abs(t->sign) < 1)		// make a 32 bit residue correct !!
 		sprintf (restr, "%08lX%08lX", 0, 0);
 	else if (abs(t->sign) < 2)
 		sprintf (restr, "%08lX%08lX", 0, t->n[0]);
 	else
 		sprintf (restr, "%08lX%08lX", t->n[1], t->n[0]);
-	sprintf (b, "%s interim residue %s at bit %ld\n", str, restr, bit);
-	OutputBoth (b);
+	sprintf (b, "%s interim residue %s at %s %ld\n", str, restr, kind? "bit" : "iteration", bit);
+	if (verbose)
+		OutputBoth (b);
+	else
+		OutputStr (b);
 }
 
 /* Test if M divides a^(N-1) - 1 -- gwsetup has already been called. */
@@ -4126,6 +4147,7 @@ int isexpdiv (
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -4139,6 +4161,8 @@ int isexpdiv (
 		bit = 1;
 //		dbltogw (gwdata, (double) a, x);
 		gwsetsmall (gwdata, a, x);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -4198,7 +4222,7 @@ int isexpdiv (
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if (!debug && !care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
 			gwsquare (gwdata, x);
 		else {
 			gwsquare_carefully (gwdata, x);
@@ -4415,12 +4439,12 @@ error:
 int commonFrobeniusPRP (
 	gwhandle *gwdata,
 	ghandle *gdata,
-	unsigned long P,
-	unsigned long Q,
+	long P,
+	long Q,
 	int	*res, char *str)
 {
 	unsigned long bit, firstone = 0, iters, D, bitv;
-	gwnum x, y, gwA, gw2;
+	gwnum x, y, gwA, gw2, gwQ;
 	giant	tmp, tmp2, tmp3, A;
 //	struct	gwasm_data *asm_data;
 	char	filename[20], buf[sgkbufsize+256], fft_desc[256];
@@ -4439,15 +4463,31 @@ int commonFrobeniusPRP (
 	y = gwalloc (gwdata);
 	gwA = gwalloc (gwdata);
 	gw2 = gwalloc (gwdata);
-//	dbltogw (gwdata, 2.0, gw2);
-	gwsetsmall (gwdata, 2, gw2);
-
+	gwQ = gwalloc (gwdata);
+	
+	Nlen = bitlen (N);
 	tmp = popg (gdata, (Nlen >> 3) + 3);
 	tmp2 = popg (gdata, (Nlen >> 3) + 3);
 	tmp3 = popg (gdata, (Nlen >> 3) + 3);
 	A = popg (gdata, (Nlen >> 3) + 3);
 
 	D = P*P - 4*Q;
+
+//	Compute needed large integer and gwnum constants
+
+	dbltogw (gwdata, 2.0, gw2);
+	itog (Q, tmp);		// Compute gwQ for Frobenius test
+	if (Q < 0)
+		addg (N, tmp);	// only a positive giant can be converted to gwnum
+	gianttogw (gwdata, tmp, gwQ);
+	gtog (tmp, A);		// Compute A = P*P*Q^-1 - 2 mod N
+	invg (N, A);
+	ulmulg (P*P, A);
+	ulsubg (2, A);
+	modg (N, A);
+	gianttogw (gwdata, A, gwA);
+
+
 	*res = TRUE;		/* Assume it is a probable prime */
 
 /* Init file name */
@@ -4467,6 +4507,7 @@ int commonFrobeniusPRP (
 		sprintf (buf, fmt_mask, bit, pct);
 		start_timer (0);
 		start_timer (1);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		goto Frobeniusresume;
 	}
 	else {
@@ -4477,13 +4518,6 @@ int commonFrobeniusPRP (
 		iaddg (1, tmp3);
 		gshiftright (1, tmp3);
 		Nlen = bitlen (tmp3);
-
-		ultog (Q, A);		// Compute A = P*P*Q^-1 - 2 mod N
-		invg (N, A);
-		ulmulg (P*P, A);
-		ulsubg (2, A);
-		modg (N, A);
-		gianttogw (gwdata, A, gwA);
 
 		tempFileName (filename, 'L', N);	// Reinit file name
 
@@ -4501,6 +4535,7 @@ int commonFrobeniusPRP (
 			OutputStr (buf);
 			if (verbose)
 				writeResults (buf);
+			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		}
 
 /* Otherwise, output a message indicating we are starting a Lucas test */
@@ -4513,13 +4548,10 @@ int commonFrobeniusPRP (
 				writeResults (buf);
 
 			bit = 1;
-//			dbltogw (gwdata, 2.0, x);			// Initial values
-			gwsetsmall (gwdata, 2, x);		// Initial values
+			gwcopy (gwdata, gw2, x);		// Initial values
 			gwcopy (gwdata, gwA, y);
-//			if (! writeToFile (gwdata, gdata, filename, bit, x, y)) {
-//				sprintf (buf, WRITEFILEERR, filename);
-//				OutputBoth (buf);
-//			}	
+			care = FALSE;
+			IniWriteString(INI_FILE, "Error_Count", NULL);
 		}
 	}
 
@@ -4577,8 +4609,9 @@ int commonFrobeniusPRP (
 		gwstartnextfft (gwdata, 0);
 
 		if ( bitv = bitval (tmp3, Nlen-bit)) {
-			gwsetaddin (gwdata, 0);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c)==1)				// Warning : gwsetaddin must not be used if abs(c) != 1 !!
+				gwsetaddin (gwdata, 0);
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
 				gwsafemul (gwdata, y, x);
 				will_try_larger_fft = FALSE;
@@ -4592,8 +4625,8 @@ int commonFrobeniusPRP (
 			CHECK_IF_ANY_ERROR(x, (bit), Nlen, 1)
 			gwsub3 (gwdata, x, gwA, x);
 			if (abs(gwdata->c)==1)
-				gwsetaddin (gwdata, -2);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+				gwsetaddin (gwdata, -2);		// Warning : gwsetaddin must not be used if abs(c) != 1 !!
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
 				will_try_larger_fft = FALSE;
@@ -4606,11 +4639,13 @@ int commonFrobeniusPRP (
 			}
 			CHECK_IF_ANY_ERROR(y, (bit), Nlen, 2)
 			if (abs(gwdata->c)!=1)
-				gwsubquick (gwdata, gw2, y);
+				gwsubquick (gwdata, gw2, y);	// gwsetaddin has not been used because abs(c) != 1 !!
+//				gwsub (gwdata, gw2, y);
 		}
 		else {
-			gwsetaddin (gwdata, 0);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c)==1)
+				gwsetaddin (gwdata, 0);			// Warning : gwsetaddin must not be used if abs(c) != 1 !!
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
 				gwsafemul (gwdata, x, y);
 				will_try_larger_fft = FALSE;
@@ -4624,8 +4659,8 @@ int commonFrobeniusPRP (
 			CHECK_IF_ANY_ERROR(y, (bit), Nlen, 3)
 			gwsub3 (gwdata, y, gwA, y);
 			if (abs(gwdata->c)==1)
-				gwsetaddin (gwdata, -2);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+				gwsetaddin (gwdata, -2);		// Warning : gwsetaddin must not be used if abs(c) != 1 !!
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
 				will_try_larger_fft = FALSE;
@@ -4638,7 +4673,8 @@ int commonFrobeniusPRP (
 			}
 			CHECK_IF_ANY_ERROR(x, (bit), Nlen, 4)
 			if (abs(gwdata->c)!=1)
-				gwsubquick (gwdata, gw2, x);
+				gwsubquick (gwdata, gw2, x);	// gwsetaddin has not been used because abs(c) != 1 !!
+//				gwsub (gwdata, gw2, x);
 		}
 
  /* That iteration succeeded, bump counters */
@@ -4712,6 +4748,7 @@ int commonFrobeniusPRP (
 				gwfree (gwdata, y);
 				gwfree (gwdata, gwA);
 				gwfree (gwdata, gw2);
+				gwfree (gwdata, gwQ);
 				*res = FALSE;
 				return (FALSE);
 			}
@@ -4721,19 +4758,8 @@ int commonFrobeniusPRP (
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);		// The modulo reduction is done here
-				modg (N, tmp);				// External modulus and gwnums one may be different...
-			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp->n[1], tmp->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+			writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -4759,7 +4785,7 @@ int commonFrobeniusPRP (
 	mulg (A, tmp);					// A*V(m)
 	gshiftleft (1, tmp2);			// 2*V(m+1)
 	subg (tmp2, tmp);				// A*V(m)-2*V(m+1)
-	modg (N, tmp);
+	modg (N, tmp);					// External modulus and gwnum's one may be different...
 
 	if (!isZero (tmp)) {
 		*res = FALSE;				// N is composite.
@@ -4769,9 +4795,15 @@ int commonFrobeniusPRP (
 			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
 
 		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
-			sprintf (buf, "%s is not prime(P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
+			if (bpsw)
+				sprintf (buf, "%s is not prime(P = %d, Q = %d), BPSW RES64: %s", str, P, Q, res64);
+			else
+				sprintf (buf, "%s is not prime(P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
 		else
-			sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
+			if (bpsw)
+				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), BPSW RES64: %s", str, P, Q, res64);
+			else
+				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
 	}
 	if (*res) {						// N may be prime ; do now the Frobenius PRP test
 		_unlink (filename);			// Remove Lucas save file
@@ -4779,10 +4811,21 @@ int commonFrobeniusPRP (
 		tempFileName (filename, 'F', N);	// Reinit file name
 
 		bit = 1;
-//		dbltogw (gwdata, (double)Q, y);
-		gwsetsmall (gwdata, Q, y);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
+		gwcopy (gwdata, gwQ, y);	// Init : y = Q
+//		dbltogw (gwdata, (double)Q, y);		// causes a crash when Q is negative...
 //		lasterr_point = 0;			// Reset a possible Lucas roundoff error point
-		sprintf (buf, "%s is Lucas PRP, Starting Frobenius test sequence\n", str);
+		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
+			if (bpsw)
+				sprintf (buf, "%s is BPSW PRP, Starting Frobenius test sequence\n", str);
+			else
+				sprintf (buf, "%s is Lucas PRP, Starting Frobenius test sequence\n", str);
+		else
+			if (bpsw)
+				sprintf (buf, "%s is strong-Fermat and BPSW PRP, Starting Frobenius test sequence\n", str);
+			else
+				sprintf (buf, "%s is strong-Fermat and Lucas PRP, Starting Frobenius test sequence\n", str);
 		if (! writeToFile (gwdata, gdata, filename, bit, x, y)) {
 			sprintf (buf, WRITEFILEERR, filename);
 			OutputBoth (buf);
@@ -4829,10 +4872,15 @@ Frobeniusresume:
 /* Do the PRP test */
 		
 //		asm_data = (struct gwasm_data *) gwdata->asm_data;	// Get the struct pointer
-//		asm_data->SPREAD_CARRY_OVER_4_WORDS = TRUE;
-		gwsetaddin (gwdata, 0);
-		gwsetmulbyconst (gwdata, Q);
+//		asm_data->SPREAD_CARRY_OVER_4_WORDS = TRUE;			// Does not change anything when set...
+		if (abs(gwdata->c)==1)
+			gwsetaddin (gwdata, 0);			// Warning : gwsetaddin must not be used if abs(c) != 1 !!
+		if (abs(Q) <= GWMULBYCONST_MAX)
+			gwsetmulbyconst (gwdata, Q);
+		else
+			gwsetmulbyconst (gwdata, 1);	// mulbyconst does not work if the constant is too big...
 		iters = 0;
+		gwstartnextfft (gwdata, 0);
 		while (bit < Nlen) {
 
 /* Error check the first and last 50 iterations, before writing an */
@@ -4850,15 +4898,14 @@ Frobeniusresume:
 
 /* Process this bit */
 
-			gwstartnextfft (gwdata, !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
+//			gwstartnextfft (gwdata, !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
-			if (bitval (tmp3, Nlen-bit-1)) {
+			if (bitv = bitval (tmp3, Nlen-bit-1)) {
 				gwsetnormroutine (gwdata, 0, echk, 1);
 			} else {
 				gwsetnormroutine (gwdata, 0, echk, 0);
 			}
-
-			if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+			if (!debug && !care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
 				gwsquare (gwdata, y);
 			else {
 				gwsquare_carefully (gwdata, y);
@@ -4869,6 +4916,9 @@ Frobeniusresume:
 
 			CHECK_IF_ANY_ERROR (y, (bit), Nlen, 6);
 
+			if (bitv && (abs(Q) > GWMULBYCONST_MAX)) {
+				gwsafemul (gwdata, gwQ, y);		// multiply by Q if abs(Q) is too big...
+			}
 /* That iteration succeeded, bump counters */
 
 			if (will_try_larger_fft && (bit == lasterr_point))
@@ -4940,6 +4990,7 @@ Frobeniusresume:
 					gwfree (gwdata, y);
 					gwfree (gwdata, gwA);
 					gwfree (gwdata, gw2);
+					gwfree (gwdata, gwQ);
 //					gwdone (gwdata);
 					*res = FALSE;
 					return (FALSE);
@@ -4950,18 +5001,8 @@ Frobeniusresume:
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-			if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, y, tmp);	// The modulo reduction is done here
-				if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-					sprintf (buf, 
-					"%s interim residue %08lX%08lX at bit %ld\n",
-					 str, 0, tmp->n[0], bit);
-				else
-					sprintf (buf, 
-					"%s interim residue %08lX%08lX at bit %ld\n",
-					 str, tmp->n[1], tmp->n[0], bit);
-				OutputBoth (buf);
-			}
+			if (interimResidues && bit % interimResidues < 2)
+				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -4975,15 +5016,15 @@ Frobeniusresume:
 				}
 			}
 		}
-		gwsetaddin (gwdata, 0);
 		gwsetnormroutine (gwdata, 0, 1, 0);
 		will_try_larger_fft = TRUE;
-		gwmul_carefully (gwdata, x, y);	// y = B*V(m)-2
+		gwmul_carefully (gwdata, x, y);	// y = B*V(m)
+//		gwmul (gwdata, x, y);			// y = B*V(m) ; gwmul not reliable enough here...
 		CHECK_IF_ANY_ERROR (y, (Nlen), Nlen, 6);
 		will_try_larger_fft = FALSE;
 		gwsubquick (gwdata, gw2, y);
 		gwtogiant (gwdata, y, tmp);
-		modg (N, tmp);					// modulo N
+		modg (N, tmp);					// External modulus and gwnum's one may be different...
 		if (!isZero (tmp)) {
 			*res = FALSE;				// N is Lucas PSP, but composite!!
 			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
@@ -4992,9 +5033,15 @@ Frobeniusresume:
 				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
 
 			if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
-				sprintf (buf, "%s is Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+				if (bpsw)
+					sprintf (buf, "%s is BPSW PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+				else
+					sprintf (buf, "%s is Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 			else
-				sprintf (buf, "%s is strong-Fermat and Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+				if (bpsw)
+					sprintf (buf, "%s is strong-Fermat and BPSW PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+				else
+					sprintf (buf, "%s is strong-Fermat and Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 		}
 	}
 
@@ -5003,13 +5050,23 @@ Frobeniusresume:
 	clearline (100);
 
 	if (*res)
-		sprintf (buf, "%s is Frobenius PRP! (P = %d, Q = %d, D = %lu)", str, P, Q, D);
+		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
+			if (bpsw)
+				sprintf (buf, "%s is BPSW and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+			else
+				sprintf (buf, "%s is Lucas and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+		else
+			if (bpsw)
+				sprintf (buf, "%s is strong-Fermat, BPSW and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+			else
+				sprintf (buf, "%s is strong-Fermat, Lucas and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
 
 	pushg (gdata, 4);
 	gwfree (gwdata, x);				// Clean up
 	gwfree (gwdata, y);
 	gwfree (gwdata, gwA);
 	gwfree (gwdata, gw2);
+	gwfree (gwdata, gwQ);
 
 /* Update the output file */
 
@@ -5070,6 +5127,7 @@ error:
 	gwfree (gwdata, y);
 	gwfree (gwdata, gwA);
 	gwfree (gwdata, gw2);
+	gwfree (gwdata, gwQ);
 //	gwdone (gwdata);
 	*res = FALSE;
 
@@ -5090,6 +5148,7 @@ error:
 
 	if (sleep5) OutputBoth (ERRMSG2);
 	OutputBoth (ERRMSG3);
+//	IniWriteInt(INI_FILE, "Error_Count", IniGetInt(INI_FILE, "Error_Count", 0) + 1);
 
 /* Sleep five minutes before restarting */
 
@@ -5118,8 +5177,8 @@ int commonPRP (
 	int	*res, char *str)
 {
 	unsigned long bit, bitpos, firstone = 0, iters;
-	gwnum	x, gwminusone, gwone;
-	giant	tmp;
+	gwnum	x, y, gwminusone, gwone;
+	giant	tmp, tmp2;
 	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping, zres;
@@ -5130,10 +5189,14 @@ int commonPRP (
 	if (!IniGetInt(INI_FILE, "Testdiff", 0))	// Unless test of MAXDIFF explicitly required
 		gwdata->MAXDIFF = 1.0E80;				// Diregard MAXDIFF...
 
+	tmp = popg (gdata, (Nlen >> 4) + 3);
+	tmp2 = popg (gdata, (Nlen >> 4) + 3);
+
 /* Init, subtract 1 from N to compute a^(N-1) mod N */
 
-	iaddg (-1, N);
-	while (bitval (N, firstone) == 0)	// position of first one bit in N-1
+	gtog (N, tmp2);
+	iaddg (-1, tmp2);
+	while (bitval (tmp2, firstone) == 0)	// position of first one bit in N-1
 		firstone++;
 	Nlen = bitlen (N);
 	*res = TRUE;		/* Assume it is a probable prime */
@@ -5145,17 +5208,12 @@ int commonPRP (
 /* Allocate memory */
 
 	x = gwalloc (gwdata);
+	y = gwalloc (gwdata);
 	gwminusone = gwalloc (gwdata);
 	gwone = gwalloc (gwdata);
 
-//	dbltogw (gwdata, 1.0, gwone);
-//	gianttogw (gwdata, N, gwminusone);
-	gwsetsmall (gwdata, 1, gwone);
-	if (abs(gwdata->c) == 1)
-		gwsetsmall (gwdata, -1, gwminusone);
-	else
-		gianttogw (gwdata, N, gwminusone);
-	tmp = popg (gdata, (Nlen >> 4) + 3);
+	dbltogw (gwdata, 1.0, gwone);
+	gianttogw (gwdata, tmp2, gwminusone);
 
 /* Optionally resume from save file and output a message */
 /* indicating we are resuming a test */
@@ -5171,6 +5229,7 @@ int commonPRP (
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -5182,8 +5241,10 @@ int commonPRP (
 		if (verbose)
 			writeResults (buf);
 		bit = 1;
-//		dbltogw (gwdata, (double) a, x);
-		gwsetsmall (gwdata, a, x);
+		dbltogw (gwdata, (double) a, x);
+//		gwsetsmall (gwdata, a, x);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -5237,14 +5298,15 @@ int commonPRP (
 
 		gwstartnextfft (gwdata, !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
-		if (bitval (N, bitpos = Nlen-bit-1)) {
+		if (bitval (tmp2, bitpos = Nlen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if (!debug && !care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+		}
 		else {
 			gwsquare_carefully (gwdata, x);
 			will_try_larger_fft = TRUE;
@@ -5319,8 +5381,9 @@ int commonPRP (
 /* If an escape key was hit, write out the results and return */
 
 			if (stopping) {
-				pushg (gdata, 1);
+				pushg (gdata, 2);
 				gwfree (gwdata, x);
+				gwfree (gwdata, y);
 				gwfree (gwdata, gwminusone);
 				gwfree (gwdata, gwone);
 //				gwdone (gwdata);
@@ -5333,18 +5396,8 @@ int commonPRP (
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);	// The modulo reduction is done here
-			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp->n[1], tmp->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -5357,20 +5410,27 @@ int commonPRP (
 				OutputBoth (buf);
 			}
 		}
-		if (strong)
+		if (strong) {
 			if (bitpos == firstone) {
-				zres = gwequal(gwdata, x, gwone);	// Test for x == 1 mod N
+				gwsub3 (gwdata, gwone, x, y);
+//				zres = gwequal(gwdata, x, gwone);	// Test for x == 1 mod N
+				zres = gwpiszero (gwdata, y, N);
 				if (zres == 1)						// success.
 					break;
-				zres = gwequal(gwdata, x, gwminusone);// Test for x == -1 mod N
+				gwadd3 (gwdata, gwone, x, y);
+//				zres = gwequal(gwdata, x, gwminusone);// Test for x == -1 mod N
+				zres = gwpiszero (gwdata, y, N);
 				if (zres == 1)						// success.
 					break;
 			}
 			else if (bitpos && bitpos < firstone) {
-				zres = gwequal(gwdata, x, gwminusone);// Test for x == -1 mod N
+				gwadd3 (gwdata, gwone, x, y);
+//				zres = gwequal(gwdata, x, gwminusone);// Test for x == -1 mod N
+				zres = gwpiszero (gwdata, y, N);
 				if (zres == 1)						// success.
 					break;
 			}
+		}
 	}
 
 /* See if we've found a probable prime.  If not, format a 64-bit residue. */
@@ -5382,14 +5442,12 @@ int commonPRP (
 
 	clearline (100);
 
-	iaddg (1, N);	// Restore the modulus
-
 	if (strong && bitpos) {
 		sprintf (buf, "%s is base %d-Strong Fermat PRP!", str, a);
 	}
 	else {
 		gwtogiant (gwdata, x, tmp);
-		modg (N, tmp);
+		modg (N, tmp);			// External modulus and gwnum's one may be different...
 		if (!isone (tmp)) {
 			*res = FALSE;	/* Not a prime */
 			if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
@@ -5419,8 +5477,9 @@ int commonPRP (
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-	pushg (gdata, 1);
+	pushg (gdata, 2);
 	gwfree (gwdata, x);
+	gwfree (gwdata, y);
 	gwfree (gwdata, gwminusone);
 	gwfree (gwdata, gwone);
 
@@ -5468,9 +5527,6 @@ int commonPRP (
 
 /* Cleanup and return */
 
-//	iaddg (1, N);					// Restore the value of N
-	Nlen = bitlen (N);
-//	gwdone (gwdata);
 	_unlink (filename);
 	lasterr_point = 0;
 	return (TRUE);
@@ -5478,10 +5534,9 @@ int commonPRP (
 /* An error occured, sleep, then try restarting at last save point. */
 
 error:
-	iaddg (1, N);					// Restore the value of N
-	Nlen = bitlen (N);
-	pushg (gdata, 1);
+	pushg (gdata, 2);
 	gwfree (gwdata, x);
+	gwfree (gwdata, y);
 	gwfree (gwdata, gwone);
 	gwfree (gwdata, gwminusone);
 //	gwdone (gwdata);
@@ -5533,7 +5588,7 @@ int commonCC1P (
 {
 	unsigned long bit, iters, nreduced, gcdn;
 	gwnum	x;
-	giant	tmp;
+	giant	exponent, tmp;
 	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17];
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping;
@@ -5559,21 +5614,26 @@ int commonCC1P (
 	if (!IniGetInt(INI_FILE, "Testdiff", 0))	// Unless test of MAXDIFF explicitly required
 		gwdata->MAXDIFF = 1.0E80;				// Diregard MAXDIFF...
 
-/* Init, subtract 1 from N to compute a^(N-1) mod N */
-
-	iaddg (-1, N);
 	Nlen = bitlen (N);
-	*res = TRUE;		/* Assume it is a prime */
-
-/* Init filename */
-
-	tempFileName (filename, 'z', N);
 
 /* Allocate memory */
 
 	x = gwalloc (gwdata);
 
 	tmp = popg (gdata, (Nlen >> 5) + 3);
+	exponent = popg (gdata, (Nlen >> 5) + 3);
+
+
+/* Init, subtract 1 from N to compute a^(N-1) mod N */
+
+	gtog (N, exponent);
+	iaddg (-1, exponent);
+//	Nlen = bitlen (N);
+	*res = TRUE;		/* Assume it is a prime */
+
+/* Init filename */
+
+	tempFileName (filename, 'z', N);
 
 /* Optionally resume from save file and output a message */
 /* indicating we are resuming a test */
@@ -5589,6 +5649,7 @@ int commonCC1P (
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -5610,6 +5671,8 @@ int commonCC1P (
 		bit = 1;
 //		dbltogw (gwdata, (double) a, x);
 		gwsetsmall (gwdata, a, x);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -5664,12 +5727,12 @@ int commonCC1P (
 
 		gwstartnextfft (gwdata, !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
-		if (bitval (N, Nlen-bit-1)) {
+		if (bitval (exponent, Nlen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
-		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if (!debug && !care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
 			gwsquare (gwdata, x);
 		else {
 			gwsquare_carefully (gwdata, x);
@@ -5751,7 +5814,7 @@ int commonCC1P (
 /* If an escape key was hit, write out the results and return */
 
 			if (stopping) {
-				pushg (gdata, 1);
+				pushg (gdata, 2);
 				gwfree (gwdata, x);
 //				gwdone (gwdata);
 				*res = FALSE;
@@ -5763,18 +5826,8 @@ int commonCC1P (
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);			// The modulo reduction is done here
-			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp->n[1], tmp->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -5856,9 +5909,9 @@ int commonCC1P (
 
 /* Cleanup and return */
 
-	iaddg (1, N);					// Restore the value of N
-	Nlen = bitlen (N);
-	pushg (gdata, 1);
+//	iaddg (1, N);					// Restore the value of N
+//	Nlen = bitlen (N);
+	pushg (gdata, 2);
 	gwfree (gwdata, x);
 //	gwdone (gwdata);
 	_unlink (filename);
@@ -5868,9 +5921,9 @@ int commonCC1P (
 /* An error occured, sleep, then try restarting at last save point. */
 
 error:
-	iaddg (1, N);					// Restore the value of N
-	Nlen = bitlen (N);
-	pushg (gdata, 1);
+//	iaddg (1, N);					// Restore the value of N
+//	Nlen = bitlen (N);
+	pushg (gdata, 2);
 	gwfree (gwdata, x);
 //	gwdone (gwdata);
 	*res = FALSE;					// To avoid credit mesage...
@@ -5984,7 +6037,7 @@ int commonCC2P (
 		if (verbose)
 			writeResults (buf);
 		D = P*P-4;
-
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -6001,13 +6054,14 @@ int commonCC2P (
 		gwsetsmall (gwdata, P, y);
 //		dbltogw (gwdata, 2.0, x);
 //		dbltogw (gwdata, (double)P, y);
-
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 	ultog (D, tmp3);						// Compute the inverse of D modulo N
 	invg (N, tmp3);
 	gianttogw (gwdata, tmp3, gwinvD);		// Convert it to gwnum
-	gwfft (gwdata, gwinvD, gwinvD);			// And fft it
+//	gwfft (gwdata, gwinvD, gwinvD);			// And fft it
 
 /* Get the current time */
 
@@ -6063,8 +6117,9 @@ int commonCC2P (
 		gwstartnextfft (gwdata, 0);
 
 		if ( bitv = bitval (exponent, explen-bit)) {
-			gwsetaddin (gwdata, -(int)P);
-			if ((bit+26 < explen) && (bit > 26) &&
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -(int)P);
+			if (!debug && !care && (bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
 				gwsafemul (gwdata, y, x);
 				will_try_larger_fft = FALSE;
@@ -6076,8 +6131,11 @@ int commonCC2P (
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(x, (bit), explen, 1)
-			gwsetaddin (gwdata, -2);
-			if ((bit+26 < explen) && (bit > 26) &&
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -(double)P, x);
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -2);
+			if (!debug && !care && (bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
 				will_try_larger_fft = FALSE;
@@ -6089,10 +6147,13 @@ int commonCC2P (
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(y, (bit), explen, 2)
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -2.0, y);
 		}
 		else {
-			gwsetaddin (gwdata, -(int)P);
-			if ((bit+26 < explen) && (bit > 26) &&
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -(int)P);
+			if (!debug && !care && (bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
 				gwsafemul (gwdata, x, y);
 				will_try_larger_fft = FALSE;
@@ -6104,8 +6165,11 @@ int commonCC2P (
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(y, (bit), explen, 3)
-			gwsetaddin (gwdata, -2);
-			if ((bit+26 < explen) && (bit > 26) &&
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -(double)P, y);
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -2);
+			if (!debug && !care && (bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
 				will_try_larger_fft = FALSE;
@@ -6117,6 +6181,8 @@ int commonCC2P (
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(x, (bit), explen, 4)
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -2.0, x);
 		}
 
  /* That iteration succeeded, bump counters */
@@ -6201,19 +6267,8 @@ int commonCC2P (
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);	// The modulo reduction is done here
-				modg (N, tmp);				// External modulus and gwnums one may be different...
-			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp->n[1], tmp->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -6232,13 +6287,16 @@ int commonCC2P (
 
 	will_try_larger_fft = TRUE;
 
-	gwsetaddin (gwdata, 0);			// Reset addin constant.
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, 0);			// Reset addin constant.
 	gwsetnormroutine (gwdata, 0, 1, 1);	// set mul. by const.
 	gwsetmulbyconst (gwdata, 2);
-	gwfftmul (gwdata, gwinvD, y);	// y = D^-1*2*V(N+2) modulo N
+//	gwfftmul (gwdata, gwinvD, y);	// y = D^-1*2*V(N+2) modulo N
+	gwmul_carefully (gwdata, gwinvD, y);// y = D^-1*2*V(N+2) modulo N
 	CHECK_IF_ANY_ERROR(y, (explen), explen, 4)
 	gwsetmulbyconst (gwdata, P);
-	gwfftmul (gwdata, gwinvD, x);	// x = D^-1*P*V(N+1) modulo N
+//	gwfftmul (gwdata, gwinvD, x);	// x = D^-1*P*V(N+1) modulo N
+	gwmul_carefully (gwdata, gwinvD, x);// x = D^-1*P*V(N+1) modulo N
 	CHECK_IF_ANY_ERROR(x, (explen), explen, 4)
 	gwsub (gwdata, x, y);			// y = D^-1*(2*V(N+2)-P*V(N+1)) = U(N+1) modulo N
 	gwsetnormroutine (gwdata, 0, 1, 0);	// reset mul by const
@@ -6369,7 +6427,11 @@ int fastIsPRP (
 /* Setup the assembly code. */
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
-	a = IniGetInt (INI_FILE, "FBase", 3);
+	if (bpsw)
+		a = 2;
+	else
+		a = IniGetInt (INI_FILE, "FBase", 3);
+
 
 	do {
 		gwinit (gwdata);
@@ -6389,8 +6451,8 @@ int fastIsPRP (
 
 /* Clean up and return */
 
-	if (retval == TRUE)
-		IniWriteString(INI_FILE, "FFT_Increment", NULL);
+//	if (retval == TRUE)
+//		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	gwdone (gwdata);
 	free (gwdata);
 	return (retval);
@@ -6511,31 +6573,62 @@ int fastIsFrobeniusPRP (
 	int	retval;
 	gwhandle *gwdata;
 	ghandle *gdata;
-	uint32_t P = 3, Q = 0;
-	long D;
+	long P = 3, Q = 0;
+	long D, sign1, sign2, abs_d, sqrtabs_d;
 
 /* Setup the assembly code. */
 
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
-	P = IniGetInt (INI_FILE, "PBase", 3);
 
-	D = generalLucasBase (N, &P, &Q);
-	if (D < 0) {
-		if (D == -1)
-			sprintf (buf, "Cannot compute D to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
-		else
-			sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
-		OutputBoth (buf);
-		free (gwdata);
-		return (TRUE); 
+	if (bpsw) {
+		P = 1;
+		sign1 = N->n[0]&2? -1 : 1;			// sign of kronecker (-1, N)
+		for (abs_d = 5;abs_d <= 2147483647;abs_d += 2) {
+			sign2 = abs_d&2 ? -1 : 1;		// requested sign of D
+			if ((D = isLucasBaseQ (N, abs_d, ((sign2 == -1) && (sign1 == -1))? 1 : -1)) == TRUE) {
+				sqrtabs_d = (int)floor(sqrt((double)abs_d));
+				D = sign2*abs_d;
+				Q = (1-D)/4;
+				if ((abs (Q) == 1) || (sqrtabs_d * sqrtabs_d == abs_d))
+					continue;		// Avoid abs(Q) == 1 or D perfect square...
+				else
+					break;
+			}
+			else if (D != FALSE) {
+				sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
+				OutputBoth (buf);
+				return (TRUE); 
+			}
+		}
+		if (D == FALSE) {
+			sprintf (buf, "Unable to further test %s ; it may be a perfect square !!\n", str);
+			OutputBoth (buf);
+			return (TRUE); 
+		}
+	}
+	else {
+
+		P = IniGetInt (INI_FILE, "PBase", 3);
+
+		D = generalLucasBase (N, (uint32_t*)&P, (uint32_t*)&Q);
+		if (D < 0) {
+			if (D == -1)
+				sprintf (buf, "Cannot compute D to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
+			else
+				sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
+			OutputBoth (buf);
+			free (gwdata);
+			return (TRUE); 
+		}
 	}
 
 	do {
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
-		gwsetmaxmulbyconst (gwdata, max (3, Q));
+		if (abs(Q) <= GWMULBYCONST_MAX)
+			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
@@ -6567,31 +6660,60 @@ int slowIsFrobeniusPRP (
 	gwhandle *gwdata;
 	ghandle *gdata;
 
-	uint32_t P = 3, Q = 0;
-	long D;
+	long P = 3, Q = 0;
+	long D, sign1, sign2, abs_d, sqrtabs_d;
 
 /* Setup the assembly code. */
 
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
-	P = IniGetInt (INI_FILE, "PBase", 3);
+	if (bpsw) {
+		P = 1;
+		sign1 = N->n[0]&2? -1 : 1;			// sign of kronecker (-1, N)
+		for (abs_d = 5;abs_d <= 2147483647;abs_d += 2) {
+			sign2 = abs_d&2 ? -1 : 1;		// requested sign of D
+			if ((D = isLucasBaseQ (N, abs_d, ((sign2 == -1) && (sign1 == -1))? 1 : -1)) == TRUE) {
+				sqrtabs_d = (int)floor(sqrt((double)abs_d));
+				D = sign2*abs_d;
+				Q = (1-D)/4;
+				if ((abs (Q) == 1) || (sqrtabs_d * sqrtabs_d == abs_d))
+					continue;		// Avoid abs(Q) == 1 or D perfect square...
+				else
+					break;
+			}
+			else if (D != FALSE) {
+				sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
+				OutputBoth (buf);
+				return (TRUE); 
+			}
+		}
+		if (D == FALSE) {
+			sprintf (buf, "Unable to further test %s ; it may be a perfect square !!\n", str);
+			OutputBoth (buf);
+			return (TRUE); 
+		}
+	}
+	else {
+		P = IniGetInt (INI_FILE, "PBase", 3);
 
-	D = generalLucasBase (N, &P, &Q);
-	if (D < 0) {
-		if (D == -1)
-			sprintf (buf, "Cannot compute D to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
-		else
-			sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
-		OutputBoth (buf);
-		free (gwdata);
-		return (TRUE); 
+		D = generalLucasBase (N, (uint32_t*)&P, (uint32_t*)&Q);
+		if (D < 0) {
+			if (D == -1)
+				sprintf (buf, "Cannot compute D to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
+			else
+				sprintf (buf, "%s has a small factor : %d !!\n", str, abs(D));
+			OutputBoth (buf);
+			free (gwdata);
+			return (TRUE); 
+		}
 	}
 
 	do {
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
-		gwsetmaxmulbyconst (gwdata, max (3, Q));
+		if (abs(Q) <= GWMULBYCONST_MAX)
+			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
 		gwdata->force_general_mod = TRUE;
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
@@ -6703,7 +6825,11 @@ int slowIsPRP (
 
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
-	a = IniGetInt (INI_FILE, "FBase", 3);
+	if (bpsw)
+		a = 2;
+	else
+		a = IniGetInt (INI_FILE, "FBase", 3);
+
 
 	do {
 		gwinit (gwdata);
@@ -6722,8 +6848,8 @@ int slowIsPRP (
 
 /* Clean up and return */
 
-	if (retval == TRUE)
-		IniWriteString(INI_FILE, "FFT_Increment", NULL);
+//	if (retval == TRUE)
+//		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	gwdone (gwdata);
 	free (gwdata);
 	return (retval);
@@ -6866,6 +6992,8 @@ int isPRPinternal (
 			retval = fastIsPRP (dk, base, n, incr, str, res);
 			if (retval && *res && !Fermat_only && !IniGetInt(INI_FILE, "FermatPRPtest", 0))
 				retval = fastIsFrobeniusPRP (dk, base, n, incr, str, res);
+			else if (retval == TRUE)
+				IniWriteString(INI_FILE, "FFT_Increment", NULL);
 		}
 	}
 	else if (Nlen < 50) {
@@ -6897,6 +7025,8 @@ int isPRPinternal (
 			retval = slowIsPRP (str, res);
 			if (retval && *res && !Fermat_only && !IniGetInt(INI_FILE, "FermatPRPtest", 0))
 				retval = slowIsFrobeniusPRP (str, res);
+			else if (retval == TRUE)
+				IniWriteString(INI_FILE, "FFT_Increment", NULL);
 		}
 	}
 	return retval;
@@ -6925,7 +7055,7 @@ int isPRPinternal (
 #define ABCFNAS		16				// Fxied n:  k, b, and c specified on each input line
 #define ABCVARGS	17				// k, b, and n specified on each input line
 #define ABCVARAS	18				// k, b, n, and c specified on each input line
-#define ABCVARAQS	19				// k, b, n, c and quotient specified on each input line
+#define ABCVARAQS	19				// k, b, n, c and divisor specified on each input line
 #define	ABCRU		20				// (10^n-1)/9 Repunits
 #define	ABCGRU		21				// (b^n-1)/(b-1) Generalized Repunits
 
@@ -6941,7 +7071,7 @@ int IsPRP (							// General PRP test
 	char	str[sgkbufsize+256], sgk1[sgkbufsize], buf[sgkbufsize+256]; 
 	unsigned long bits, retval;
 	double dk;
-	giant gq, gr;
+	giant gd, gr;
 
 	if (format == ABCRU || format == ABCGRU) {	// Repunits or Generalized Repunits
 		sprintf (str, "(%lu^%lu-1)/%lu", base, n, base-1);
@@ -6959,12 +7089,12 @@ int IsPRP (							// General PRP test
 		else if (format != NPGAP) {			// Not MODE_AP
 			if (!strcmp(sgk1, "1"))
 				if (format == ABCVARAQS)
-					sprintf (str, "(%lu^%lu%c%d)/%s", base, n, incr < 0 ? '-' : '+', abs(incr), sgq);
+					sprintf (str, "(%lu^%lu%c%d)/%s", base, n, incr < 0 ? '-' : '+', abs(incr), sgd);
 				else
 					sprintf (str, "%lu^%lu%c%d", base, n, incr < 0 ? '-' : '+', abs(incr));
 			else
 				if (format == ABCVARAQS)
-					sprintf (str, "(%s*%lu^%lu%c%d)/%s", sgk1, base, n, incr < 0 ? '-' : '+', abs(incr), sgq);
+					sprintf (str, "(%s*%lu^%lu%c%d)/%s", sgk1, base, n, incr < 0 ? '-' : '+', abs(incr), sgd);
 				else
 					sprintf (str, "%s*%lu^%lu%c%d", sgk1, base, n, incr < 0 ? '-' : '+', abs(incr));
 		}
@@ -7017,27 +7147,29 @@ int IsPRP (							// General PRP test
 			return TRUE;
 		}
 		uldivg (base - 1, N);
-		strong = FALSE;				// Do a simple Fermat PRP test (not strong).
+		quotient = TRUE;
+//		strong = FALSE;				// Do a simple Fermat PRP test (not strong).
 	}
 	else if (format == ABCVARAQS) {
-		gq = newgiant (strlen(sgq)/2 + 8);	// Allocate one byte per decimal digit + spares
+		gd = newgiant (strlen(sgd)/2 + 8);	// Allocate one byte per decimal digit + spares
 		gr = newgiant ((bits >> 4) + 8);	// Allocate memory for the remainder
-		ctog (sgq, gq);						// Convert quotient string to giant
+		ctog (sgd, gd);						// Convert divisor string to giant
 		gtog (N, gr);
-		modg (gq, gr);
+		modg (gd, gr);
 		if (!isZero(gr)) {
 			sprintf (buf, "%s is not an integer!\n", str);
 			OutputBoth (buf);
 			*res = FALSE;
 			free (gr);
-			free (gq);
+			free (gd);
 			free (N);
 			free (gk);
 			return TRUE;
 		}
 		else {
-			divg (gq, N);
-			strong = FALSE;			// Do a simple Fermat PRP test (not strong).
+			divg (gd, N);
+			quotient = TRUE;
+///			strong = FALSE;			// Do a simple Fermat PRP test (not strong).
 		}
 	}
 
@@ -7060,7 +7192,7 @@ int IsPRP (							// General PRP test
 		Nlen = bitlen (N); 
 		klen = bitlen(gk);
 
-		if (klen > 53) {					// we must use generic reduction
+		if (klen > 53 || generic) {					// we must use generic reduction
 			dk = 0.0;
 		}
 		else {								// we can use DWT ; compute the multiplier as a double
@@ -7072,11 +7204,12 @@ int IsPRP (							// General PRP test
 		retval = isPRPinternal (str, dk, base, n, incr, res);
 	}
 
-	strong = TRUE;						// Restore Strong Fermat PRP test
+	strong = TRUE;							// Restore Strong Fermat PRP test
+	quotient = FALSE;						// Reset quotient flag
 
 	if (format == ABCVARAQS) {
 		free (gr);
-		free (gq);
+		free (gd);
 	}
 	free (N);
 	free (gk);
@@ -7140,7 +7273,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 //		Nlen = bitlen (N); 
 		klen = bitlen(gk);
 
-		if (klen > 53) {					// we must use generic reduction
+		if (klen > 53 || generic) {			// we must use generic reduction
 			dk = 0.0;
 		}
 		else {								// we can use DWT ; compute the multiplier as a double
@@ -7387,6 +7520,7 @@ restart:
 		if (verbose)
 			writeResults (buf);	
 		D = P*P - 4;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -7401,18 +7535,19 @@ restart:
 //		dbltogw (gwdata, (double)P, y);
 		gwsetsmall (gwdata, 2, x);			// Initial values
 		gwsetsmall (gwdata, P, y);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
-
 
 	ultog (D, tmp);						// Compute inverse of D modulo N
 	invg (modulus, tmp);
 	gianttogw (gwdata, tmp, gwinvD);	// Convert it to gwnum
-	gwfft (gwdata, gwinvD, gwinvD);		// And fft it
+//	gwfft (gwdata, gwinvD, gwinvD);		// And fft it
 	gtog (modulus, tmp);				// Compute inverse of 2 modulo N
 	iaddg (1, tmp);						// Which is (N+1)/2
 	gshiftright (1, tmp);
 	gianttogw (gwdata, tmp, gwinv2);	// Convert it to gwnum
-	gwfft (gwdata, gwinv2, gwinv2);		// And fft it
+//	gwfft (gwdata, gwinv2, gwinv2);		// And fft it
 
 /* Output a message about the FFT length */
 
@@ -7465,8 +7600,9 @@ restart:
 		gwstartnextfft (gwdata, 0);
 
 		if ( bitv = bitval (tmp2, Nlen-bit)) {
-			gwsetaddin (gwdata, -(int)P);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -(int)P);
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
 				gwsafemul (gwdata, y, x);
 				will_try_larger_fft = FALSE;
@@ -7478,8 +7614,11 @@ restart:
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(x, (bit), Nlen, 1)
-			gwsetaddin (gwdata, -2);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -(double)P, x);
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -2);
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
 				will_try_larger_fft = FALSE;
@@ -7491,10 +7630,13 @@ restart:
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(y, (bit), Nlen, 2)
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -2.0, y);
 		}
 		else {
-			gwsetaddin (gwdata, -(int)P);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -(int)P);
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
 				gwsafemul (gwdata, x, y);
 				will_try_larger_fft = FALSE;
@@ -7506,8 +7648,11 @@ restart:
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(y, (bit), Nlen, 3)
-			gwsetaddin (gwdata, -2);
-			if ((bit+26 < Nlen) && (bit > 26) &&
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -(double)P, y);
+			if (abs(gwdata->c) == 1)
+				gwsetaddin (gwdata, -2);
+			if (!debug && !care && (bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
 				will_try_larger_fft = FALSE;
@@ -7519,6 +7664,8 @@ restart:
 				will_try_larger_fft = TRUE;
 			}
 			CHECK_IF_ANY_ERROR(x, (bit), Nlen, 4)
+			if (abs(gwdata->c) != 1)
+				gwsmalladd (gwdata, -2.0, x);
 		}
 
  /* That iteration succeeded, bump counters */
@@ -7617,19 +7764,8 @@ restart:
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);		// The modulo reduction is done here
-				modg (N, tmp);				// External modulus and gwnums one may be different...
-			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp->n[1], tmp->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -7648,7 +7784,8 @@ restart:
 
 	// Compute the matrix at (N+1)/base
 
-	gwsetaddin (gwdata, 0);				// Reset addin constant.
+	if (abs(gwdata->c) == 1)
+		gwsetaddin (gwdata, 0);			// Reset addin constant.
 	gwcopy (gwdata, x, a22);			// a22 = V((N+1)/base)
 	gwcopy (gwdata, y, a12);			// a12 = V((N+1)/base+1)
 	gwcopy (gwdata, y, a21);			// a21 = V((N+1)/base+1)
@@ -7656,31 +7793,39 @@ restart:
 	gwcopy (gwdata, x, y);				// Now, y = V((N+1)/base)
 	gwsetnormroutine (gwdata, 0, 1, 1);	// set mul. by const.
 	gwsetmulbyconst (gwdata, 2);
-	gwfftmul (gwdata, gwinvD, a21);		// a21 = D^-1*2*V((N+1)/base+1) modulo N
+//	gwfftmul (gwdata, gwinvD, a21);		// a21 = D^-1*2*V((N+1)/base+1) modulo N
+	gwmul_carefully (gwdata, gwinvD, a21);// a21 = D^-1*2*V((N+1)/base+1) modulo N
 	CHECK_IF_ANY_ERROR(a21, (Nlen), Nlen, 6)
 	gwsetmulbyconst (gwdata, P);
-	gwfftmul (gwdata, gwinvD, x);		// x =  D^-1*P*V((N+1)/base) modulo N
+//	gwfftmul (gwdata, gwinvD, x);		// x =  D^-1*P*V((N+1)/base) modulo N
+	gwmul_carefully (gwdata, gwinvD, x);// x =  D^-1*P*V((N+1)/base) modulo N
 	CHECK_IF_ANY_ERROR(x, (Nlen), Nlen, 6)
 	gwsub (gwdata, x, a21);				// a21 = D^-1*(2*V((N+1)/base+1)-P*V((N+1)/base)) = U(N+1)/base modulo N
-	gwfftmul (gwdata, gwinvD, a11);		// a11 = D^-1*P*V((N+1)/base+1) modulo N
+//	gwfftmul (gwdata, gwinvD, a11);		// a11 = D^-1*P*V((N+1)/base+1) modulo N
+	gwmul_carefully (gwdata, gwinvD, a11);// a11 = D^-1*P*V((N+1)/base+1) modulo N
 	CHECK_IF_ANY_ERROR(a11, (Nlen), Nlen, 6)
 	gwsetmulbyconst (gwdata, 2);
-	gwfftmul (gwdata, gwinvD, y);		// xx = D^-1*2*V((N+1)/base) modulo N
+//	gwfftmul (gwdata, gwinvD, y);		// xx = D^-1*2*V((N+1)/base) modulo N
+	gwmul_carefully (gwdata, gwinvD, y);// xx = D^-1*2*V((N+1)/base) modulo N
 	CHECK_IF_ANY_ERROR(y, (Nlen), Nlen, 6)
 	gwsub (gwdata, y, a11);				// a11 = D^-1*(P*V((N+1)/base+1)-2*V((N+1)/base)) = U((N+1)/base+1) modulo N
 	gwsetnormroutine (gwdata, 0, 1, 0);	// reset mul by const
-	gwfftmul (gwdata, gwinv2, a22);		// a22 = 2^-1*V((N+1)/base)
+//	gwfftmul (gwdata, gwinv2, a22);		// a22 = 2^-1*V((N+1)/base)
+	gwmul_carefully (gwdata, gwinv2, a22);// a22 = 2^-1*V((N+1)/base)
 	CHECK_IF_ANY_ERROR(a22, (Nlen), Nlen, 6)
-	gwfftmul (gwdata, gwinv2, a12);		// a12 = 2^-1*V((N+1)/base+1)
+//	gwfftmul (gwdata, gwinv2, a12);		// a12 = 2^-1*V((N+1)/base+1)
+	gwmul_carefully (gwdata, gwinv2, a12);// a12 = 2^-1*V((N+1)/base+1)
 	CHECK_IF_ANY_ERROR(a12, (Nlen), Nlen, 6)
 	gwsetmulbyconst (gwdata, P);
 	gwsetnormroutine (gwdata, 0, 1, 1);	// set mul. by const.
 	gwcopy (gwdata, a11, x);			// x = U((N+1)/base+1)
-	gwfftmul (gwdata, gwinv2, x);		// x = 2^-1*P*U((N+1)/base+1)
+//	gwfftmul (gwdata, gwinv2, x);		// x = 2^-1*P*U((N+1)/base+1)
+	gwmul_carefully (gwdata, gwinv2, x);// x = 2^-1*P*U((N+1)/base+1)
 	CHECK_IF_ANY_ERROR(x, (Nlen), Nlen, 6)
 	gwsub (gwdata, x, a12);				// a12 = 2^-1(V((N+1)/base+1)-P*U((N+1)/base+1))
 	gwcopy (gwdata, a21, x);			// x = U((N+1)/base)
-	gwfftmul (gwdata, gwinv2, x);		// x = 2^-1*P*U((N+1)/base)
+//	gwfftmul (gwdata, gwinv2, x);		// x = 2^-1*P*U((N+1)/base)
+	gwmul_carefully (gwdata, gwinv2, x);// x = 2^-1*P*U((N+1)/base)
 	CHECK_IF_ANY_ERROR(x, (Nlen), Nlen, 6)
 	gwsub (gwdata, x, a22);				// a22 = 2^-1(V((N+1)/base)-P*U((N+1)/base))
 	gwsetnormroutine (gwdata, 0, 1, 0);	// reset mul by const
@@ -7692,10 +7837,15 @@ restart:
 	gwcopy (gwdata, a21, c21);
 	gwcopy (gwdata, a22, c22);
 
-	gwfft (gwdata, a11, b11);			// Copy (and fft) the current matrix
-	gwfft (gwdata, a12, b12);
-	gwfft (gwdata, a21, b21);
-	gwfft (gwdata, a22, b22);
+//	gwfft (gwdata, a11, b11);			// Copy (and fft) the current matrix
+//	gwfft (gwdata, a12, b12);
+//	gwfft (gwdata, a21, b21);
+//	gwfft (gwdata, a22, b22);
+
+	gwcopy (gwdata, a11, b11);			// Copy the current matrix
+	gwcopy (gwdata, a12, b12);
+	gwcopy (gwdata, a21, b21);
+	gwcopy (gwdata, a22, b22);
 
 	bbits = base;
 	ulone = 1;
@@ -7713,17 +7863,22 @@ restart:
 		gwcopy (gwdata, a12, p);			// a12-->p
 		gwcopy (gwdata, a12, pp);			// a12-->pp
 		gwadd3 (gwdata, a11, a22, s);		// a11+a12-->s
-		gwfft (gwdata, s, s);
-		gwmul (gwdata, a21, p);				// a21*a12-->p
+//		gwfft (gwdata, s, s);
+//		gwmul (gwdata, a21, p);				// a21*a12-->p
+		gwmul_carefully (gwdata, a21, p);	// a21*a12-->p
 		CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-		gwsquare (gwdata, a22);				// a22*a22-->a22
+//		gwsquare (gwdata, a22);				// a22*a22-->a22
+		gwsquare_carefully (gwdata, a22);	// a22*a22-->a22
 		CHECK_IF_ANY_ERROR(a22, (Nlen), Nlen, 6)
-		gwfftfftmul (gwdata, s, a21, a21);	// (a11+a22)*a21-->a21 T
+//		gwfftfftmul (gwdata, s, a21, a21);	// (a11+a22)*a21-->a21 T
+		gwmul_carefully (gwdata, s, a21);	// (a11+a22)*a21-->a21 T
 		CHECK_IF_ANY_ERROR(a21, (Nlen), Nlen, 6)
 		gwadd (gwdata, p, a22);				// a21*a12+a22*a22-->a22 T
-		gwfftmul (gwdata, s, a12);			// (a11+a22)*a12-->a12 T
+//		gwfftmul (gwdata, s, a12);			// (a11+a22)*a12-->a12 T
+		gwmul_carefully (gwdata, s, a12);	// (a11+a22)*a12-->a12 T
 		CHECK_IF_ANY_ERROR(a12, (Nlen), Nlen, 6)
-		gwsquare (gwdata, a11);				// a11*a11-->a11
+//		gwsquare (gwdata, a11);				// a11*a11-->a11
+		gwsquare_carefully (gwdata, a11);	// a11*a11-->a11
 		CHECK_IF_ANY_ERROR(a11, (Nlen), Nlen, 6)
 		gwadd (gwdata, p, a11);				// a21*a12+a11*a11-->a11 T
 
@@ -7732,26 +7887,34 @@ restart:
 		if (bbits & mask) {
 			gwcopy (gwdata, a11, p);		// a11-->p
 			gwcopy (gwdata, a21, pp);		// a21-->pp
-			gwfftmul (gwdata, b11, a11);	// b11*a11-->a11
+//			gwfftmul (gwdata, b11, a11);	// b11*a11-->a11
+			gwmul_carefully (gwdata, b11, a11);// b11*a11-->a11
 			CHECK_IF_ANY_ERROR(a11, (Nlen), Nlen, 6)
-			gwfftmul (gwdata, b12, pp);		// b12*a21-->pp
+//			gwfftmul (gwdata, b12, pp);		// b12*a21-->pp
+			gwmul_carefully (gwdata, b12, pp);// b12*a21-->pp
 			CHECK_IF_ANY_ERROR(pp, (Nlen), Nlen, 6)
 			gwadd (gwdata, pp, a11);		// b11*a11+b12*a21-->a11 T
-			gwfftmul (gwdata, b21, p);		// b21*a11-->p
+//			gwfftmul (gwdata, b21, p);		// b21*a11-->p
+			gwmul_carefully (gwdata, b21, p);// b21*a11-->p
 			CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-			gwfftmul (gwdata, b22, a21);	// b22*a21-->a21
+//			gwfftmul (gwdata, b22, a21);	// b22*a21-->a21
+			gwmul_carefully (gwdata, b22, a21);// b22*a21-->a21
 			CHECK_IF_ANY_ERROR(a21, (Nlen), Nlen, 6)
 			gwadd (gwdata, p, a21);			// b21*a11+b22*a21-->a21 T
 			gwcopy (gwdata, a12, p);		// a12-->p
 			gwcopy (gwdata, a22, pp);		// a22-->pp
-			gwfftmul (gwdata, b11, a12);	// b11*a12-->a12
+//			gwfftmul (gwdata, b11, a12);	// b11*a12-->a12
+			gwmul_carefully (gwdata, b11, a12);// b11*a12-->a12
 			CHECK_IF_ANY_ERROR(a12, (Nlen), Nlen, 6)
-			gwfftmul (gwdata, b12, pp);		// b12*a22-->pp
+//			gwfftmul (gwdata, b12, pp);		// b12*a22-->pp
+			gwmul_carefully (gwdata, b12, pp);// b12*a22-->pp
 			CHECK_IF_ANY_ERROR(pp, (Nlen), Nlen, 6)
 			gwadd (gwdata, pp, a12);		// b11*a12+b12*a22-->a12 T
-			gwfftmul (gwdata, b21, p);		// b21*a12-->p
+//			gwfftmul (gwdata, b21, p);		// b21*a12-->p
+			gwmul_carefully (gwdata, b21, p);// b21*a12-->p
 			CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-			gwfftmul (gwdata, b22, a22);	// b22*a22-->a22
+//			gwfftmul (gwdata, b22, a22);	// b22*a22-->a22
+			gwmul_carefully (gwdata, b22, a22);// b22*a22-->a22
 			CHECK_IF_ANY_ERROR(a22, (Nlen), Nlen, 6)
 			gwadd (gwdata, p, a22);			// b21*a12+b22*a22-->a22 T
 
@@ -7766,7 +7929,6 @@ restart:
 	ReplaceableLine (2);					/* Replace line */
 
 	if (!isZero (tmp)) {
-//	if (!gwiszero(gwdata, a21)) {
 		*res = FALSE;						/* Not a prime */
 		if (abs(tmp->sign) < 2)				// make a 32 bit residue correct !!
 			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
@@ -7802,17 +7964,22 @@ restart:
 				gwcopy (gwdata, a12, p);			// a12-->p
 				gwcopy (gwdata, a12, pp);			// a12-->pp
 				gwadd3 (gwdata, a11, a22, s);		// a11+a12-->s
-				gwfft (gwdata, s, s);
-				gwmul (gwdata, a21, p);				// a21*a12-->p
+//				gwfft (gwdata, s, s);
+//				gwmul (gwdata, a21, p);				// a21*a12-->p
+				gwmul_carefully (gwdata, a21, p);	// a21*a12-->p
 				CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-				gwsquare (gwdata, a22);				// a22*a22-->a22
+//				gwsquare (gwdata, a22);				// a22*a22-->a22
+				gwsquare_carefully (gwdata, a22);	// a22*a22-->a22
 				CHECK_IF_ANY_ERROR(a22, (Nlen), Nlen, 6)
-				gwfftfftmul (gwdata, s, a21, a21);	// (a11+a22)*a21-->a21 T
+//				gwfftfftmul (gwdata, s, a21, a21);	// (a11+a22)*a21-->a21 T
+				gwmul_carefully (gwdata, s, a21);	// (a11+a22)*a21-->a21 T
 				CHECK_IF_ANY_ERROR(a21, (Nlen), Nlen, 6)
 				gwadd (gwdata, p, a22);				// a21*a12+a22*a22-->a22 T
-				gwfftmul (gwdata, s, a12);			// (a11+a22)*a12-->a12 T
+//				gwfftmul (gwdata, s, a12);			// (a11+a22)*a12-->a12 T
+				gwmul_carefully (gwdata, s, a12);	// (a11+a22)*a12-->a12 T
 				CHECK_IF_ANY_ERROR(a12, (Nlen), Nlen, 6)
-				gwsquare (gwdata, a11);				// a11*a11-->a11
+//				gwsquare (gwdata, a11);				// a11*a11-->a11
+				gwsquare_carefully (gwdata, a11);	// a11*a11-->a11
 				CHECK_IF_ANY_ERROR(a11, (Nlen), Nlen, 6)
 				gwadd (gwdata, p, a11);				// a21*a12+a11*a11-->a11 T
 
@@ -7821,26 +7988,34 @@ restart:
 				if (bbits & mask) {
 					gwcopy (gwdata, a11, p);		// a11-->p
 					gwcopy (gwdata, a21, pp);		// a21-->pp
-					gwfftmul (gwdata, b11, a11);	// b11*a11-->a11
+//					gwfftmul (gwdata, b11, a11);	// b11*a11-->a11
+					gwmul_carefully (gwdata, b11, a11);// b11*a11-->a11
 					CHECK_IF_ANY_ERROR(a11, (Nlen), Nlen, 6)
-					gwfftmul (gwdata, b12, pp);		// b12*a21-->pp
+//					gwfftmul (gwdata, b12, pp);		// b12*a21-->pp
+					gwmul_carefully (gwdata, b12, pp);// b12*a21-->pp
 					CHECK_IF_ANY_ERROR(pp, (Nlen), Nlen, 6)
 					gwadd (gwdata, pp, a11);		// b11*a11+b12*a21-->a11 T
-					gwfftmul (gwdata, b21, p);		// b21*a11-->p
+//					gwfftmul (gwdata, b21, p);		// b21*a11-->p
+					gwmul_carefully (gwdata, b21, p);// b21*a11-->p
 					CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-					gwfftmul (gwdata, b22, a21);	// b22*a21-->a21
+//					gwfftmul (gwdata, b22, a21);	// b22*a21-->a21
+					gwmul_carefully (gwdata, b22, a21);// b22*a21-->a21
 					CHECK_IF_ANY_ERROR(a21, (Nlen), Nlen, 6)
 					gwadd (gwdata, p, a21);			// b21*a11+b22*a21-->a21 T
 					gwcopy (gwdata, a12, p);		// a12-->p
 					gwcopy (gwdata, a22, pp);		// a22-->pp
-					gwfftmul (gwdata, b11, a12);	// b11*a12-->a12
+//					gwfftmul (gwdata, b11, a12);	// b11*a12-->a12
+					gwmul_carefully (gwdata, b11, a12);// b11*a12-->a12
 					CHECK_IF_ANY_ERROR(a12, (Nlen), Nlen, 6)
-					gwfftmul (gwdata, b12, pp);		// b12*a22-->pp
+//					gwfftmul (gwdata, b12, pp);		// b12*a22-->pp
+					gwmul_carefully (gwdata, b12, pp);// b12*a22-->pp
 					CHECK_IF_ANY_ERROR(pp, (Nlen), Nlen, 6)
 					gwadd (gwdata, pp, a12);		// b11*a12+b12*a22-->a12 T
-					gwfftmul (gwdata, b21, p);		// b21*a12-->p
+//					gwfftmul (gwdata, b21, p);		// b21*a12-->p
+					gwmul_carefully (gwdata, b21, p);// b21*a12-->p
 					CHECK_IF_ANY_ERROR(p, (Nlen), Nlen, 6)
-					gwfftmul (gwdata, b22, a22);	// b22*a22-->a22
+//					gwfftmul (gwdata, b22, a22);	// b22*a22-->a22
+					gwmul_carefully (gwdata, b22, a22);// b22*a22-->a22
 					CHECK_IF_ANY_ERROR(a22, (Nlen), Nlen, 6)
 					gwadd (gwdata, p, a22);			// b21*a12+b22*a22-->a22 T
 
@@ -8037,7 +8212,7 @@ int plusminustest (
 
 	klen = bitlen(gk);
 
-	if (klen > 53) {					// we must use generic reduction
+	if (klen > 53 || generic) {			// we must use generic reduction
 		dk = 0.0;
 	}
 	else {								// we can use DWT ; compute the multiplier as a double
@@ -8204,24 +8379,6 @@ restart:
 		tempFileName (filename, 'L', N);
 		if (fileExists (filename)) {	// Resuming a Lucas sequence...
 			goto DoLucas;
-/*			if (!(retval = Lucasequence (gwdata, gdata, N, M, P, base, jmin, jmax, str, buf, res))) {
-				free (N);				// Lucas sequence stopped or in error..
-				free (gk);
-				free (M);
-				free (tmp);
-				free (tmp2);
-				free (tmp3);
-				gwdone (gwdata);
-				free (gwdata);
-				return FALSE;
-			}
-			else if (retval < 0) {
-				sprintf (buf, "Restarting Lucas sequence for %s...\n", str);
-				goto DoLucas;			// Starting directly a Lucas sequence...
-			}
-			else {						// Lucas sequence successfully completed.
-				goto Lucasdone;
-			} */
 		}
 		else if (IniGetInt(INI_FILE, "Verify", 0) || IniGetInt(INI_FILE, "PRPdone", 0)) {
 			clear_timers ();			// Init. timers
@@ -8253,6 +8410,7 @@ restart:
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);	
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -8272,6 +8430,8 @@ restart:
 		bit = 1;
 		gwsetsmall (gwdata, a, x);
 //		dbltogw (gwdata, (double)a, x);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -8308,7 +8468,8 @@ restart:
 /* Do the PRP test */
 
 	gwsetmulbyconst (gwdata, a);
-	gwsetaddin(gwdata,0);
+	if (abs(gwdata->c) == 1)
+		gwsetaddin(gwdata,0);
 	iters = 0;
 	
 	while (bit < explen) {
@@ -8336,7 +8497,7 @@ restart:
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if ((bit+25 < explen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if (!debug && !care && (bit+25 < explen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
 		}
 		else {
@@ -8432,18 +8593,8 @@ restart:
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-  			gwtogiant (gwdata, x, tmp2);	// The modulo reduction is done here
-			if (abs(tmp2->sign) < 2)		// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp2->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp2->n[1], tmp2->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+			writeresidue (gwdata, x, N, tmp2, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -8474,10 +8625,12 @@ restart:
 		gwstartnextfft(gwdata, 0);
 		gwsetnormroutine (gwdata, 0, 1, 0);
 		while (ulone) {
-			gwsquare (gwdata, x);
+//			gwsquare (gwdata, x);
+			gwsquare_carefully (gwdata, x);
 			CHECK_IF_ANY_ERROR (x, (explen), explen, 6);
 			if (bbits & mask) {
-				gwsafemul (gwdata, y, x);
+//				gwsafemul (gwdata, y, x);
+				gwmul_carefully (gwdata, y, x);
 				CHECK_IF_ANY_ERROR (x, (explen), explen, 6);
 			} 
 			bbits <<= 1;
@@ -8605,10 +8758,12 @@ DoLucas:
 				bbits <<= 1;
 				ulone <<= 1;
 				while (ulone) {
-					gwsquare (gwdata, x);
+//					gwsquare (gwdata, x);
+					gwsquare_carefully (gwdata, x);
 					CHECK_IF_ANY_ERROR (x, (explen), explen, 6);
 					if (bbits & mask) {
-						gwsafemul (gwdata, y, x);
+//						gwsafemul (gwdata, y, x);
+						gwmul_carefully (gwdata, y, x);
 						CHECK_IF_ANY_ERROR (x, (explen), explen, 6);
 					}
 					bbits <<= 1;
@@ -8848,7 +9003,7 @@ int isLLRP (
 
 		klen = bitlen(gk);			// Bit length ok initial k multiplier
 
-		if (klen > 53) {		// we must use generic reduction
+		if (klen > 53 || generic) {	// we must use generic reduction
 			dk = 0.0;
 		}
 		else {					// we can use DWT ; compute the multiplier as a double
@@ -9064,6 +9219,7 @@ restart:
 		start_timer (0); 
 		start_timer (1); 
 		time (&start_time); 
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	} 
  
 
@@ -9136,6 +9292,7 @@ restart:
 			start_timer (0); 
 			start_timer (1); 
 			time (&start_time); 
+			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	    } 
 	    else {
 			clear_timers ();		// Init. timers
@@ -9151,6 +9308,8 @@ restart:
 			else {
 				sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s\n", str);
 				OutputStr (buf); 
+				care = FALSE;
+				IniWriteString(INI_FILE, "Error_Count", NULL);
 			}
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "Using %s\n", fft_desc);
@@ -9189,7 +9348,7 @@ restart:
 			will_try_larger_fft = FALSE;
 			gwsetnormroutine (gwdata, 0, 1, 0);
 			gwsetaddin (gwdata, -2);
-			if ((1 != lasterr_point) || !maxerr_recovery_mode[0])
+			if (!debug && !care && ((1 != lasterr_point) || !maxerr_recovery_mode[0]))
 				gwsquare (gwdata, y);
 			else {
 				gwsquare_carefully (gwdata, y);
@@ -9236,7 +9395,7 @@ restart:
 
 			if (bit) {
 				gwsetaddin (gwdata, -v1);
-				if ((index != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2])) {
+				if (!debug && !care && ((index != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
 					gwsafemul (gwdata, y, x);
 					will_try_larger_fft = FALSE;
 				}
@@ -9248,7 +9407,7 @@ restart:
 				}
 				CHECK_IF_ANY_ERROR(x, (index), klen, 1)
 				gwsetaddin (gwdata, -2);
-				if ((index != lasterr_point) || !maxerr_recovery_mode[2]) {
+				if (!debug && !care && ((index != lasterr_point) || !maxerr_recovery_mode[2])) {
 					gwsquare (gwdata, y);
 					will_try_larger_fft = FALSE;
 				}
@@ -9262,7 +9421,7 @@ restart:
 			}
 			else {
 				gwsetaddin (gwdata, -v1);
-				if ((index != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4])) {
+				if (!debug && !care && ((index != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
 					gwsafemul (gwdata, x, y);
 					will_try_larger_fft = FALSE;
 				}
@@ -9274,7 +9433,7 @@ restart:
 				}
 				CHECK_IF_ANY_ERROR(y, (index), klen, 3)
 				gwsetaddin (gwdata, -2);
-				if ((index != lasterr_point) || !maxerr_recovery_mode[4]) {
+				if (!debug && !care && ((index != lasterr_point) || !maxerr_recovery_mode[4])) {
 					gwsquare (gwdata, x);
 					will_try_larger_fft = FALSE;
 				}
@@ -9368,7 +9527,7 @@ restart:
 	    }
 
 		gwsetaddin (gwdata, -v1);
-		if ((klen != lasterr_point) || !maxerr_recovery_mode[5])
+		if (!debug && !care && ((klen != lasterr_point) || !maxerr_recovery_mode[5]))
 			gwmul (gwdata, y, x);
 		else {
 			gwmul_carefully (gwdata, y, x);
@@ -9399,6 +9558,8 @@ MERSENNE:
 	    OutputStr (buf); 
 		LineFeed();
 		j = 1;
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	} 
 
 
@@ -9432,7 +9593,7 @@ MERSENNE:
 			!(interimResidues && ((j+1) % interimResidues < 2)) && 
 			(j >= 30) && (j < last - 31) && !maxerr_recovery_mode[6]); 
 
-		if ((j > 30) && (j < last - 30) && ((j != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if (!debug && !care && (j > 30) && (j < last - 30) && ((j != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
 		}
 		else {
@@ -9530,18 +9691,8 @@ MERSENNE:
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && j % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp);		// The modulo reduction is done here
-			if (abs(tmp->sign) < 2)				// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at iteration %ld\n",
-				 str, 0, tmp->n[0], j);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at iteration %ld\n",
-				 str, tmp->n[1], tmp->n[0], j);
-			OutputBoth (buf);
-		}
+		if (interimResidues && j % interimResidues < 2)
+			writeresidue (gwdata, x, N, tmp, buf, str, j, ITER);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -9805,7 +9956,7 @@ int isProthP (
 
 	klen = bitlen(gk);					// Length of initial k multiplier
 
-	if (klen > 53) {					// we must use generic reduction
+	if (klen > 53 || generic) {			// we must use generic reduction
 		dk = 0.0;
 	}
 	else {								// we can use DWT, compute k as a double
@@ -9981,6 +10132,7 @@ restart:
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -10000,6 +10152,8 @@ restart:
 		bit = 1;
 //		dbltogw (gwdata, (double) a, x);
 		gwsetsmall (gwdata, a, x);
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 	start_timer (0);	// Start loop timer.
@@ -10073,7 +10227,7 @@ restart:
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
-		if ((bit > 30) && (bit < Nlen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if (!debug && !care && (bit > 30) && (bit < Nlen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
 		}
 		else {
@@ -10171,19 +10325,8 @@ restart:
 /* residues for the next iteration so that we can compare our */
 /* residues to programs that start counter at zero or one. */
 
-		if (interimResidues && bit % interimResidues < 2) {
-				gwtogiant (gwdata, x, tmp2);	// The modulo reduction is done here
-//			iaddg (1, tmp2);					// Compute the (unnormalized) residue
-			if (abs(tmp2->sign) < 2)			// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, 0, tmp2->n[0], bit);
-			else
-				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at bit %ld\n",
-				 str, tmp2->n[1], tmp2->n[0], bit);
-			OutputBoth (buf);
-		}
+		if (interimResidues && bit % interimResidues < 2)
+			writeresidue (gwdata, x, N, tmp2, buf, str, bit, BIT);
 
 /* Write a save file every "interimFiles" iterations. */
 
@@ -10912,6 +11055,7 @@ restart:
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -10930,6 +11074,8 @@ restart:
 		}
 
 		bit = 1;
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
 
@@ -11034,7 +11180,7 @@ restart:
 
 
 		gwsetnormroutine (gwdata, 0, echk, 0);
-		if ((bit > (30+loopshift)) && (bit < explen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if (!debug && !care && (bit > (30+loopshift)) && (bit < explen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
 			gwsquare (gwdata, x);
 		else {
 			gwsquare_carefully (gwdata, x);
@@ -11675,6 +11821,7 @@ restart:
 				 PRECISION);
 		sprintf (buf, fmt_mask, sgk, bit, pct);
 		OutputStr (buf);
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -11687,6 +11834,8 @@ restart:
 			sprintf (buf, "Starting SPRP test of %s\n", sgk);
 		OutputStr (buf);
 		bit = 1;
+		care = FALSE;
+		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
 
@@ -11787,7 +11936,7 @@ restart:
 			else
 				gwsetaddinatpowerofb (gwdata, -2, ubx);
 
-		if ((bit > 30) && (bit < expx-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if (!debug && !care && (bit > 30) && (bit < expx-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
 			gwsquare (gwdata, x);
 		else {
 			gwsquare_carefully (gwdata, x);
@@ -12292,6 +12441,7 @@ void primeContinue ()
 		generic =  IniGetInt(INI_FILE, "ForceGeneric", 0);
 		vrbareix  = IniGetInt(INI_FILE, "VrbaReixTest", 0);
 		dualtest = IniGetInt(INI_FILE, "DualTest", 0);
+		bpsw = IniGetInt(INI_FILE, "BPSW", 0);
 		hiline =  IniGetInt(INI_FILE, "HiLine", 0);
 		nofac =  IniGetInt(INI_FILE, "NoPrefactoring", 0);
 
@@ -13167,12 +13317,12 @@ void primeContinue ()
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
-				else if (format == ABCVARAQS)	{	// k, b, n, c and q specified on each input line
-					if (sscanf (buff, "%s %lu %lu %d %s", sgk, &base, &n, &incr, sgq) != 5)
+				else if (format == ABCVARAQS)	{	// k, b, n, c and d specified on each input line
+					if (sscanf (buff, "%s %lu %lu %d %s", sgk, &base, &n, &incr, sgd) != 5)
 						continue;				// Skip invalid line
 					if (!isDigitString(sgk))
 						continue;				// Skip invalid line
-					if (!isDigitString(sgq))
+					if (!isDigitString(sgd))
 						continue;				// Skip invalid line
 					if (! process_num (format, sgk, base, n, incr, shift, &res))
 						goto done;
@@ -13183,7 +13333,7 @@ void primeContinue ()
 							if (hline >= resultline) {	// write the relevant header
 								_write (outfd, hbuff, strlen (hbuff));
 							}
-							sprintf (outbuf, "%s %lu %lu %d %s\n", sgk, base, n, incr, sgq); 
+							sprintf (outbuf, "%s %lu %lu %d %s\n", sgk, base, n, incr, sgd); 
 							_write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
