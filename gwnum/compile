@@ -15,27 +15,11 @@ objconv=c:\objconv\objconv
 
 # List of all buildables in this makefile
 
-all:	gwnum.lib gwnumd.lib linux\gwnum.a macosx\gwnum.a release\ecmstag1.obj debug\ecmstag1.obj
+all:	gwnumd.lib gwnum.lib linux\gwnum.a macosx\gwnum.a release\ecmstag1.obj debug\ecmstag1.obj
 
 # Make libraries out of the object files
 
-gwnum.lib: release\cpuid.obj release\gwnum.obj release\gwthread.obj release\gwutil.obj release\gwdbldbl.obj \
-	   release\giants.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
-	   mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
-	   xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \
-	   hg_blend.obj hg_core.obj hg_p4.obj hg_p4tp.obj hg_k8.obj hg_k10.obj \
-	   r4_core.obj r4_p4.obj r4_p4tp.obj r4_k8.obj r4_k10.obj \
-	   r4delay_core.obj r4delay_p4.obj r4delay_p4tp.obj r4delay_k8.obj r4delay_k10.obj \
-	   r4delay3_core.obj r4delay3_p4.obj r4delay3_p4tp.obj r4delay3_k8.obj r4delay3_k10.obj \
-	   r4delay5_core.obj r4delay5_p4.obj r4delay5_p4tp.obj r4delay5_k8.obj r4delay5_k10.obj \
-	   r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
-	   r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
-	   r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
-	   timeit.obj
-    -del gwnum.lib
-    lib /OUT:gwnum.lib release\*.obj *.obj
-
-gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwthread.obj debug\gwutil.obj debug\gwdbldbl.obj \
+gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwtables.obj debug\gwthread.obj debug\gwutil.obj debug\gwdbldbl.obj \
 	    debug\giants.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
 	    mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
 	    xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \
@@ -47,9 +31,31 @@ gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwthread.obj debug\gwutil.obj 
 	    r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
 	    r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
 	    r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
+	    ymult1ax.obj yr4_blend.obj \
+	    ymult3.obj ymult3a_core.obj ymult3ax.obj \
+	    yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 	    timeit.obj
     -del gwnumd.lib
     lib /OUT:gwnumd.lib debug\*.obj *.obj
+
+gwnum.lib: release\cpuid.obj release\gwnum.obj release\gwtables.obj release\gwthread.obj release\gwutil.obj release\gwdbldbl.obj \
+	   release\giants.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
+	   mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
+	   xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \
+	   hg_blend.obj hg_core.obj hg_p4.obj hg_p4tp.obj hg_k8.obj hg_k10.obj \
+	   r4_core.obj r4_p4.obj r4_p4tp.obj r4_k8.obj r4_k10.obj \
+	   r4delay_core.obj r4delay_p4.obj r4delay_p4tp.obj r4delay_k8.obj r4delay_k10.obj \
+	   r4delay3_core.obj r4delay3_p4.obj r4delay3_p4tp.obj r4delay3_k8.obj r4delay3_k10.obj \
+	   r4delay5_core.obj r4delay5_p4.obj r4delay5_p4tp.obj r4delay5_k8.obj r4delay5_k10.obj \
+	   r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
+	   r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
+	   r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
+	   ymult1ax.obj yr4_blend.obj \
+	   ymult3.obj ymult3a_core.obj ymult3ax.obj \
+	   yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
+	   timeit.obj
+    -del gwnum.lib
+    lib /OUT:gwnum.lib release\*.obj *.obj
 
 clean:
 	-del release\*.obj debug\*.obj
@@ -65,6 +71,9 @@ linux\gwnum.a: mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj m
 	       r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
 	       r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
 	       r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
+	       ymult1ax.obj yr4_blend.obj \
+	       ymult3.obj ymult3a_core.obj ymult3ax.obj \
+	       yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 	       timeit.obj
     attrib -r linux\gwnum.a
     -del linux\gwnum.a
@@ -77,14 +86,17 @@ linux\gwnum.a: mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj m
 macosx\gwnum.a: macosx\mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
 		mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
 		xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3ax.obj \
-		hg_blend.obj hg_core.obj hg_p4.obj hg_p4tp.obj \
-		r4_core.obj r4_p4.obj r4_p4tp.obj \
-		r4delay_core.obj r4delay_p4.obj r4delay_p4tp.obj \
-		r4delay3_core.obj r4delay3_p4.obj r4delay3_p4tp.obj \
-		r4delay5_core.obj r4delay5_p4.obj r4delay5_p4tp.obj \
-		r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj \
-		r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj \
-		r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj \
+		hg_blend.obj hg_core.obj hg_p4.obj \
+		r4_core.obj r4_p4.obj \
+		r4delay_core.obj r4delay_p4.obj \
+		r4delay3_core.obj r4delay3_p4.obj \
+		r4delay5_core.obj r4delay5_p4.obj \
+		r4dwpn_core.obj r4dwpn_p4.obj \
+		r4dwpn3_core.obj r4dwpn3_p4.obj \
+		r4dwpn5_core.obj r4dwpn5_p4.obj \
+		ymult1ax.obj yr4_blend.obj \
+		ymult3.obj ymult3a_core.obj ymult3ax.obj \
+		yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 		timeit.obj
     attrib -r macosx\gwnum.a
     -del /q macosx\foo
@@ -94,6 +106,7 @@ macosx\gwnum.a: macosx\mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult
     copy macosx\mult.obj macosx\foo
     -del macosx\*.obj
     xcopy /q *.obj macosx
+    -del macosx\*_p4tp.obj
     -del macosx\*_k8.obj
     -del macosx\*_k10.obj
     xcopy /y /q macosx\foo macosx
@@ -105,7 +118,6 @@ macosx\gwnum.a: macosx\mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult
     xcopy /q macosx\foo macosx
     -del /q macosx\foo
     rmdir macosx\foo
-
 
 # Compile C code
 
@@ -120,6 +132,12 @@ release\gwnum.obj: gwnum.c gwnum.h
 
 debug\gwnum.obj: gwnum.c gwnum.h
     $(cld) /Fodebug\gwnum.obj gwnum.c
+
+release\gwtables.obj: gwtables.c gwnum.h
+    $(cl) /Forelease\gwtables.obj gwtables.c
+
+debug\gwtables.obj: gwtables.c gwnum.h
+    $(cld) /Fodebug\gwtables.obj gwtables.c
 
 release\gwthread.obj: gwthread.c gwthread.h
     $(cl) /Forelease\gwthread.obj gwthread.c
@@ -150,4 +168,3 @@ release\ecmstag1.obj: ecmstag1.c gwnum.h
 
 debug\ecmstag1.obj: ecmstag1.c gwnum.h
     $(cld) /Fodebug\ecmstag1.obj ecmstag1.c
-

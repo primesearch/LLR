@@ -296,6 +296,12 @@ int main (
 			while (isdigit(*p))
 				*p2++ = *p++;
 			*p2 = '\0';
+			if (*p == '\0') {				// Multiplier alone
+				strcpy (base, "2");			// No matter...
+				strcpy (exponent, "0");		// Exponent = zero
+				strcpy (addin, "+0");		// c = +zero
+				goto DIGITSONLY;
+			}
 			if (*p == '^')	{				// the multiplier was ommitted
 				strcpy (base, multiplier);	// get the base in place
 				strcpy (multiplier, "1");	// default multiplier = 1
@@ -328,6 +334,7 @@ NOMULTIPLIER:
 			while (isdigit(*p))				// copy the c value
 				*p2++ = *p++;
 			*p2 = '\0';
+DIGITSONLY:
 			in = fopen ("$temp.npg", "w");	// open the temporary input file
 			fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
 			fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
@@ -357,7 +364,7 @@ NOMULTIPLIER:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.6\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.9\n");
 			return (0); 
 
 /* -W - use a different working directory */

@@ -221,6 +221,10 @@ SOURCE=.\Res\Cursor2.cur
 # End Source File
 # Begin Source File
 
+SOURCE=.\res\cursor3.cur
+# End Source File
+# Begin Source File
+
 SOURCE=.\Res\Prime95.ico
 # End Source File
 # Begin Source File

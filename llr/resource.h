@@ -20,6 +20,7 @@
 #define IDI_YELLOW_ICON                 153
 #define IDD_CONTENTS                    155
 #define IDR_TRAYMENU                    159
+#define IDC_CURSOR3                     160
 #define IDC_CHECK1                      1000
 #define IDC_NOISE                       1000
 #define IDC_EDIT1                       1001
@@ -98,7 +99,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        160
+#define _APS_NEXT_RESOURCE_VALUE        161
 #define _APS_NEXT_COMMAND_VALUE         32803
 #define _APS_NEXT_CONTROL_VALUE         1060
 #define _APS_NEXT_SYMED_VALUE           101

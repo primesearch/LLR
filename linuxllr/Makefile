@@ -41,5 +41,5 @@ clean:
 	rm -f $(EXE) $(EXE2) $(COMPOBJS)
 
 allclean:
-	rm -f $(EXE) $(EXE2) $(COMPOBJS)
+	rm -f $(EXE) $(EXE2) $(COMPOBJS) $(LIBELF)
 	cd ../gwnum ; make clean

@@ -3,7 +3,7 @@
 
 CC = gcc
 LFLAGS = -Wl
-LIBELF = ../gwnum/gwnum.a
+LIBELF = gwnum.a
 LIBS   = $(LIBELF) -lm -lstdc++ -lpthread -lcompat
 LIBS2  = $(LIBELF) -lm -lstdc++ -lpthread -lcompat -static
 

@@ -9,6 +9,8 @@
 void trace(int);
 EXTERNC int kronecker (uint32_t, uint32_t);
 EXTERNC ULONG gcd (ULONG, ULONG);
+extern unsigned long globalb;
+extern double globalk;
 
 /************************** Giants.c extensions *************************************/
 
@@ -48,6 +50,18 @@ void uldivg (uint32_t den, giant num) {
 }
 
 /************************************************************************************/
+
+int ispower (unsigned long x, unsigned long b) {
+	if (b == 0)
+		return ((x == 0)? TRUE : FALSE);
+	if (x == 0)
+		return (FALSE);
+	if (b == 1)
+		return ((x == 1)? TRUE : FALSE);
+	while (x%b == 0)
+		x /= b;
+	return ((x == 1)? TRUE : FALSE);
+}
 
 void Reduce (uint32_t x, uint32_t *d, uint32_t *b) {
 
@@ -541,7 +555,7 @@ long generalLucasBase(giant N, uint32_t *P, uint32_t *Q) {
 			if (((dred-1) & 2) && (N->n[0] & 2))	// Quadratic reciprocity
 				chgsign = -chgsign;
 			iaddg (1, N);					// Restore N
-			if ((jNp*chgsign) != -1)
+			if (((jNp*chgsign) != -1) || ((globalk == 1.0) && ispower((*Q), globalb)))
 				continue;
 			NmodPQD = gmodi ((*P)*(*Q)*D, N);
 			gcdNPQD = gcd (NmodPQD, (*P)*(*Q)*D);

@@ -1,9 +1,9 @@
-# Makefile for MacIntel OS X llr or sllr
+# Makefile for MacIntel OS X llr
 
 ENVP= MACOSX_DEPLOYMENT_TARGET=10.4
 
 CC = gcc
-LFLAGS = -Wl,-syslibroot,/Developer/SDKs/MacOSX10.4u.sdk -arch i386 -mmacosx-version-min=10.4
+LFLAGS = -Wl,-syslibroot,/Developer/SDKs/MacOSX10.4u.sdk -m4 -mmacosx-version-min=10.4 -arch i386
 LIBMAC = ../gwnum/release/gwnum.a
 LIBS   = $(LIBMAC) -lm -lstdc++
 LIBS2  = $(LIBMAC) -lm -lstdc++ -static
@@ -22,9 +22,8 @@ EXE = llr
 
 all: gwnum $(EXE)
 
-$(EXE): security  $(FACTOROBJ) $(COMPOBJS) $(LIBMAC)
-	ar -x $(LIBMAC) multutil.o
-	$(ENVP) $(CC) $(LFLAGS) -o $(EXE) $(FACTOROBJ) $(COMPOBJS) multutil.o $(LIBS)
+$(EXE): security  $(COMPOBJS) $(FACTOROBJ) $(LIBMAC)
+	$(ENVP) $(CC) $(LFLAGS) -o $(EXE) $(COMPOBJS) $(FACTOROBJ) $(LIBS)
 
 security:
 	[ ! -e ../security.h ] && touch ../security.h || true

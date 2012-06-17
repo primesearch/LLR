@@ -23,11 +23,13 @@
 #define FACTEST _FACTEST
 #define SRCARG	_SRCARG
 #define CPUID_EAX _CPUID_EAX
+#ifndef X86_64
 #define setupf _setupf
 #define factor64 _factor64
 #define psetupf _psetupf
 #define pfactor64 _pfactor64
 #define erdtsc _erdtsc
+#endif
 
 #endif
 

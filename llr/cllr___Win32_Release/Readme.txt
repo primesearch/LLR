@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.6 !
+		Welcome to LLR program Version 3.8.9 !
 
 
 1) Main features :
@@ -7,12 +7,25 @@
   LLR is a primality proving program for numbers of the form N = k*b^n +/- 1,
   (k < b^n), or numbers which can be rewritten in this form, like 
   Gaussian-Mersenne norms.
+
   It can also do strong and efficient PRP tests on more general k*b^n+c forms,
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
   (b^p-1)/(b-1), b!=2.
 
-  This version uses the most recent release (26.6) of George Woltman's Gwnum
+  In this new version, the base b can now be an arbitrary large integer 
+  (however restricted to 64 bits for fixed b formats). This is especially
+  useful while testing Generalized Fermat numbers.
+
+  This new version can be built on 64bit platforms, but then, the prefactoring
+  code is no more available. This affects only the Gaussian-Mersenne norm and
+  Wagstaff tests, for which the prefactoring must be done using a 32bit program.
+
+
+  This version uses the most recent release (27.7) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
+
+  The main advantage of this gwnum version is better performances on 64bit
+  machines ; also, several internal bugs in V26 have been corrected.
 
   Since version 25.11, gwnum library is no longer restricted to base two for
   efficient computing modulo k*b^n+c numbers (but SSE2 is required if b != 2), 
@@ -30,9 +43,9 @@
     Indeed, if it is set, any test is restarted at beginning if stopped...
 
   - In this new version, three new bugs have been fixed, concerning
-  Fermat, Lucas and Frobenius PRP tests on non base two numbers and/or abs(c)!=1
+  Fermat, Lucas and Frobenius PRP tests on non base two numbers or abs(c)!=1
 
-  - 28/03/11 : New bug fixed, concerning Frobenius PRP test on integer quotients
+  - 28/03/11 : New bug fixed, concerning Frobenius PRP test on quotients
   such as Repunits or generalized repunits(final modular reduction was missing).
 
   - 02/04/11 : Roundoff errors recovery has been improved ; continuing with
@@ -41,6 +54,11 @@
   - The new option -oBPSW=1 allows to replace the standard Lucas PRP test by
   the Baillie-PSW one (see http://www.trnicely.net/misc/bpsw.html for details)
   the Frobenius test then follows as usual.
+
+  - The two (mutually exclusive) options -oRising_ns=1 and -oRising_ks=1 have
+  been added in this version. They allow to process an input file
+  while it is sieved by another process of the same machine (LLR closes the file
+  during the test of the current candidate, to allow its updating by the sieve).
 
 2) User interfaces of LLR :
 
@@ -144,6 +162,7 @@
     OutputIterations=<number> : Nb. of iters between outputs (def. 10,000).
     DiskWriteTime=<number> : Time elapsed between disk savings (def. 30mn.).
     FBase=<number> : The base for the Fermat PRP test (default is 3).
+    PBase=<number> : The starting P value for a Lucas test (default is 3).
     MaxRestarts=<number> : Max. restarts of an N+1 or N-1 test (default 10).
     - There are several other values you have almost no reason to change...
 
@@ -204,6 +223,7 @@
 
       - Some special ABC formats :
 
+	- ABC$a^$b+1 : Generalized Fermat candidates
 	- ABC4^$a+1 : Gaussian-Mersenne norm candidates
 	- ABC(2^$a+1)/3 : Wagstaff PRP candidates
 	- ABC(10^$a-1)/9 : Repunits PRP candidates

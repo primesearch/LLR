@@ -1,5 +1,5 @@
 /*----------------------------------------------------------------------
-| Copyright 1995-2011 Mersenne Research, Inc.  All rights reserved
+| Copyright 1995-2012 Mersenne Research, Inc.  All rights reserved
 | Author:  George Woltman
 | Email: woltman@alum.mit.edu
 |
@@ -36,11 +36,7 @@
 #endif
 #include <sys/timeb.h>
 #include "cpuid.h"
-
-/* Masm routines */
-
-void one_hundred_thousand_clocks ();
-void one_million_clocks ();
+#include "gwthread.h"
 
 /* Global variables describing the CPU we are running on */
 
@@ -71,6 +67,26 @@ unsigned int CPU_SIGNATURE = 0;		/* Vendor-specific family number, */
 int	CPU_ARCHITECTURE = 0;		/* Our attempt to derive the CPU */
 					/* architecture. */
 
+/* Masm routines to burn up a specific number of clocks */
+
+void one_hundred_thousand_clocks_help ();
+void one_million_clocks_help ();
+
+/* Routines to burn up a specific number of clocks */
+
+void one_hundred_thousand_clocks (void)
+{
+	/* The helper function times dependent ROR instructions which have a throughput of 1 clock on Intel and AMD. */
+	/* If a future chip, needs to call a different helper routine, we'd make that choice here. */
+	one_hundred_thousand_clocks_help ();
+}
+
+void one_million_clocks (void)
+{
+	/* The helper function times dependent ROR instructions which have a throughput of 1 clock on Intel and AMD. */
+	/* If a future chip, needs to call a different helper routine, we'd make that choice here. */
+	one_million_clocks_help ();
+}
 
 /* Return the number of CPUs in the system */
 
@@ -123,7 +139,7 @@ unsigned int num_cpus (void)
 #ifdef X86_64
 
 int canExecInstruction (
-			unsigned long cpu_flag)
+	unsigned long cpu_flag)
 {
 	return (TRUE);
 }
@@ -243,6 +259,15 @@ int canExecInstruction (
 #endif
 #endif
 
+/* Busy loop to keep CPU cores occupied.  Used sometimes to aid */
+/* in measuring CPU speed. */
+
+int	end_busy_loop = FALSE;
+
+void busy_loop (void *arg)
+{
+	while (!end_busy_loop) one_million_clocks ();
+}
 
 /* Work with CPUID instruction to guess the cpu type and features */
 /* See Intel's document AP-485 for using CPUID on Intel processors */
@@ -365,6 +390,17 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			CPU_FLAGS |= CPU_AVX;
 		if ((reg.ECX >> 12) & 0x1)
 			CPU_FLAGS |= CPU_FMA;
+
+/* If hardware supports AVX that doesn't mean the OS supports AVX. */
+/* See if OS supports XGETBV, then see if OS supports AVX. */
+
+		if (CPU_FLAGS & CPU_AVX) {
+			CPU_FLAGS &= ~CPU_AVX;
+			if ((reg.ECX >> 27) & 0x1) {
+				Xgetbv (0, &reg);
+				if ((reg.EAX & 6) == 6) CPU_FLAGS |= CPU_AVX;
+			}
+		}
 	}
 
 /* Call CPUID with 0x80000000 argument.  It tells us how many extended CPU */
@@ -473,7 +509,9 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			 (family == 6 && model == 47) ||		// Xeon MP (based on Sandy Bridge technology)
 			 (family == 6 && model == 44) ||		// Core i7 (based on Sandy Bridge technology)
 			 (family == 6 && model == 37) ||		// Core i3, mobile i5/i7 (based on Sandy Bridge technology)
-			 (family == 6 && model == 42))			// Core i7 (based on Sandy Bridge technology)
+			 (family == 6 && model == 42) ||		// Core i7 (based on Sandy Bridge technology)
+			 (family == 6 && model == 45) ||		// Core i7 (based on Sandy Bridge-E technology)
+			 (family == 6 && model == 58))			// Core i7 (based on Ivy Bridge technology)
 			CPU_ARCHITECTURE = CPU_ARCHITECTURE_CORE_I7;
 		else if (family == 6 && model == 28)
 			CPU_ARCHITECTURE = CPU_ARCHITECTURE_ATOM;
@@ -1138,23 +1176,23 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 /* they do not support the full SSE instruction set.  I think testing for */
 /* the AMD MMX extensions capability will detect this case. */
 
-		if (max_extended_cpuid_value >= 0x80000001 &&
-		    ! (CPU_FLAGS & CPU_PREFETCH)) {
+		if (max_extended_cpuid_value >= 0x80000001 && ! (CPU_FLAGS & CPU_PREFETCH)) {
 			Cpuid (0x80000001, &reg);
-			if ((reg.EDX >> 22) & 0x1 &&
-			    canExecInstruction (CPU_PREFETCH))
+			if ((reg.EDX >> 22) & 0x1 && canExecInstruction (CPU_PREFETCH))
 				CPU_FLAGS |= CPU_PREFETCH;
 		}
 
 /* Check for support of 3DNow! instructions.  The prefetchw instruction */
 /* from the 3DNow! instruction set is used by the assembly code. */
+/* Starting with Bulldozer, AMD stopped supporting 3DNow! but kept */
+/* support for the 3DNow! prefetch instructions.  */
 
-		if (max_extended_cpuid_value >= 0x80000001 &&
-		    ! (CPU_FLAGS & CPU_3DNOW)) {
+		if (max_extended_cpuid_value >= 0x80000001) {
 			Cpuid (0x80000001, &reg);
-			if ((reg.EDX >> 31) & 0x1 &&
-			    canExecInstruction (CPU_3DNOW))
-				CPU_FLAGS |= CPU_3DNOW;
+			if ((reg.EDX >> 31) & 0x1 && canExecInstruction (CPU_3DNOW))
+				CPU_FLAGS |= CPU_3DNOW + CPU_3DNOW_PREFETCH;
+			else if ((reg.ECX >> 8) & 0x1 && canExecInstruction (CPU_3DNOW))
+				CPU_FLAGS |= CPU_3DNOW_PREFETCH;
 		}
 
 /* Get the L1 cache size and number of data TLBs */
@@ -1175,7 +1213,7 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			if (CPU_L2_CACHE_SIZE == 1) /* Workaround Duron bug */
 				CPU_L2_CACHE_SIZE = 64;
 			CPU_L2_CACHE_LINE_SIZE = reg.ECX & 0xFF;
-			CPU_L2_SET_ASSOCIATIVE = (reg.ECX & 0xF);
+			CPU_L2_SET_ASSOCIATIVE = (reg.ECX >> 8) & 0xF;
 			if (CPU_L2_SET_ASSOCIATIVE == 0x2)
 				CPU_L2_SET_ASSOCIATIVE = 2;
 			else if (CPU_L2_SET_ASSOCIATIVE == 0x4)
@@ -1198,7 +1236,7 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 			CPU_L3_DATA_TLBS = -1;
 			CPU_L3_CACHE_SIZE = (reg.EDX >> 18) * 512;
 			CPU_L3_CACHE_LINE_SIZE = reg.EDX & 0xFF;
-			CPU_L3_SET_ASSOCIATIVE = (reg.EDX & 0xF);
+			CPU_L3_SET_ASSOCIATIVE = (reg.EDX >> 8) & 0xF;
 			if (CPU_L3_SET_ASSOCIATIVE == 0x2)
 				CPU_L3_SET_ASSOCIATIVE = 2;
 			else if (CPU_L3_SET_ASSOCIATIVE == 0x4)
@@ -1223,6 +1261,8 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 
 		if (! (CPU_FLAGS & CPU_SSE2))
 			CPU_ARCHITECTURE = CPU_ARCHITECTURE_PRE_SSE2;
+		else if (CPU_FLAGS & CPU_AVX)
+			CPU_ARCHITECTURE = CPU_ARCHITECTURE_AMD_BULLDOZER;
 		else if (max_extended_cpuid_value < 0x8000001A)
 			CPU_ARCHITECTURE = CPU_ARCHITECTURE_AMD_K8;
 		else {
@@ -1258,7 +1298,10 @@ static	char *	BRAND_NAMES[] = {	/* From Intel Ap-485 */
 
 		if (max_extended_cpuid_value >= 0x80000006) {
 			Cpuid (0x80000006, &reg);
-			CPU_L2_CACHE_SIZE = (reg.ECX >> 24) & 0xFF;
+			if (family_code < 6 || (family_code == 6 && model_number <= 7))		// Older VIA processors
+				CPU_L2_CACHE_SIZE = (reg.ECX >> 24) & 0xFF;
+			else									// Newer VIA processors
+				CPU_L2_CACHE_SIZE = (reg.ECX >> 16) & 0xFFFF;
 			CPU_L2_CACHE_LINE_SIZE = reg.ECX & 0xFF;
 		}
 
@@ -1319,13 +1362,24 @@ void guessCpuSpeed (void)
 		double	speed1, speed2, speed3, avg_speed;
 		int	tries;
 
-/* Sandy Bridge RDTSC no longer counts clock ticks.  Intel did this so that */
-/* RDTSC can make accurate timing as SpeedStep changes the CPU frequency. */
-/* For such CPUs we try to find the multiplier that will convert RDTSC clocks */
-/* into CPU clocks. */
+/* In Sandy Bridge and some or all of the Core 2 series CPUs, RDTSC no longer */
+/* counts clock ticks.  Intel did this so that RDTSC can make accurate timing */
+/* as SpeedStep changes the CPU frequency.  For such CPUs we try to find a */
+/* multiplier that will convert RDTSC clocks into CPU core clocks.  Note that */
+/* this isn't a perfect solution because some CPUs have a wide range of CPU core */
+/* speeds (such as the i7-Q840M which ranges from 1.87 to 3.2 GHz).  We try to */
+/* get the non-turbo-boost core speed by loading up all but one core before */
+/* doing our timings. */
 
 		rdtsc_multiplier = 1.0;
 		if (CPU_FLAGS & CPU_TSC_INVARIANT) {
+			unsigned int i;
+			gwthread thread_id;
+			// Start threads so that all cores are doing work.  This will
+			// hopefully let us measure the CPU core speed when all cores
+			// are busy rather than the speed when cores are Turbo boosted.
+			end_busy_loop = FALSE;
+			for (i = 1; i <= CPU_CORES-1; i++) gwthread_create (&thread_id, &busy_loop, NULL);
 			// Run several million clocks in hopes of ramping up the core's
 			// clock speed to the maximum allowed by SpeedStep.
 			for (tries = 1; tries <= 50; tries++) one_million_clocks ();
@@ -1343,9 +1397,11 @@ void guessCpuSpeed (void)
 			rdtsc_multiplier = 900000.0 / (double) (min_1000000 - min_100000);
 			// On hyperthreaded machines (like my i7-860) the routines for
 			// 100,000 and 1,000,000 clocks will not work accurately when
-			// all cores are busy.  As a sanity check, make sure rdtsc_multiplier
-			// does not fall below 1.0.
+			// hyperthreaded cores are busy.  As a sanity check, make sure
+			// rdtsc_multiplier does not fall below 1.0.
 			if (CPU_HYPERTHREADS > 1 && rdtsc_multiplier < 1.0) rdtsc_multiplier = 1.0;
+			// Terminate the busy loop threads
+			end_busy_loop = TRUE;
 		}
 
 /* Compute the number of high resolution ticks in one millisecond */
@@ -1469,7 +1525,6 @@ void guessCpuSpeed (void)
 	}
 }
 
-
 /*--------------------------------------------------------------------------
 | And now, the routines that access the high resolution performance counter.
 +-------------------------------------------------------------------------*/
@@ -1551,3 +1606,4 @@ double getHighResTimerFrequency (void)
 	return (1000000.0);
 #endif
 }
+
