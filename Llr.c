@@ -110,6 +110,8 @@ char gfstring[] = "$a^$b+1";		// Special primality test for generalized Fermat n
 char spstring[] = "(2^$a+1)/3";		// Special SPRP test for Wagstaff numbers
 char repustring[] = "(10^$a-1)/9";	// PRP test for repunits numbers
 char grepustring[] = "($a^$b-1)/($a-1)";// PRP test for generalized repunits numbers
+char diffnumpstring[] = "$a^$b-$a^$c+%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c+%d so, form K*B^N+C
+char diffnummstring[] = "$a^$b-$a^$c-%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c-%d so, form K*B^N+C
 
 // Fixed k and c forms for k*b^n+c
 
@@ -217,6 +219,8 @@ giant	gb = NULL;		/* Generalized Fermat base may be a large integer... */
 unsigned long Nlen = 0;	/* Bit length of number being LLRed or PRPed */
 unsigned long klen = 0;	/* Number of bits of k multiplier */
 unsigned long OLDFFTLEN = 0; /* previous value of FFTLEN, used by setuponly option */
+unsigned long ndiff = 0;/* used for b^n-b^m+c number processing */
+unsigned long gformat;	/* used for b^n-b^m+c number processing */
 
 /* Global variables for factoring */
 
@@ -261,6 +265,7 @@ static double last_suminp[10] = {0.0};
 static double last_sumout[10] = {0.0};
 static double last_maxerr[10] = {0.0};
 static double maxroundoff = 0.40;
+static double fpart = 0.0;
 
 static unsigned long mask;
 
@@ -295,9 +300,10 @@ unsigned long interimFiles, interimResidues, throttle, facfrom, facto;
 unsigned long factored = 0, eliminated = 0;
 unsigned long pdivisor = 1000000, pquotient = 1;
 unsigned long bpf[30], bpc[30], vpf[30];		// Base prime factors, cofactors, power of p.f.
+giantstruct*		gbpf[30] = {NULL};			// Large integer prime factors
 giantstruct*		gbpc[30] = {NULL};			// Large integer cofactors
 unsigned long nrestarts = 0;					// Nb. of restarts for an N+1 or N-1 prime test
-unsigned long globalb = 2;						// Base of the candidate in a global
+unsigned long nbdg = 0, globalb = 2;			// number of digits ; base of the candidate in a global
 double		globalk = 1.0;						// k value of the candidate in a global
 
 
@@ -4097,6 +4103,27 @@ void writeresidue (
 		OutputStr (b);
 }
 
+// Compute the number of digits of a large integer.
+
+unsigned long gnbdg (giant nb, unsigned long digitbase) {
+	giant gnbmax;
+	unsigned long templ;
+	if (digitbase==2)
+		return (bitlen (nb));
+	else {
+		templ = (unsigned long)(floor((double)bitlen (nb) * log (2.0) /log ((double)digitbase))); // default value
+		gnbmax = allocgiant (abs (nb->sign) + 2);
+		ultog (digitbase, gnbmax);
+		power (gnbmax, templ);				// compute digitbase^templ as a comparand
+		while (gcompg (gnbmax, nb) < 0) {
+			templ++;						// adjust the value if it is too small
+			ulmulg (digitbase, gnbmax);		// and adjust the comparand
+		}
+		free (gnbmax);
+		return (templ);
+	}
+}
+
 /* Test if M divides a^(N-1) - 1 -- gwsetup has already been called. */
 
 int isexpdiv (
@@ -5204,6 +5231,7 @@ int commonPRP (
 	if (!IniGetInt(INI_FILE, "Testdiff", 0))	// Unless test of MAXDIFF explicitly required
 		gwdata->MAXDIFF = 1.0E80;				// Diregard MAXDIFF...
 
+	Nlen = bitlen (N);
 	tmp = popg (gdata, (Nlen >> 4) + 3);
 	tmp2 = popg (gdata, (Nlen >> 4) + 3);
 
@@ -5213,7 +5241,8 @@ int commonPRP (
 	iaddg (-1, tmp2);
 	while (bitval (tmp2, firstone) == 0)	// position of first one bit in N-1
 		firstone++;
-	Nlen = bitlen (N);
+
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 	*res = TRUE;		/* Assume it is a probable prime */
 
 /* Init filename */
@@ -5456,9 +5485,8 @@ int commonPRP (
 /* 32-bit chunks of the non-standard residue in reverse order. */
 
 	clearline (100);
-
 	if (strong && bitpos) {
-		sprintf (buf, "%s is base %d-Strong Fermat PRP!", str, a);
+		sprintf (buf, "%s is base %d-Strong Fermat PRP! (%lu decimal digits)", str, a, nbdg);
 	}
 	else {
 		gwtogiant (gwdata, x, tmp);
@@ -5485,7 +5513,7 @@ int commonPRP (
 				sprintf (buf, "%s is not prime, although base %d-Fermat PSP!!", str, a);
 			}
 			else
-				sprintf (buf, "%s is base %d-Fermat PRP!", str, a);
+				sprintf (buf, "%s is base %d-Fermat PRP! (%lu decimal digits)", str, a, nbdg);
 		}
 	}
 
@@ -5625,6 +5653,7 @@ int commonCC1P (
 		gwdata->MAXDIFF = 1.0E80;				// Diregard MAXDIFF...
 
 	Nlen = bitlen (N);
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 /* Allocate memory */
 
@@ -5879,7 +5908,7 @@ int commonCC1P (
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (*res)
-		sprintf (buf, "%s is prime!", str);
+		sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg);
 	else if (IniGetInt (INI_FILE, "OldRes64", 0))
 		sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 	else
@@ -6007,6 +6036,7 @@ int commonCC2P (
 	gwinvD = gwalloc (gwdata);
 
 	bits = bitlen (N);
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	exponent = newgiant ((bits >> 4) + 8);	// Allocate memory for exponent
 	tmp = newgiant ((bits >> 3) + 8);		// Allocate memory for tmp
@@ -6317,7 +6347,7 @@ int commonCC2P (
 		sprintf (buf, "%s is not prime. Lucas RES64: %s", str, res64);
 	}
 	else
-		sprintf (buf, "%s is prime!", str);
+		sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg);
 
 
 #if defined(WIN32) && !defined(_CONSOLE)
@@ -6751,6 +6781,7 @@ int slowIsWieferich (
 	ghandle *gdata;
 
 	M = newgiant ((bitlen (N) >> 3) + 8);
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	gtog (N, M);
 	squareg (M);
@@ -6780,7 +6811,7 @@ int slowIsWieferich (
 
 	if (retval) {
 		if (*res)
-			sprintf (buf, "%s is a Base %d Wieferich prime!!\n", str, a);
+			sprintf (buf, "%s is a Base %d Wieferich prime!! (%lu decimal digits)\n", str, a, nbdg);
 		else
 			sprintf (buf, "%s is not a Base %d Wieferich prime. RES64: %s\n", str, a, res64);
 		OutputBoth (buf);
@@ -7066,10 +7097,8 @@ int isPRPinternal (
 #define ABCVARAQS	19				// k, b, n, c and divisor specified on each input line
 #define	ABCRU		20				// (10^n-1)/9 Repunits
 #define	ABCGRU		21				// (b^n-1)/(b-1) Generalized Repunits
-
-// ABC format for generalized Fermat numbers
-
-#define ABCGF		22
+#define ABCGF		22				// ABC format for generalized Fermat numbers
+#define ABCDN		23				// b^n-b^m+c format, m < n <= 2*m
 
 int IsPRP (							// General PRP test
 	unsigned long format, 
@@ -7086,6 +7115,7 @@ int IsPRP (							// General PRP test
 	double dk;
 	giant gd, gr;
 
+	fpart = 0.0;							// clear this value
 	if (abs(gb->sign) == 1)					// Test if the base is a small integer
 		smallbase = gb->n[0];
 
@@ -7141,8 +7171,17 @@ int IsPRP (							// General PRP test
 		}
 	}
 
+	if (gformat == ABCDN) {					// Compute gk = gb^(n-m)-1
+		bits = ndiff*bitlen (gb);
+		gk = newgiant ((bits >> 4) + 8);
+		gtog (gb, gk);
+		power (gk, ndiff);
+		iaddg (-1, gk);
+		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+	}
+
 	if (smallbase)
-		bits = (unsigned long) ((n * log(smallbase)) / log(2) + bitlen(gk));
+		bits = (unsigned long) ((n * log((double) smallbase)) / log(2.0) + bitlen(gk));
 	else
 		bits = n * bitlen(gb) + bitlen(gk); 
 	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
@@ -7218,6 +7257,7 @@ int IsPRP (							// General PRP test
 
 		Nlen = bitlen (N); 
 		klen = bitlen(gk);
+		fpart = (1.0-(double)klen/Nlen)*100.0;
 
 		if (klen > 53 || generic || !smallbase) {	// we must use generic reduction
 			dk = 0.0;
@@ -7231,6 +7271,11 @@ int IsPRP (							// General PRP test
 		globalk = dk;
 
 		retval = isPRPinternal (str, dk, gb, n, incr, res);
+		if (res) {
+			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			OutputBoth (buf);
+		}
+
 	}
 
 	strong = TRUE;							// Restore Strong Fermat PRP test
@@ -7279,7 +7324,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	}
 	
 	if (smallbase)	
-		bits = (unsigned long) ((n * log(smallbase)) / log(2) + bitlen(gk));
+		bits = (unsigned long) ((n * log((double) smallbase)) / log(2.0) + bitlen(gk));
 	else
 		bits = n * bitlen(gb) + bitlen(gk);
 	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
@@ -7477,9 +7522,13 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			free (gbpc[i]);
 			gbpc[i] = NULL;
 		}
+		if (gbpf[i] != NULL) {
+			free (gbpf[i]);
+			gbpf[i] = NULL;
+		}
 	}
 
-// bpf[i] : base prime factor, vpf[i] : its exponent, gbpc[i] = gbase/bpf[i]
+// bpf[i] or gbpf[i] : base prime factor, vpf[i] : its exponent, gbpc[i] = gbase/bpf[i] or gbase/gbpf[i]
 // We expect the base has no more than 30 distinct prime factors.
 
 	i = 0;
@@ -7534,13 +7583,15 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 		}
 	}
 	if (bitlen(b) > 53) {				// The cofactor is still a large integer...
-		pmax = 1<<27;
+		pmax = 1<<20;
 	}
 	else {								// Compute the cofactor as a double
 		db = (double)b->n[0];
 		if (b->sign > 1)
 			db += 4294967296.0*(double)b->n[1];
 		pmax = (unsigned long)floor (sqrt (db));
+		if (pmax > (1<<20))
+			pmax = 1<<20;				// 2**40 > 2**32, so, a cofactor not larger than 32bit must be prime!
 	}
 
 	p = 5;
@@ -7613,12 +7664,33 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 	else {
 		bpf[i] = vpf[i] = 1;			// To signal a large integer cofactor
 		gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
-		gtog (b, gbpc[i]);
-		free (b);
-		if (bitlen(gbpc[i]) <= 53)		// The cofactor is prime !
+		gtog (gbase, gbpc[i]);
+		divg (b, gbpc[i]);
+		gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
+		if (bitlen(b) < 40) {			// The cofactor is prime !
+			gtog (b, gbpf[i]);
+			free (b);
 			return TRUE;
-		else
-			return FALSE;				// The cofactor must be factorized further...
+		}
+		else {
+			gfact (b, gbpf[i], 0, 0, debug);// Try to factorize using R.Crandall code
+			gtog (gbase, gbpc[i]);
+			divg (gbpf[i], gbpc[i]);
+			i++;
+			bpf[i] = vpf[i] = 1;			// To signal a large integer cofactor
+			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gtog (gbase, gbpc[i]);
+			divg (b, gbpc[i]);
+			gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
+			gtog (b, gbpf[i]);
+			free (b);
+			if ((bitlen(gbpf[i-1]) <= 40) && (bitlen(gbpf[i]) <= 40)) {	// The two factors are prime !
+				return TRUE;
+			}
+			else {
+				return FALSE;				// The factors must be factorized further...
+			}
+		}
 	}
 }
 
@@ -7664,6 +7736,7 @@ int Lucasequence (
 /* Allocate memory */
 
 	bits = bitlen (exponent);
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	x = gwalloc (gwdata);
 	y = gwalloc (gwdata);
@@ -8213,8 +8286,10 @@ int Lucasequence (
 			}
 			gwtogiant (gwdata, a21, tmp);
 			if (isZero (tmp)) {
-				if (bpf[j] == 1)
+				if (bpf[j] == 1) {
+					gtoc(gbpf[j], bpfstring, strlen(sgb));
 					sprintf (buf, "%s may be prime, but N divides U((N+1)/%s), P = %lu\n", str, bpfstring, P);
+				}
 				else
 					sprintf (buf, "%s may be prime, but N divides U((N+1)/%d), P = %lu\n", str, bpf[j], P);
 				if (verbose)
@@ -8227,8 +8302,10 @@ int Lucasequence (
 			else {
 				gcdg (modulus, tmp);
 				if (isone (tmp)) {
-					if (bpf[j] == 1)
+					if (bpf[j] == 1) {
+						gtoc(gbpf[j], bpfstring, strlen(sgb));
 						sprintf (buf, "U((N+1)/%s) is coprime to N!\n", bpfstring);
+					}
 					else
 						sprintf (buf, "U((N+1)/%d) is coprime to N!\n", bpf[j]);
 					OutputStr (buf);
@@ -8249,7 +8326,7 @@ int Lucasequence (
 	}
 
 	if (*res && !frestart)
-		sprintf (buf, "%s is prime! (P = %lu)", str, P);
+		sprintf (buf, "%s is prime! (%lu decimal digits, P = %lu)", str, nbdg, P);
 
 	will_try_larger_fft = FALSE;// Reset the "unrecoverable" condition.
 
@@ -8361,7 +8438,7 @@ int plusminustest (
 	unsigned long newa, maxrestarts, P, factorized_part = 0;
 	uint32_t hi = 0, lo = 0, nincr = 1;
 	double dk;
-	giant grem, cofactor, tmp, tmp2, tmp3;
+	giant grem, tmp, tmp2, tmp3;
 	gwnum x, y;
 	long	write_time = DISK_WRITE_TIME * 60;
 	int	echk, saving, stopping, D, jmin, jmax, j, retval, Psample, factorized;
@@ -8370,32 +8447,42 @@ int plusminustest (
 	double	reallymaxerr = 0.0;
 	gwhandle *gwdata;
 	ghandle *gdata;
-
-	gk = newgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
-	ctog (sgk, gk);						// Convert k string to giant
-	grem = newgiant (2*abs(gk->sign) + 8);	// place for mod (gk, gb)
-	gshiftleft (shift, gk);				// Shift k multiplier if requested
-	gtoc (gk, sgk1, sgkbufsize);		// Updated k string
-	if (!strcmp(sgk1, "1"))
-		sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
-	else
-		sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+	if (gformat == ABCDN) {					// Compute gk = gb^(n-m)-1
+		bits = ndiff*bitlen (gb);
+		gk = newgiant ((bits >> 4) + 8);
+		gtog (gb, gk);
+		power (gk, ndiff);
+		iaddg (-1, gk);
+		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+	}
+	else {
+		gk = newgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
+		ctog (sgk, gk);						// Convert k string to giant
+		grem = newgiant (2*abs(gk->sign) + 8);	// place for mod (gk, gb)
+		gshiftleft (shift, gk);				// Shift k multiplier if requested
+		gtoc (gk, sgk1, sgkbufsize);		// Updated k string
+		if (!strcmp(sgk1, "1"))
+			sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+		else
+			sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+	}
 
 	bits = n * bitlen(gb) + bitlen(gk); 
 	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
 
 //	Be sure the base does not divide the gk multiplier :
 
-	while (!isone(gk)) {
-		gtog (gk,grem);
-		modg (gb, grem);
-		if (!isZero(grem))
-			break;
-		divg (gb, gk);
-		n++;
+	if (gformat != ABCDN) {
+		while (!isone(gk)) {
+			gtog (gk,grem);
+			modg (gb, grem);
+			if (!isZero(grem))
+				break;
+			divg (gb, gk);
+			n++;
+		}
+		free (grem);
 	}
-
-	free (grem);
 
 //	Compute the number we are testing.
 
@@ -8442,9 +8529,18 @@ int plusminustest (
 
 
 	if (klen > Nlen) {
-	    sprintf(buf, "%s > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgk, sgb, n, str);
+		if (gformat == ABCDN)
+		    sprintf(buf, "%s^%lu-1 > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgb, ndiff, sgb, n, str);
+		else
+		    sprintf(buf, "%s > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgk, sgb, n, str);
 	    OutputBoth(buf);
+		Nlen = bitlen (N);					// Bit length of N
+		fpart = (1.0-(double)klen/Nlen)*100.0;
 		retval = isPRPinternal (str, dk, gb, n, incr, res);
+		if (res) {
+			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			OutputBoth (buf);
+		}
 		free(gk);
 		free(N);
 		return retval;
@@ -8452,27 +8548,30 @@ int plusminustest (
 
 	Nlen = bitlen (N);					// Bit length of N
 
-	factorized = findgbpf (gb);						// Factorize the base
-
+	nbdg = gnbdg (N, 10);				// Compute the number of decimal digits of the tested number.
+	factorized = findgbpf (gb);			// Factorize the base if possible...
 	for (jmax=29; (jmax>0) && !bpf[jmax]; jmax--);
 
 	jmin = 0;							// Choose the minimum required factorized part.
 	if (jmax) {							// The base is composite...
 		for (j=jmax; j>0; j--) {
 			if (bpf[j] == 1)
-				factorized_part += n*vpf[j]*bitlen(gbpc[j]);
+				factorized_part += n*vpf[j]*bitlen(gbpf[j]);
 			else
 				factorized_part += (unsigned long)floor(n*vpf[j]*log ((double)bpf[j])/log(2.0));
 			if ((2*factorized_part) > Nlen)
 				break;
 		}
 		jmin = j;
-
 		sprintf (buf, "Base factorized as : ");
 
 		for (j=0; j<=jmax; j++) {
 			if (j<jmax) {
-				sprintf (buf+strlen(buf), "%d", bpf[j]);
+				if (bpf[j] == 1) {
+					gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
+				}
+				else
+					sprintf (buf+strlen(buf), "%d", bpf[j]);
 				if (vpf[j]>1)
 					sprintf (buf+strlen(buf), "^%d*", vpf[j]);
 				else
@@ -8480,8 +8579,7 @@ int plusminustest (
 			}
 			else {
 				if (bpf[j] == 1) {
-					gtoc(gbpc[j], buf+strlen(buf), strlen(sgb));
-					gtoc(gbpc[j], bpfstring, strlen(sgb));
+					gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
 				}
 				else
 					sprintf (buf+strlen(buf), "%d", bpf[j]);
@@ -8491,7 +8589,6 @@ int plusminustest (
 					sprintf (buf+strlen(buf), "\n");
 			}
 		}
-
 		if (verbose)
 			OutputBoth(buf);
 		else
@@ -8506,22 +8603,19 @@ int plusminustest (
 
 	for (j=jmin; j<=jmax; j++) {
 		if (j<jmax)
-			if (bpf[j] == 1)
-				gtoc(gbpc[j], buf+strlen(buf), strlen(sgb));
+			if (bpf[j] == 1) {
+				gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
+				sprintf (buf+strlen(buf), ", ");
+			}
 			else
 				sprintf (buf+strlen(buf), "%d, ", bpf[j]);
 		else
 			if (bpf[j] == 1) {
-				gtoc(gbpc[j], buf+strlen(buf), strlen(sgb));
+				gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
 				if (factorized)
 					sprintf (buf+strlen(buf), "\n");
 				else
 					sprintf (buf+strlen(buf), " (Must be proven prime or factorized externally)\n");
-				cofactor = newgiant (2*abs(gb->sign) + 8);
-				gtog (gbpc[j], cofactor);
-				gtog (gb, gbpc[j]);
-				divg (cofactor, gbpc[j]);
-				free (cofactor);
 			}
 			else
 				sprintf (buf+strlen(buf), "%d\n", bpf[j]);
@@ -9034,16 +9128,20 @@ DoLucas:
 					}
 					nrestarts++;
 					if (nrestarts > maxrestarts) {
-						if (bpf[j] == 1)
+						if (bpf[j] == 1) {
+							gtoc(gbpf[j], bpfstring, strlen(sgb));
 							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%s))-1, giving up after %d restarts...", str, a, bpfstring, maxrestarts);
+						}
 						else
 							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%d))-1, giving up after %d restarts...", str, a, bpf[j], maxrestarts);
 						frestart = FALSE;
 						*res = FALSE;		// Not proven prime...
 					}
 					else {
-						if (bpf[j] == 1)
+						if (bpf[j] == 1) {
+							gtoc(gbpf[j], bpfstring, strlen(sgb));
 							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%s))-1, restarting with a=%d", str, a, bpfstring, newa);
+						}
 						else
 							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%d))-1, restarting with a=%d", str, a, bpf[j], newa);
 						a = newa;
@@ -9056,8 +9154,10 @@ DoLucas:
 					ulsubg (1, tmp);
 					gcdg (N, tmp);
 					if (isone (tmp)) {
-						if (bpf[j] == 1)
+						if (bpf[j] == 1) {
+							gtoc(gbpf[j], bpfstring, strlen(sgb));
 							sprintf (buf, "%d^((N-1)/%s)-1 is coprime to N!\n", a, bpfstring);
+						}
 						else
 							sprintf (buf, "%d^((N-1)/%d)-1 is coprime to N!\n", a, bpf[j]);
 						OutputStr (buf);
@@ -9074,7 +9174,7 @@ DoLucas:
 			}
 			will_try_larger_fft = FALSE;	
 			if (*res && !frestart)
-				sprintf (buf, "%s is prime!", str);
+				sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg);
 			gwfree (gwdata, x);
 			gwfree (gwdata, y);
 			gwdone (gwdata);
@@ -9249,26 +9349,35 @@ int isLLRP (
 // Lei end
 
 	if (!(format == ABCC || format == ABCK)) {
-		gksize = strlen(sgk);				// J. P. Initial gksize
-
 // Lei
 		if (b_else != 1) {					// Compute the length of b_else^ninput
 			ddk = (double) b_else;
-			ddk = ninput * log10 (ddk);
+			ddk = ninput * log (ddk)/log (2.0);
 			idk = (long) ddk + 1;
-			gksize += idk;					// J. P. Add it to gksize
 		}
+		else
+			idk = 0;
 // Lei end
+		if (format == ABCDN) {						// Compute gk = gb^(n-m)-1
+			gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
+			gk = newgiant ((gksize >> 4) + 8);		// Allocate space for gk
+			ultog (binput, gk);
+			power (gk, ndiff);
+			iaddg (-1, gk);
+			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
+		}
+		else {
+			gksize = 8*strlen(sgk) + idk;		// J. P. Initial gksize
+			gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
+			ctog (sgk, gk);						// Convert k string to giant
+		}
 
-		gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
-		ctog (sgk, gk);						// Convert k string to giant
-
-		klen = bitlen(gk);			// Bit length ok initial k multiplier
+		klen = bitlen(gk);			// Bit length of initial k multiplier
 
 		if (klen > 53 || generic) {	// we must use generic reduction
 			dk = 0.0;
 		}
-		else {					// we can use DWT ; compute the multiplier as a double
+		else {						// we can use DWT ; compute the multiplier as a double
 			dk = (double)gk->n[0];
 			if (gk->sign > 1)
 				dk += 4294967296.0*(double)gk->n[1];
@@ -9276,12 +9385,12 @@ int isLLRP (
 
 // Lei
 		if (b_else != 1) {					// Compute the big multiplier
-			gk1 = newgiant ((gksize>>1) + 8);
+			gk1 = newgiant ((gksize>>4) + 8);
 			ultog (b_else, gk1);		
 			power (gk1, ninput);
 			mulg (gk1, gk);
 			free (gk1);
-// J.P. shadow   gtoc (gk, sgk1, sgkbufsize);    // Updated k string
+// J.P. shadow   gtoc (gk, sgk1, sgkbufsize);  // Updated k string
 		}
 // Lei end
 
@@ -9297,10 +9406,11 @@ int isLLRP (
 			strcpy (sgk1, sgk);
 //	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
 		}
-		if (b_else != 1)	// Lei, J.P.
-			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
-		else
-			sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+		if (format != ABCDN)
+			if (b_else != 1)	// Lei, J.P.
+				sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
+			else
+				sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
 
 //	gk must be odd for the LLR test, so, adjust gk and n if necessary.
 
@@ -9336,6 +9446,7 @@ int isLLRP (
 	ulsubg (1, N);
 
 	Nlen = bitlen (N); 
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	globalk = dk;
 
@@ -9362,17 +9473,28 @@ int isLLRP (
 	}
 
 	if (klen > n) {
-	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
+		if (format == ABCDN)
+			sprintf(buf, "2^%lu-1 > 2^%lu, so we can only do a PRP test for %s.\n", ndiff, n, str);
+		else
+			sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
 
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
-		sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
+		if (format == ABCDN)
+			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
+		else
+			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
 		gbinput = newgiant (2);
 		gbinput->sign = 1;
 		gbinput->n[0] = binput;
+		fpart = (1.0-(double)klen/Nlen)*100.0;
 		retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
 // Lei end
+		if (res) {
+			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			OutputBoth (buf);
+		}
 
 		free(gbinput);
 		free(gk);
@@ -9389,14 +9511,18 @@ int isLLRP (
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
 		strcpy (buf, str);
-                sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
-				Fermat_only = TRUE;
-				gbinput = newgiant (2);
-				gbinput->sign = 1;
-				gbinput->n[0] = binput;
-                retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
-				free(gbinput);
-				Fermat_only = FALSE;
+		if (format == ABCDN)
+			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
+		else
+			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
+		Fermat_only = TRUE;
+		gbinput = newgiant (2);
+		gbinput->sign = 1;
+		gbinput->n[0] = binput;
+		fpart = 0.0;
+		retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
+		free(gbinput);
+		Fermat_only = FALSE;
 // Lei end
 
 		if (!*res) {
@@ -10009,7 +10135,7 @@ MERSENNE:
 /* Print results and cleanup */ 
 
 	if (*res) 
-		sprintf (buf, "%s is prime!", str); 
+		sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg); 
 	else
 		sprintf (buf, "%s is not prime.  LLR Res64: %s", str, res64); 
 
@@ -10225,19 +10351,28 @@ int isProthP (
 	giant gk1;
 // Lei end
 
-	gksize = strlen(sgk);				// J.P. Initial gksize
-
 // Lei
 	if (b_else != 1) {					// Compute the length of b_else^ninput
 		ddk = (double) b_else;
-		ddk = ninput * log10 (ddk);
-	    idk = (long) ddk + 1;
-		gksize += idk;					// J.P. Add it to gksize
+		ddk = ninput * log (ddk)/log (2.0);
+		idk = (long) ddk + 1;
 	}
+	else
+		idk = 0;
 // Lei end
-
-	gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
-	ctog (sgk, gk);						// Convert k string to giant
+	if (format == ABCDN) {						// Compute gk = gb^(n-m)-1
+		gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
+		gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
+		ultog (binput, gk);
+		power (gk, ndiff);
+		iaddg (-1, gk);
+		sprintf (str, "%lu^%lu-%lu^%lu+1", binput, ninput+ndiff, binput, ninput);
+	}
+	else {
+		gksize = 8*strlen(sgk) + idk;		// J. P. Initial gksize
+		gk = newgiant ((gksize >> 4)  + 8);	// Allocate space for gk
+		ctog (sgk, gk);						// Convert k string to giant
+	}
 
 	klen = bitlen(gk);					// Length of initial k multiplier
 
@@ -10271,6 +10406,7 @@ int isProthP (
 	else
 		strcpy (sgk1, sgk);
 
+	if (format != ABCDN)
 		if (b_else != 1)	// Lei, J.P.
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
 		else
@@ -10322,17 +10458,28 @@ int isProthP (
 	globalk = dk;
 
 	if (klen > n) {
-	    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
+		if (format == ABCDN)
+		    sprintf(buf, "2^%lu-1 > 2^%lu, so we can only do a PRP test for %s.\n", ndiff, n, str);
+		else
+		    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
 
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, 1, res);
-		sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');     // Number N to test, as a string
+		if (format == ABCDN)
+			sprintf (str, "%lu^%lu-%lu^%lu+1", binput, ninput+ndiff, binput, ninput);
+		else
+			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');     // Number N to test, as a string
 		gbinput = newgiant (2);
 		gbinput->sign = 1;
 		gbinput->n[0] = binput;
+		fpart = (1.0-(double)klen/Nlen)*100.0;
 		retval = isPRPinternal (str, dk, gbinput, ninput, 1, res);
 // Lei end
+		if (res) {
+			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			OutputBoth (buf);
+		}
 
 		free(gbinput);
 		free(gk);
@@ -10362,6 +10509,7 @@ if ((a = genProthBase(gk, n)) < 0) {
 
 restart:
 
+	nbdg = gnbdg (N, 10);	// Compute the number of decimal digits of the tested number.
 	gwinitjp (gwdata);
 	gdata = &gwdata->gdata;
 
@@ -10658,7 +10806,7 @@ restart:
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (*res)
-		sprintf (buf, "%s is prime!", str); 
+		sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg); 
 	else
 		sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
 
@@ -11315,6 +11463,8 @@ primetest:
 
 restart:
 
+	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
+
 	gwinitjp (gwdata);
 	gdata = &gwdata->gdata;
 
@@ -11738,7 +11888,7 @@ restart:
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 	if (res1)
-		sprintf (buf, "%s is prime!\n", str);
+		sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg);
 	else
 		sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
 
@@ -11801,8 +11951,10 @@ restart:
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
+	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
+
 	if (res2)
-		sprintf (buf, "%s is %d-PRP!", strp, a);
+		sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg);
 	else
 		sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
 
@@ -12101,6 +12253,8 @@ process:
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
 restart:
+
+	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
 
 	gwinitjp (gwdata);
 	gdata = &gwdata->gdata;
@@ -12506,11 +12660,11 @@ restart:
 				sprintf (buf, "%s is not prime, although Base %lu - Fermat PSP!!", sgk, a*a*a);
 		}
 		else {
-			sprintf (buf, "%s is Base %lu - Strong Fermat PRP!", sgk, a*a*a);
+			sprintf (buf, "%s is Base %lu - Strong Fermat PRP! (%lu decimal digits)", sgk, a*a*a, nbdg);
 		}
 	}
 	else
-		sprintf (buf, "%s is Vrba-Reix PRP!", sgk);
+		sprintf (buf, "%s is Vrba-Reix PRP! (%lu decimal digits)", sgk, nbdg);
 
 
 
@@ -12640,7 +12794,6 @@ int ispoweroftwo (
 	return (n == 1);
 }
 
-
 int process_num (
 	unsigned long format,
 	char *sgk,
@@ -12658,6 +12811,8 @@ int process_num (
 	unsigned long ninput = n, base, binput, b_2up = 1, b_else = 1, superPRP = 1;
 	long mult;
 // Lei end
+
+	gformat = format; // save format in a global.
 
 	if(mult = IniGetInt(INI_FILE, "StopOnPrimedK", 0)) {
 		sprintf (outbuf, "ks%s", sgk);
@@ -12682,14 +12837,13 @@ int process_num (
 	}
 
 	if (format == ABCGM)
-		return (isGMNP (sgk, n, res));
+		return (isGMNP (sgk, n, res));	// Do the primality test of a Gaussian Mersenne norm
 
-	if (format == ABCSP)
+	if (format == ABCSP)				// Do the PRP test of a Wagstaff number
 		return (isWSPRP (sgk, n, res));
 
 	gb = newgiant (strlen(sgb)/2 + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgb, gb);						// Convert b string to giant
-
 	if (gb->sign == 1) {				// Test if the base is a small integer...
 		binput = base = gb->n[0];		// Then, get the base in an unsigned long
 		while (!(base&1) && base > 2) {	// Divide the base by two as far as possible
@@ -12704,8 +12858,8 @@ int process_num (
 			b_else = base;				// Is odd...
 			b_2up = binput / b_else;	// binput = b_else*b_2up
 			if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK)))) {
-				superPRP = 0;			// Then b_2up^n > b_else^n
-			}
+				superPRP = 0;			// Then b_2up^ninput > b_else^ninput
+			}							// N = k*binput^ninput+c = (k*b_else^ninput)*2^n+c
 			else {
 // Lei end
 				base = binput;			// Do not modify because PRP will be forced...
@@ -12743,7 +12897,7 @@ int process_num (
 		}
 		free (gb);
 		return (retval);
-	}
+	}			// End gb is a small interger
 	else if ((format == NPGCC1 || format == NPGCC2) && !IniGetInt (INI_FILE, "ForcePRP", 0)) {
 		retval = IsCCP (format, sgk, sgb, gb, n, incr, shift, res);
 	}
@@ -12766,7 +12920,7 @@ void primeContinue ()
 {
 
 	int	work, nargs, hiline;
-	unsigned long format, shift, begline, rising_ns, rising_ks, last_processed_n;
+	unsigned long format, shift, begline, rising_ns, rising_ks, last_processed_n, m;
 	char *pinput;
 
 /* Set appropriate priority */
@@ -12934,6 +13088,13 @@ OPENFILE :
 				}
 				else if (sscanf(pinput, abcmstring, &incr) == 1) {
 					format = ABCVARGS;
+					incr = - incr;
+				}
+				else if (sscanf(pinput, diffnumpstring, &incr) == 1) {
+					format = ABCDN;
+				}
+				else if (sscanf(pinput, diffnummstring, &incr) == 1) {
+					format = ABCDN;
 					incr = - incr;
 				}
 				else if (sscanf(pinput, fkpstring, smallk, &incr) == 2) {
@@ -13825,6 +13986,31 @@ OPENFILE :
 								_write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgb, n);	// write the result
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+				}
+				else if (format == ABCDN)	{	// b^n-b^m+c numbers ; sgb, n, m are the three parameters
+					if (sscanf (buff+begline, "%s %lu %lu", sgb, &n, &m) != 3)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgb))
+						continue;				// Skip invalid line
+					if (n <= m)
+						continue;				// Skip invalid line
+					ndiff = n-m;				// Save difference of exponents in a global
+					sprintf (sgk, "1");
+					if (! process_num (format, "1", sgb, m, incr, 0, &res))
+						goto done;
+					if (res) {
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								_write (outfd, hbuff, strlen (hbuff));
+							}
+							sprintf (outbuf, "%s %lu %lu\n", sgb, n, m);	// write the result
 							_write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}

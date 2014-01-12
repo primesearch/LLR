@@ -1,0 +1,184 @@
+12827862521659416082925987802^4096+1 is a Probable Prime (Base incompletely factorized).  Time : 3600.682 sec.
+12827862521659416082925987802^4096+1 is prime! (115132 decimal digits)  Time : 3525.984 sec.
+12827862521659416082925987802^4096+1 is prime! (115132 decimal digits)  Time : 3592.444 sec.
+12827862521659416082925987802^4096+1 is prime! (115132 decimal digits)  Time : 3651.965 sec.
+1*2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 24.851 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 22.565 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 26.025 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 27.616 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 22.410 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 22.752 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 19.791 sec.
+2^36960-2^22315-1 has a small factor : 11 !!
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 24.159 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 16.957 sec.
+2^36960-2^22315-1 is not prime.  LLR Res64: 4301DAEDFE628D66  Time : 24.755 sec.
+10^19637-1018606-1 is prime! (19637 decimal digits, P = 11)  Time : 161.375 sec.
+1 > 10^7340, so, only a Strong PRP test is done for 10^19637-107340-1.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 146.947 sec.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 137.040 sec.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 11.664 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 15.874 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 14.742 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 21.695 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 11.138 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 15.390 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 14.657 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 21.666 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 14.180 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 20.287 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 18.200 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 26.086 sec.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 166.572 sec.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 38.911 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 161.999 sec.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 152.503 sec.
+10^12297 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 52.589 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 183.859 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 11.835 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 17.493 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 16.333 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 24.137 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 137.503 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 137.885 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 135.558 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 148.638 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 138.134 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 136.382 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 139.004 ms.
+10^3093 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.629 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.757 sec.
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 52.312 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 61.723 sec.
+2^50021-2^48150+1 is prime! (15058 decimal digits)  Time : 19.554 sec.
+1 > 2^25589, so we can only do a PRP test for 2^65521-2^25589+1.
+1*2^25589+1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 145.651 sec.
+1*2^25589+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 191.468 sec.
+1 > 2^19243, so we can only do a PRP test for 2^104923-2^19243+1.
+1*2^19243+1 is base 3-Strong Fermat PRP! (31585 decimal digits)  Time : 340.228 sec.
+1*2^19243+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 9, Q = 3, D = 69)  Time : 624.091 sec.
+2^131071-2^66580+1 is prime! (39457 decimal digits)  Time : 365.688 sec.
+2^50021-2^48150+1 is prime! (15058 decimal digits)  Time : 21.079 sec.
+2^39932 > 2^25589, so we can only do a PRP test for 2^65521-2^25589+1.
+2^65521-2^25589+1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 150.309 sec.
+2^65521-2^25589+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 181.216 sec.
+2^85680 > 2^19243, so we can only do a PRP test for 2^104923-2^19243+1.
+2^104923-2^19243+1 is base 3-Strong Fermat PRP! (31585 decimal digits)  Time : 339.322 sec.
+2^104923-2^19243+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 9, Q = 3, D = 69)  Time : 628.829 sec.
+2^131071-2^66580+1 is prime! (39457 decimal digits)  Time : 396.476 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 10.987 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 13.959 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 13.759 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 20.645 sec.
+2^86802-2^43401-1 is base 3-Strong Fermat PRP! (26131 decimal digits)  Time : 77.344 sec.
+2^86802-2^43401-1 is prime! (26131 decimal digits)  Time : 158.103 sec.
+2^42492-1 > 2^23029, so we can only do a PRP test for 2^65521-2^23029-1.
+2^65521-2^23029-1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 56.762 sec.
+2^65521-2^23029-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 190.812 sec.
+2^55819-1 > 2^55817, so we can only do a PRP test for 2^111636-2^55817-1.
+2^111636-2^55817-1 is base 3-Strong Fermat PRP! (33606 decimal digits)  Time : 174.980 sec.
+2^111636-2^55817-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 773.882 sec.
+2^50021-2^48150+1 is prime! (15058 decimal digits)  Time : 23.513 sec.
+2^39932-1 > 2^25589, so we can only do a PRP test for 2^65521-2^25589+1.
+2^65521-2^25589+1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 166.606 sec.
+2^65521-2^25589+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 193.345 sec.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 141.188 sec.
+10^12297-1 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 52.961 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 185.483 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 134.117 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 134.284 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 145.450 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 134.270 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 134.230 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 132.948 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 133.435 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.512 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.748 sec.
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 50.943 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 60.895 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 193.073 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 133.095 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 147.280 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 144.610 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 132.836 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 134.418 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 136.738 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.621 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.785 sec.
+(Factored part = 93267353.44%)
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 56.982 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 65.676 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 192.946 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 147.127 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 145.917 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 135.374 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 135.727 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 134.003 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 136.656 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.618 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.770 sec.
+(Factored part = -123.13%)
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 55.640 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 65.011 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 184.466 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 135.241 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 138.175 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 133.438 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 132.892 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 134.172 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 136.940 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.548 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.828 sec.
+(Factored part = 30.94%)
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 59.638 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 71.458 sec.
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 152.104 sec.
+10^12297-1 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 55.010 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 189.137 sec.
+(Factored part = 37.38%)
+2^50021-2^48150+1 is prime! (15058 decimal digits)  Time : 23.480 sec.
+2^39932-1 > 2^25589, so we can only do a PRP test for 2^65521-2^25589+1.
+2^65521-2^25589+1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 163.378 sec.
+2^65521-2^25589+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 189.748 sec.
+(Factored part = 39.05%)
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 11.548 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 17.058 sec.
+2^36960-2^22315-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 16.046 sec.
+2^36960-2^22315-1 is prime! (11127 decimal digits)  Time : 23.700 sec.
+2^86802-2^43401-1 is base 3-Strong Fermat PRP! (26131 decimal digits)  Time : 105.503 sec.
+2^86802-2^43401-1 is prime! (26131 decimal digits)  Time : 176.641 sec.
+2^42492-1 > 2^23029, so we can only do a PRP test for 2^65521-2^23029-1.
+2^65521-2^23029-1 is base 3-Strong Fermat PRP! (19724 decimal digits)  Time : 59.977 sec.
+2^65521-2^23029-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 196.062 sec.
+(Factored part = 35.15%)
+2^55819-1 > 2^55817, so we can only do a PRP test for 2^111636-2^55817-1.
+2^111636-2^55817-1 is base 3-Strong Fermat PRP! (33606 decimal digits)  Time : 237.916 sec.
+2^111636-2^55817-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 801.761 sec.
+(Factored part = 50.00%)
+10^19637-10^18606-1 is prime! (19637 decimal digits, P = 11)  Time : 144.204 sec.
+10^12297-1 > 10^7340, so, only a Strong PRP test is done for 10^19637-10^7340-1.
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 52.280 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 183.797 sec.
+(Factored part = 37.38%)
+10^19637-10^18606-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 42.557 sec.
+10^19637-10^18606-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 177.715 sec.
+(Factored part = 94.75%)
+10^19637-10^7340-1 is base 3-Strong Fermat PRP! (19637 decimal digits)  Time : 61.805 sec.
+10^19637-10^7340-1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 3, D = 13)  Time : 196.624 sec.
+(Factored part = 37.38%)

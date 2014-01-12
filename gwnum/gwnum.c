@@ -977,7 +977,7 @@ next1:			while (zpad_jmptab->flags & 0x80000000) INC_JMPTAB_1 (zpad_jmptab);
 /* expected, if log2b is 6 you get about 2 extra bits, if log2b is 12 you can get */
 /* 3 extra bits.  This formula was found to be a bit too aggressive, at least for */
 /* large b.  Two examples:  2*22563^22563-1 and  2*22576^22576-1 fail in a 40K FFT. */
-/* Thus, we're changing the formula in v27 to a log2b of 12.5 gets 3 extra bits. */
+/* Thus, we're changing the formula in v27.9 to log2b of 12.5 gets the max of 3 extra bits. */
 /* Also, some examples such as 19464*19^31895+1 and 245*830^492-1 (worst case we */
 /* know of) still raise round off errors.  For added safety we assume an extra */
 /* 0.3 bits of output are needed when base is not 2. */
@@ -986,7 +986,7 @@ next1:			while (zpad_jmptab->flags & 0x80000000) INC_JMPTAB_1 (zpad_jmptab);
 			weighted_bits_per_output_word -=
 					((log2b <= 3.0) ? (log2b - 1.0) / 2.0 :
 					 (log2b <= 6.0) ? 1.0 + (log2b - 3.0) / 3.0 :
-							  2.0 + (log2b - 6.0) / 6.5);
+					 (log2b <= 12.5) ? 2.0 + (log2b - 6.0) / 6.5 : 3.0);
 			if (b != 2) weighted_bits_per_output_word += 0.3;
 		}
 
@@ -1349,7 +1349,7 @@ next3:		prev_proc_ptrs[4] = prev_proc_ptrs[3];
 	if (asm_data != NULL) {
 		if (gwdata->cpu_flags & CPU_AVX) {
 			if (gwdata->PASS2_SIZE == 0) {
-				if (gwdata->FOURKBGAPSIZE) {				/* Pad every 256, 512, 1KB, 2KB, or 4KB */
+				if (gwdata->FOURKBGAPSIZE) {				/* Pad every 1KB, 2KB, or 4KB */
 					asm_data->count1 = gwdata->FOURKBGAPSIZE;	/* Cache lines before a padding occurs */
 					asm_data->normcount1 = gwdata->FFTLEN / 32 / gwdata->FOURKBGAPSIZE; /* Number of padding groups in each of the 4 sections */
 					asm_data->count2 = asm_data->count1 / 2;	/* Counter for add/sub quick functions */
@@ -1521,12 +1521,14 @@ int gwsetup (
 
 	if (k < 1.0) return (GWERROR_K_TOO_SMALL);
 	if (k > 9007199254740991.0) return (GWERROR_K_TOO_LARGE);
-	if (gwdata->cpu_flags & CPU_AVX) {
-		if (log2(b) * (double) n > MAX_PRIME_AVX) return (GWERROR_TOO_LARGE);
-	} else if (gwdata->cpu_flags & CPU_SSE2) {
-		if (log2(b) * (double) n > MAX_PRIME_SSE2) return (GWERROR_TOO_LARGE);
-	} else {
-		if (log2(b) * (double) n > MAX_PRIME) return (GWERROR_TOO_LARGE);
+	if (gwdata->specific_fftlen == 0) {
+		if (gwdata->cpu_flags & CPU_AVX) {
+			if (log2(b) * (double) n > MAX_PRIME_AVX) return (GWERROR_TOO_LARGE);
+		} else if (gwdata->cpu_flags & CPU_SSE2) {
+			if (log2(b) * (double) n > MAX_PRIME_SSE2) return (GWERROR_TOO_LARGE);
+		} else {
+			if (log2(b) * (double) n > MAX_PRIME) return (GWERROR_TOO_LARGE);
+		}
 	}
 
 /* Init */
@@ -4340,11 +4342,11 @@ void auxiliary_thread (void *arg)
 			}
 			// Copy maxerr and sumout
 			if (gwdata->cpu_flags & CPU_AVX) {
-				memcpy (asm_data->u.ymm.YMM_MAXERR, &main_thread_asm_data->MAXERR, 4 * sizeof (double));
+				memcpy (asm_data->u.ymm.YMM_MAXERR, &main_thread_asm_data->u.ymm.YMM_MAXERR, 4 * sizeof (double));
 			} else {
 				asm_data->u.xmm.XMM_SUMOUT[0] = 0.0;
 				asm_data->u.xmm.XMM_SUMOUT[1] = 0.0;
-				memcpy (asm_data->u.xmm.XMM_MAXERR, &main_thread_asm_data->MAXERR, 2 * sizeof (double));
+				memcpy (asm_data->u.xmm.XMM_MAXERR, &main_thread_asm_data->u.xmm.XMM_MAXERR, 2 * sizeof (double));
 			}
 		}
 
@@ -5037,6 +5039,11 @@ int multithread_init (
 		asm_data->last_pass1_block = gwdata->num_pass1_blocks - asm_data->cache_line_multiplier;
 	}
 
+/* Place a limit on the number of threads */
+
+	if (gwdata->num_threads > gwdata->num_pass1_blocks / asm_data->cache_line_multiplier)
+		gwdata->num_threads = gwdata->num_pass1_blocks / asm_data->cache_line_multiplier;
+
 /* Determine how many data blocks are affected by carries out of pass 1 section.  Zero-padded FFTs require 8 words */
 /* to propagate carries into.  For AVX FFTs, ynorm012_wpn can spread the carry over a maximum of either 4 or 8 words. */
 /* For SSE2 FFTs, xnorm012_2d and xnorm012_2d_wpn spreads carries over either 2 or 6 words. */
@@ -5519,8 +5526,8 @@ unsigned long addr_offset (
 			top5bits = i / (fftlen >> 5); i -= top5bits * (fftlen >> 5);
 			addr = ((top5bits >> 2) & 3) * (fftlen >> 2) + (i << 3) + ((top5bits >> 4) << 2) + (top5bits & 3);
 			addr = addr * sizeof (double);
-			/* Now optionally add 64 pad bytes every 256, 512, 1KB, 2KB or 4KB */
-			 if (gwdata->FOURKBGAPSIZE)
+			/* Now optionally add 64 pad bytes every 1KB, 2KB or 4KB */
+			if (gwdata->FOURKBGAPSIZE)
 				addr = addr + (addr / (gwdata->FOURKBGAPSIZE << 6)) * 64;
 		}
 

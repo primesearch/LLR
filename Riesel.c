@@ -86,7 +86,7 @@ void Reduce (uint32_t x, uint32_t *d, uint32_t *b) {
 
 uint32_t issquare (uint32_t n) {
 	uint32_t s;
-	s = (uint32_t)floor(sqrt(n));
+	s = (uint32_t)floor(sqrt((double) n));
 	if (s*s == n)
 		return s;
 	else

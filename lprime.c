@@ -77,6 +77,7 @@ int SINGLETEST = 0;
 #include "Jacobi.c"
 #include "kronecker.c"
 #include "Riesel.c"
+#include "factor.c"
 #include "Llr.c"
 
 /* Signal handlers */
@@ -290,10 +291,10 @@ int main (
 
 		case 'Q':
 		case 'q':
-			if (!isdigit(*p))
+			if (!isdigit(*p))				// must begin with digits...
 				goto errexpr;
 			p2 = multiplier;				// get the expected multiplier
-			while (isdigit(*p))
+			while (isdigit(*p))				// copy the digits
 				*p2++ = *p++;
 			*p2 = '\0';
 			if (*p == '\0') {				// Multiplier alone
@@ -308,24 +309,24 @@ int main (
 				p++;
 				goto NOMULTIPLIER;
 			}
-			else if (*p++ != '*')			// get the base
+			else if (*p++ != '*')			// now, get the base
 				goto errexpr;
-			if (!isdigit(*p))
+			if (!isdigit(*p))				// it must be a digit string
 				goto errexpr;
 			p2 = base;
-			while (isdigit(*p))
+			while (isdigit(*p))				// copy the digits
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (*p++ != '^')
+			if (*p++ != '^')				// must be power
 				goto errexpr;
 NOMULTIPLIER:
-			if (!isdigit(*p))
+			if (!isdigit(*p))				// must be digits...
 				goto errexpr;
 			p2 = exponent;					// get the exponent
-			while (isdigit(*p))
+			while (isdigit(*p))				// copy the digits
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (*p != '+' && *p != '-')
+			if (*p != '+' && *p != '-')		// must be plus or minus
 				goto errexpr;
 			p2 = addin;
 			*p2++ = *p++;					// copy the sign
@@ -333,6 +334,8 @@ NOMULTIPLIER:
 				goto errexpr;
 			while (isdigit(*p))				// copy the c value
 				*p2++ = *p++;
+			if (*p != '\0')					// must be end of string...
+				goto errexpr;
 			*p2 = '\0';
 DIGITSONLY:
 			in = fopen ("$temp.npg", "w");	// open the temporary input file
@@ -364,7 +367,7 @@ DIGITSONLY:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.9\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.11\n");
 			return (0); 
 
 /* -W - use a different working directory */

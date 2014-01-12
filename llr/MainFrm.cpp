@@ -6,7 +6,7 @@
 
 #include "MainFrm.h"
 #include <winreg.h>
-#include <pbt.h>
+//#include <pbt.h>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -76,7 +76,7 @@ void CMainFrame::Dump(CDumpContext& dc) const
 
 /////////////////////////////////////////////////////////////////////////////
 // CMainFrame message handlers
-LONG CMainFrame::OnPower(UINT uID, LONG uMouseMsg)
+LRESULT CMainFrame::OnPower(WPARAM uID, LPARAM uMouseMsg)
 {
 	if (uID == PBT_APMPOWERSTATUSCHANGE) {
 		CHECK_BATTERY = 1;
@@ -88,7 +88,7 @@ LONG CMainFrame::OnPower(UINT uID, LONG uMouseMsg)
 	return 0;
 }
 
-LONG CMainFrame::OnTrayMessage(UINT uID, LONG uMouseMsg)
+LRESULT CMainFrame::OnTrayMessage(WPARAM uID, LPARAM uMouseMsg)
 {
 	if (uID == 352 && uMouseMsg == WM_LBUTTONDBLCLK)
 		if (IsWindowVisible())
@@ -135,7 +135,7 @@ void CMainFrame::OnTrayOpenWindow()
 		PostMessage (WM_SYSCOMMAND, SC_MINIMIZE, 0L);
 }
 
-LRESULT CMainFrame::OnServiceStop (WPARAM wParam, LONG lParam)
+LRESULT CMainFrame::OnServiceStop (WPARAM wParam, LPARAM lParam)
 {
 	if (TRAY_ICON) ((CPrime95App *)AfxGetApp())->TrayMessage (NIM_DELETE, NULL, 0);
 	ShowWindow (FALSE);
@@ -172,7 +172,7 @@ BOOL CALLBACK EnumProc (HWND hWnd, LPARAM lParam)
 	//check for property and unsubclass if necessary
 	WNDPROC oldWndProc = (WNDPROC)::GetProp (hWnd, szAfxOldWndProc);
 	if (oldWndProc!=NULL) {
-		SetWindowLong (hWnd, GWL_WNDPROC, (DWORD) oldWndProc);
+		SetWindowLong (hWnd, GWLP_WNDPROC, (DWORD) oldWndProc);
 		RemoveProp (hWnd, szAfxOldWndProc);
 	}
 	return TRUE;
@@ -400,7 +400,11 @@ done:	if (schService) CloseServiceHandle (schService);
 
 void CMainFrame::OnActivateApp(BOOL bActive, DWORD hTask) 
 {
+#if (_MSC_VER < 1600)
 	CFrameWnd::OnActivateApp(bActive, (HTASK__ *)hTask);
+#else
+	CFrameWnd::OnActivateApp(bActive, hTask);
+#endif
 }
 
 // Override the Upper Right X to do a minimize instead of a close.

@@ -6,27 +6,27 @@
 --------------------Configuration: LLR - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr389src\llr\Prime95.rc"" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3B.tmp" with contents
+Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr38bsrc\llr\Prime95.rc"" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2B9.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /I "..\\" /I "..\gwnum\\" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
-"I:\D\Jean\LLR\llr389src\llr\AffinityDlg.cpp"
-"I:\D\Jean\LLR\llr389src\llr\ContentsDlg.cpp"
-"I:\D\Jean\LLR\llr389src\llr\CpuDlg.cpp"
-"I:\D\Jean\LLR\llr389src\llr\EditDropFiles.cpp"
-"I:\D\Jean\LLR\llr389src\kronecker.c"
-"I:\D\Jean\LLR\llr389src\llr\MainFrm.cpp"
-"I:\D\Jean\LLR\llr389src\llr\PreferencesDlg.cpp"
-"I:\D\Jean\LLR\llr389src\llr\Prime95.cpp"
-"I:\D\Jean\LLR\llr389src\llr\Prime95Doc.cpp"
-"I:\D\Jean\LLR\llr389src\llr\Prime95View.cpp"
-"I:\D\Jean\LLR\llr389src\llr\Priority.cpp"
-"I:\D\Jean\LLR\llr389src\llr\service.c"
-"I:\D\Jean\LLR\llr389src\llr\StdAfx.cpp"
-"I:\D\Jean\LLR\llr389src\llr\TestDlg.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\AffinityDlg.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\ContentsDlg.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\CpuDlg.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\EditDropFiles.cpp"
+"I:\D\Jean\LLR\llr38bsrc\kronecker.c"
+"I:\D\Jean\LLR\llr38bsrc\llr\MainFrm.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\PreferencesDlg.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\Prime95.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\Prime95View.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\Priority.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\service.c"
+"I:\D\Jean\LLR\llr38bsrc\llr\StdAfx.cpp"
+"I:\D\Jean\LLR\llr38bsrc\llr\TestDlg.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3B.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3C.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2B9.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2BA.tmp" with contents
 [
 Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /out:"Release/LLR.exe" /libpath:"..\gwnum\\" /DELAY:unload /delayload:advapi32.dll 
 .\Release\AffinityDlg.obj
@@ -47,7 +47,7 @@ Delayimp.lib gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/
 .\factor32lp.obj
 .\Release\Prime95.res
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3C.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2BA.tmp"
 <h3>Output Window</h3>
 Compiling resources...
 Compiling...
@@ -61,10 +61,12 @@ PreferencesDlg.cpp
 Prime95.cpp
 Prime95Doc.cpp
 ..\Riesel.c(35) : warning C4244: '+=' : conversion from '__int64' to 'unsigned __int32', possible loss of data
-..\llr.c(11040) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(11040) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(11997) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
-..\llr.c(11997) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(9362) : warning C4244: '=' : conversion from 'double' to 'unsigned long', possible loss of data
+..\llr.c(10364) : warning C4244: '=' : conversion from 'double' to 'unsigned long', possible loss of data
+..\llr.c(11188) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(11188) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(12149) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
+..\llr.c(12149) : warning C4244: 'argument' : conversion from 'unsigned long' to 'unsigned short', possible loss of data
 Prime95View.cpp
 Priority.cpp
 service.c
@@ -75,7 +77,7 @@ Linking...
 
 
 <h3>Results</h3>
-LLR.exe - 0 error(s), 5 warning(s)
+LLR.exe - 0 error(s), 7 warning(s)
 </pre>
 </body>
 </html>

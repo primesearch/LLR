@@ -3,7 +3,7 @@
 
 /* Constants */
 
-#define VERSION		"3.8.9"
+#define VERSION		"3.8.11"
 
 /* Global variables */
 
@@ -197,6 +197,6 @@ extern double __timers[10];		/* 10 timers are available */
 void title (char *);
 void flashWindowAndBeep ();
 void SetPriority ();
-#define gwinitjp(h)		gwinit2 (h, sizeof (gwhandle), "27.7")
+#define gwinitjp(h)		gwinit2 (h, sizeof (gwhandle), "27.9")
 
 #endif

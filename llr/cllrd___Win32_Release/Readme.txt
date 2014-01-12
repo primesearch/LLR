@@ -1,12 +1,12 @@
 
-		Welcome to LLR program Version 3.8.9 !
+		Welcome to LLR program Version 3.8.11 !
 
 
 1) Main features :
 
   LLR is a primality proving program for numbers of the form N = k*b^n +/- 1,
   (k < b^n), or numbers which can be rewritten in this form, like 
-  Gaussian-Mersenne norms.
+  Gaussian-Mersenne norms or b^n-b^m +/- 1 with n>m (new feature).
 
   It can also do strong and efficient PRP tests on more general k*b^n+c forms,
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
@@ -21,7 +21,7 @@
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
 
-  This version uses the most recent release (27.7) of George Woltman's Gwnum
+  This version uses the most recent release (27.9) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   The main advantage of this gwnum version is better performances on 64bit
@@ -78,7 +78,7 @@
   - Windows GUI application (llr.exe) :
 
     You may simply double-click on the icone of the application, and then 
-    use the scrolling menues. Then, the options, and results and .ini 
+    use the scrolling menues. Then, the options, results and .ini 
     file names have the default values.
 
     Note : This text can be displayed in the GUI by selecting "Help Contents" !
@@ -225,6 +225,8 @@
 
 	- ABC$a^$b+1 : Generalized Fermat candidates
 	- ABC4^$a+1 : Gaussian-Mersenne norm candidates
+	- ABC$a^$b-$a^$c-1 : a^b-a^c-1 candidates
+	- ABC$a^$b-$a^$c+1 : a^b-a^c+1 candidates
 	- ABC(2^$a+1)/3 : Wagstaff PRP candidates
 	- ABC(10^$a-1)/9 : Repunits PRP candidates
 	- ABC($a^$b-1)/($a-1) : Generalized Repunits PRP candidates
@@ -242,6 +244,8 @@
      k*b^n-1 numbers are tested using the N+1 Morrison algorithm.
 
     - K*b^n+c numbers with |c| <> 1 or k > b^n can only be PRP tested.
+     If the number is found PRP, the % of factorization is then shown,
+     but note that it is relevant only if c == +1 or -1...
 
 10) Special algorithms :
 

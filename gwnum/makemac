@@ -1,20 +1,19 @@
 # Makefile for Mac OS X gwnum library
 #
 
-ENVP= MACOSX_DEPLOYMENT_TARGET=10.4
-ENVP64= MACOSX_DEPLOYMENT_TARGET=10.5
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.3
 
-CC = gcc-4.0
-CFLAGS = -I.. -O2 -m32 -march=prescott -malign-double -fno-exceptions -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
-CFLAGSD = -I.. -g -DGDEBUG -m32 -march=prescott -malign-double -fno-exceptions -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
-CFLAGS64 = -I.. -O2 -DX86_64 -m64 -fno-exceptions -arch x86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5
-CFLAGS64D = -I.. -g -DGDEBUG -DX86_64 -m64 -fno-exceptions -arch x86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5
+CC = gcc
+CFLAGS = -I.. -O2 -m32 -march=i686 -malign-double -fno-exceptions
+CFLAGSD = -I.. -g -DGDEBUG -m32 -march=i686 -malign-double -fno-exceptions
+CFLAGS64 = -I.. -O2 -DX86_64 -m64 -fno-exceptions
+CFLAGS64D = -I.. -g -DGDEBUG -DX86_64 -m64 -fno-exceptions
 
-CPP = g++-4.0
-CPPFLAGS = -I.. -I../qd -O2 -m32 -march=prescott -malign-double -fno-exceptions -fno-rtti -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
-CPPFLAGSD = -I.. -I../qd -g -DGDEBUG -m32 -march=prescott -malign-double -fno-exceptions -fno-rtti -arch i386 -isysroot /Developer/SDKs/MacOSX10.4u.sdk -mmacosx-version-min=10.4
-CPPFLAGS64 = -I.. -I../qd -O2 -DX86_64 -m64 -fno-exceptions -fno-rtti -arch x86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5
-CPPFLAGS64D = -I.. -I../qd -g -DGDEBUG -DX86_64 -m64 -fno-exceptions -fno-rtti -arch x86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5
+CPP = g++
+CPPFLAGS = -I.. -I../qd -O2 -m32 -march=i686 -malign-double -fno-exceptions -fno-rtti
+CPPFLAGSD = -I.. -I../qd -g -DGDEBUG -m32 -march=i686 -malign-double -fno-exceptions -fno-rtti
+CPPFLAGS64 = -I.. -I../qd -O2 -DX86_64 -m64 -fno-exceptions -fno-rtti
+CPPFLAGS64D = -I.. -I../qd -g -DGDEBUG -DX86_64 -m64 -fno-exceptions -fno-rtti
 
 OBJS = release/cpuid.o release/gwnum.o release/gwtables.o release/gwthread.o release/gwutil.o release/gwdbldbl.o release/giants.o release/ecmstag1.o
 OBJSD = debug/cpuid.o debug/gwnum.o debug/gwtables.o debug/gwthread.o debug/gwutil.o debug/gwdbldbl.o debug/giants.o debug/ecmstag1.o
@@ -102,50 +101,50 @@ debug/ecmstag1.o:
 	$(ENVP) $(CC) $(CFLAGSD) -c -o debug/ecmstag1.o ecmstag1.c
 
 amd64/release/cpuid.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/cpuid.o cpuid.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/cpuid.o cpuid.c
 
 amd64/release/gwnum.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/gwnum.o gwnum.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/gwnum.o gwnum.c
 
 amd64/release/gwtables.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/gwtables.o gwtables.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/gwtables.o gwtables.c
 
 amd64/release/gwthread.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/gwthread.o gwthread.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/gwthread.o gwthread.c
 
 amd64/release/gwutil.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/gwutil.o gwutil.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/gwutil.o gwutil.c
 
 amd64/release/gwdbldbl.o:
-	$(ENVP64) $(CPP) $(CPPFLAGS64) -c -o amd64/release/gwdbldbl.o gwdbldbl.cpp
+	$(ENVP) $(CPP) $(CPPFLAGS64) -c -o amd64/release/gwdbldbl.o gwdbldbl.cpp
 
 amd64/release/giants.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/giants.o giants.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/giants.o giants.c
 
 amd64/release/ecmstag1.o:
-	$(ENVP64) $(CC) $(CFLAGS64) -c -o amd64/release/ecmstag1.o ecmstag1.c
+	$(ENVP) $(CC) $(CFLAGS64) -c -o amd64/release/ecmstag1.o ecmstag1.c
 
 amd64/debug/cpuid.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/cpuid.o cpuid.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/cpuid.o cpuid.c
 
 amd64/debug/gwnum.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwnum.o gwnum.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwnum.o gwnum.c
 
 amd64/debug/gwtables.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwtables.o gwtables.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwtables.o gwtables.c
 
 amd64/debug/gwthread.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwthread.o gwthread.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwthread.o gwthread.c
 
 amd64/debug/gwutil.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwutil.o gwutil.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/gwutil.o gwutil.c
 
 amd64/debug/gwdbldbl.o:
-	$(ENVP64) $(CPP) $(CPPFLAGS64D) -c -o amd64/debug/gwdbldbl.o gwdbldbl.cpp
+	$(ENVP) $(CPP) $(CPPFLAGS64D) -c -o amd64/debug/gwdbldbl.o gwdbldbl.cpp
 
 amd64/debug/giants.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/giants.o giants.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/giants.o giants.c
 
 amd64/debug/ecmstag1.o:
-	$(ENVP64) $(CC) $(CFLAGS64D) -c -o amd64/debug/ecmstag1.o ecmstag1.c
+	$(ENVP) $(CC) $(CFLAGS64D) -c -o amd64/debug/ecmstag1.o ecmstag1.c
 

@@ -57,9 +57,6 @@ gwnum.lib: release\cpuid.obj release\gwnum.obj release\gwtables.obj release\gwth
     -del gwnum.lib
     lib /OUT:gwnum.lib release\*.obj *.obj
 
-clean:
-	-del release\*.obj debug\*.obj
-
 linux\gwnum.a: mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
 	       mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
 	       xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \

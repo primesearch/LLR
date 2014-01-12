@@ -38,7 +38,7 @@ BOOL CALLBACK MyEnumProc (
 
 // Return true to continue enumerating Windows
 
-	if (GetWindowLong (hwnd, GWL_USERDATA) != g_MutexNum)
+	if (GetWindowLong (hwnd, GWLP_USERDATA) != g_MutexNum)
 		return (TRUE);
 
 // We've found the instance, return the window handle
@@ -326,7 +326,7 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 // Set the window user data so we can be identified by
 // another instance of this program.
 
-		SetWindowLong (m_pMainWnd->m_hWnd, GWL_USERDATA, g_MutexNum);
+		SetWindowLong (m_pMainWnd->m_hWnd, GWLP_USERDATA, g_MutexNum);
 	}
 
 /* Read the INI files. */
@@ -393,7 +393,11 @@ CDocTemplate* CPrime95App::GetSplitTemplate() const {
 void CALLBACK EXPORT TimerCallback (
 	HWND	hWnd,		//handle of CWnd that called SetTimer
 	UINT	nMsg,		//WM_TIMER
-	UINT	nIDEvent,	//timer identification
+#if (_MSC_VER < 1600)
+	UINT    nIDEvent,       //timer identification
+#else
+	UINT_PTR	nIDEvent,	//timer identification
+#endif
 	DWORD	dwTime)		//system time
 {
 	BlinkIcon (-2);
