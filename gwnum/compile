@@ -31,7 +31,7 @@ gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwtables.obj debug\gwthread.ob
 	    r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
 	    r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
 	    r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
-	    ymult1ax.obj yr4_blend.obj \
+	    ymult1ax_core.obj yr4_core.obj \
 	    ymult3.obj ymult3a_core.obj ymult3ax.obj \
 	    yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 	    timeit.obj
@@ -50,12 +50,15 @@ gwnum.lib: release\cpuid.obj release\gwnum.obj release\gwtables.obj release\gwth
 	   r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
 	   r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
 	   r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
-	   ymult1ax.obj yr4_blend.obj \
+	   ymult1ax_core.obj yr4_core.obj \
 	   ymult3.obj ymult3a_core.obj ymult3ax.obj \
 	   yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 	   timeit.obj
     -del gwnum.lib
     lib /OUT:gwnum.lib release\*.obj *.obj
+
+clean:
+	-del release\*.obj debug\*.obj
 
 linux\gwnum.a: mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
 	       mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj \
@@ -68,7 +71,7 @@ linux\gwnum.a: mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj m
 	       r4dwpn_core.obj r4dwpn_p4.obj r4dwpn_p4tp.obj r4dwpn_k8.obj r4dwpn_k10.obj \
 	       r4dwpn3_core.obj r4dwpn3_p4.obj r4dwpn3_p4tp.obj r4dwpn3_k8.obj r4dwpn3_k10.obj \
 	       r4dwpn5_core.obj r4dwpn5_p4.obj r4dwpn5_p4tp.obj r4dwpn5_k8.obj r4dwpn5_k10.obj \
-	       ymult1ax.obj yr4_blend.obj \
+	       ymult1ax_core.obj yr4_core.obj \
 	       ymult3.obj ymult3a_core.obj ymult3ax.obj \
 	       yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 	       timeit.obj
@@ -91,7 +94,7 @@ macosx\gwnum.a: macosx\mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult
 		r4dwpn_core.obj r4dwpn_p4.obj \
 		r4dwpn3_core.obj r4dwpn3_p4.obj \
 		r4dwpn5_core.obj r4dwpn5_p4.obj \
-		ymult1ax.obj yr4_blend.obj \
+		ymult1ax_core.obj yr4_core.obj \
 		ymult3.obj ymult3a_core.obj ymult3ax.obj \
 		yr4dwpn_core.obj yr4dwpn3_core.obj yr4dwpn5_core.obj \
 		timeit.obj
@@ -165,3 +168,4 @@ release\ecmstag1.obj: ecmstag1.c gwnum.h
 
 debug\ecmstag1.obj: ecmstag1.c gwnum.h
     $(cld) /Fodebug\ecmstag1.obj ecmstag1.c
+

@@ -188,9 +188,10 @@ int main (
 	int	i, opcnt = 0;
 	char	*p;
 	char	*p2;
+	char	dnflag = ' ';
 	char	m_pgen_input[80], m_pgen_output[80], oldm_pgen_input[80];
 	char	keywords[10][80], values[10][80];
-	char	multiplier[80], base[80], exponent[80], addin[80];
+	char	multiplier[80], base[80], exponent[80], exponent2[80], addin[80];
 	FILE	*in;
 
 /* catch termination signals */
@@ -287,7 +288,7 @@ int main (
 			opcnt++;
 			break;
 
-/* -Q - Test a single k*b^n+c number */
+/* -Q - Test a single k*b^n+c or b^n-b^m+c number */
 
 		case 'Q':
 		case 'q':
@@ -333,14 +334,41 @@ NOMULTIPLIER:
 			if (!isdigit(*p))
 				goto errexpr;
 			while (isdigit(*p))				// copy the c value
-				*p2++ = *p++;
-			if (*p != '\0')					// must be end of string...
+				*p2++ = *p++; 
+			*p2 = '\0';
+			if ((*p != '\0') && ((addin[0] != '-') || (*p != '^')))	// must be end of string or diffnum...
 				goto errexpr;
+			dnflag = ' ';					// restore the dnflag
+			if (*p++ != '\0') {
+				if (strcmp (base, addin+1))	// The second base must be the same...
+					goto errexpr;
+				if (!isdigit(*p))				// must be digits...
+					goto errexpr;
+				p2 = exponent2;					// get the exponent
+				while (isdigit(*p))				// copy the digits
+					*p2++ = *p++;
+				*p2 = '\0';
+				if (*p != '+' && *p != '-')		// must be plus or minus
+					goto errexpr;
+				dnflag = *p;					// dnflag = sign
+				p2 = addin;
+				*p2++ = *p++;					// copy the sign
+				if (!isdigit(*p))
+					goto errexpr;
+				while (isdigit(*p))				// copy the c value
+					*p2++ = *p++; 
+			}
 			*p2 = '\0';
 DIGITSONLY:
 			in = fopen ("$temp.npg", "w");	// open the temporary input file
-			fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
-			fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
+			if ((dnflag == '+') || (dnflag == '-')) {
+				fprintf (in, "ABC $a^$b-$a^$c$d\n");// write ABC header and data
+				fprintf (in, "%s %s %s %s\n", base, exponent, exponent2, addin);
+			}
+			else {
+				fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
+				fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
+			}
 			fclose (in);
 			strcpy (m_pgen_input, "$temp.npg");
 			strcpy (m_pgen_output, "$temp.res");
@@ -367,7 +395,7 @@ DIGITSONLY:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.11\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - beta Version 3.8.13\n");
 			return (0); 
 
 /* -W - use a different working directory */
@@ -493,7 +521,7 @@ usage:	printf ("Usage: cllr [-aN] [-dhmoqv] [-wDIR] [input file name]\n");
 	printf ("-h\tPrint this.\n");
 	printf ("-m\tMenu to configure llr.\n");
 	printf ("-okeyword=value\tSet an option in .ini file.\n");
-	printf ("-q\"expression\"\tTest a single k*b^n+c number.\n");
+	printf ("-q\"expression\"\tTest a single k*b^n+c or b^n-b^m+c number.\n");
 	printf ("-v\tPrint the version number.\n");
 	printf ("-wDIR\tRun from a different working directory.\n");
 	printf ("\n");

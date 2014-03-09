@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.11 !
+		Welcome to LLR program beta Version 3.8.13 !
 
 
 1) Main features :
@@ -20,8 +20,7 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-
-  This version uses the most recent release (27.9) of George Woltman's Gwnum
+  This version uses the last beta version (28.5) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
 
   The main advantage of this gwnum version is better performances on 64bit
@@ -103,7 +102,7 @@
 
     (If you ommit -d, the program will work silently!)
 
-    - To test a SINGLE k*b^n+c number, type :
+    - To test a SINGLE k*b^n+c or b^n-b^m+c number, type :
 
     >cllr [-d] [-a<nnnn>] [-w<dir.>] [-o<keyw.>=<val.>]... -q"expression"
 

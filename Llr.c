@@ -112,7 +112,7 @@ char repustring[] = "(10^$a-1)/9";	// PRP test for repunits numbers
 char grepustring[] = "($a^$b-1)/($a-1)";// PRP test for generalized repunits numbers
 char diffnumpstring[] = "$a^$b-$a^$c+%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c+%d so, form K*B^N+C
 char diffnummstring[] = "$a^$b-$a^$c-%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c-%d so, form K*B^N+C
-
+char diffnumstring[] = "$a^$b-$a^$c$d";	// General diffnum format
 // Fixed k and c forms for k*b^n+c
 
 char fkpstring[] = ""$LLF"*$a^$b+%d";
@@ -7099,6 +7099,7 @@ int isPRPinternal (
 #define	ABCGRU		21				// (b^n-1)/(b-1) Generalized Repunits
 #define ABCGF		22				// ABC format for generalized Fermat numbers
 #define ABCDN		23				// b^n-b^m+c format, m < n <= 2*m
+#define ABCDNG		24				// General b^n-b^m+c format, m < n <= 2*m
 
 int IsPRP (							// General PRP test
 	unsigned long format, 
@@ -7171,7 +7172,7 @@ int IsPRP (							// General PRP test
 		}
 	}
 
-	if (gformat == ABCDN) {					// Compute gk = gb^(n-m)-1
+	if ((gformat == ABCDN) || (gformat == ABCDNG)) {// Compute gk = gb^(n-m)-1
 		bits = ndiff*bitlen (gb);
 		gk = newgiant ((bits >> 4) + 8);
 		gtog (gb, gk);
@@ -8447,7 +8448,7 @@ int plusminustest (
 	double	reallymaxerr = 0.0;
 	gwhandle *gwdata;
 	ghandle *gdata;
-	if (gformat == ABCDN) {					// Compute gk = gb^(n-m)-1
+	if ((gformat == ABCDN) || (gformat == ABCDNG)) {// Compute gk = gb^(n-m)-1
 		bits = ndiff*bitlen (gb);
 		gk = newgiant ((bits >> 4) + 8);
 		gtog (gb, gk);
@@ -8472,7 +8473,7 @@ int plusminustest (
 
 //	Be sure the base does not divide the gk multiplier :
 
-	if (gformat != ABCDN) {
+	if ((gformat != ABCDN) && (gformat != ABCDNG)) {
 		while (!isone(gk)) {
 			gtog (gk,grem);
 			modg (gb, grem);
@@ -8529,7 +8530,7 @@ int plusminustest (
 
 
 	if (klen > Nlen) {
-		if (gformat == ABCDN)
+		if ((gformat == ABCDN) || (gformat == ABCDNG))
 		    sprintf(buf, "%s^%lu-1 > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgb, ndiff, sgb, n, str);
 		else
 		    sprintf(buf, "%s > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgk, sgb, n, str);
@@ -9358,7 +9359,7 @@ int isLLRP (
 		else
 			idk = 0;
 // Lei end
-		if (format == ABCDN) {						// Compute gk = gb^(n-m)-1
+		if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
 			gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
 			gk = newgiant ((gksize >> 4) + 8);		// Allocate space for gk
 			ultog (binput, gk);
@@ -9406,7 +9407,7 @@ int isLLRP (
 			strcpy (sgk1, sgk);
 //	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
 		}
-		if (format != ABCDN)
+		if ((format != ABCDN) && (format != ABCDNG))
 			if (b_else != 1)	// Lei, J.P.
 				sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
 			else
@@ -9473,7 +9474,7 @@ int isLLRP (
 	}
 
 	if (klen > n) {
-		if (format == ABCDN)
+		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf(buf, "2^%lu-1 > 2^%lu, so we can only do a PRP test for %s.\n", ndiff, n, str);
 		else
 			sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
@@ -9481,7 +9482,7 @@ int isLLRP (
 
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
-		if (format == ABCDN)
+		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
@@ -9511,7 +9512,7 @@ int isLLRP (
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
 		strcpy (buf, str);
-		if (format == ABCDN)
+		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
@@ -10360,7 +10361,7 @@ int isProthP (
 	else
 		idk = 0;
 // Lei end
-	if (format == ABCDN) {						// Compute gk = gb^(n-m)-1
+	if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
 		gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
 		gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
 		ultog (binput, gk);
@@ -10406,7 +10407,7 @@ int isProthP (
 	else
 		strcpy (sgk1, sgk);
 
-	if (format != ABCDN)
+	if ((format != ABCDN) && (format != ABCDNG))
 		if (b_else != 1)	// Lei, J.P.
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
 		else
@@ -10458,7 +10459,7 @@ int isProthP (
 	globalk = dk;
 
 	if (klen > n) {
-		if (format == ABCDN)
+		if ((format == ABCDN) || (format == ABCDNG))
 		    sprintf(buf, "2^%lu-1 > 2^%lu, so we can only do a PRP test for %s.\n", ndiff, n, str);
 		else
 		    sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
@@ -10466,7 +10467,7 @@ int isProthP (
 
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, 1, res);
-		if (format == ABCDN)
+		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu+1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');     // Number N to test, as a string
@@ -13097,6 +13098,8 @@ OPENFILE :
 					format = ABCDN;
 					incr = - incr;
 				}
+				else if (!strncmp (pinput, diffnumstring, strlen (diffnumstring)))
+					format = ABCDNG;
 				else if (sscanf(pinput, fkpstring, smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
@@ -14011,6 +14014,31 @@ OPENFILE :
 								_write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu %lu\n", sgb, n, m);	// write the result
+							_write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+				}
+				else if (format == ABCDNG)	{	// b^n-b^m+c numbers ; sgb, n, m, c are the four parameters
+					if (sscanf (buff+begline, "%s %lu %lu %d", sgb, &n, &m, &incr) != 4)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgb))
+						continue;				// Skip invalid line
+					if (n <= m)
+						continue;				// Skip invalid line
+					ndiff = n-m;				// Save difference of exponents in a global
+					sprintf (sgk, "1");
+					if (! process_num (format, "1", sgb, m, incr, 0, &res))
+						goto done;
+					if (res) {
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								_write (outfd, hbuff, strlen (hbuff));
+							}
+							sprintf (outbuf, "%s %lu %lu %d\n", sgb, n, m, incr);	// write the result
 							_write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}

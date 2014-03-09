@@ -1,0 +1,63 @@
+Missing or invalid NewPGen header, next data lines will be flushed...
+Missing or invalid NewPGen header, next data lines will be flushed...
+Missing or invalid NewPGen header, next data lines will be flushed...
+Invalid ABC format, next data lines will be flushed...
+1*2^48150+1 is not prime.  Proth RES64: 5A921EA6FE315DC6  Time : 4.609 sec.
+1*2^48150+1 is not prime.  Proth RES64: 5A921EA6FE315DC6  Time : 3.705 sec.
+2^50021-2^48150+1 is prime! (15058 decimal digits)  Time : 23.334 sec.
+2^36960-2^30840-1 is base 3-Strong Fermat PRP! (11127 decimal digits)  Time : 23.529 sec.
+2^36960-2^30840-1 is prime! (11127 decimal digits)  Time : 16.015 sec.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 135.372 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 137.203 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 151.417 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 154.191 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 136.073 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 136.648 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 135.026 ms.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 137.432 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 135.958 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 134.701 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 137.020 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 135.680 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 146.951 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 136.447 ms.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 198.667 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 142.071 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 134.669 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 136.689 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 136.482 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 135.423 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 167.374 ms.
+1*2^21701-1 is prime! (6533 decimal digits)  Time : 248.041 sec.
+1*2^21701-1 is prime! (6533 decimal digits)  Time : 467.563 ms.
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 135.153 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 146.937 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 134.966 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 136.675 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 135.855 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 141.958 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 135.959 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.632 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 5.873 sec.
+(Factored part = 30.94%)
+10^20000-10^19536+1 may be prime, but N divides 3^((N-1)/5))-1, restarting with a=5  Time : 70.035 sec.
+10^20000-10^19536+1 is prime! (20000 decimal digits)  Time : 76.684 sec.
+999999999989 is base 3-Strong Fermat PRP! (12 decimal digits)  Time : 4.489 sec.
+999999999989 is strong-Fermat, Lucas and Frobenius PRP! (P = 4, Q = 2, D = 8)  Time : 277.351 ms.
+(Factored part = 0.00%)
+9000011 = 9000011 is prime! (trial divisions)
+999999999989 is base 3-Strong Fermat PRP! (12 decimal digits)  Time : 18.259 ms.
+999999999989 is strong-Fermat, Lucas and Frobenius PRP! (P = 4, Q = 2, D = 8)  Time : 62.526 ms.
+(Factored part = 0.00%)
+10^1313-10^713+1 may be prime, but N divides 3^((N-1)/2))-1, restarting with a=5  Time : 373.827 ms.
+10^1313-10^713+1 may be prime, but N divides 5^((N-1)/2))-1, restarting with a=7  Time : 278.767 ms.
+10^1313-10^713+1 may be prime, but N divides 7^((N-1)/2))-1, restarting with a=11  Time : 261.134 ms.
+10^1313-10^713+1 may be prime, but N divides 11^((N-1)/2))-1, restarting with a=13  Time : 261.516 ms.
+10^1313-10^713+1 may be prime, but N divides 13^((N-1)/2))-1, restarting with a=17  Time : 257.061 ms.
+10^1313-10^713+1 may be prime, but N divides 17^((N-1)/2))-1, restarting with a=19  Time : 257.917 ms.
+10^1313-10^713+1 is prime! (1313 decimal digits)  Time : 392.601 ms.
+10^3093-1 > 10^1386, so, only a Strong PRP test is done for 10^4479-10^1386+1.
+10^4479-10^1386+1 is base 3-Strong Fermat PRP! (4479 decimal digits)  Time : 3.558 sec.
+10^4479-10^1386+1 is strong-Fermat, Lucas and Frobenius PRP! (P = 5, Q = 2, D = 17)  Time : 4.713 sec.
+(Factored part = 30.94%)

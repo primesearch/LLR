@@ -10,7 +10,7 @@
  *	Other important ideas courtesy of Peter Montgomery.
  *
  *	c. 1997 Perfectly Scientific, Inc.
- *	c. 1998-2011 Mersenne Research, Inc.
+ *	c. 1998-2014 Mersenne Research, Inc.
  *	All Rights Reserved.
  *
  *************************************************************/
@@ -2225,7 +2225,8 @@ int ecm (
 	uint64_t C;		/* Stage 2 ending point */
 	uint64_t sieve_start, prime, m;
 	unsigned long SQRT_B;
-	double	sigma, last_output, one_over_B, one_over_C_minus_B;
+	double	sigma, last_output, last_output_t, one_over_B, one_over_C_minus_B;
+	double	output_frequency, output_title_frequency;
 	unsigned long i, j, curve, min_memory;
 	saveFileState save_file_state;	/* Manage savefile names during reading */
 	char	filename[32], buf[255], fft_desc[100];
@@ -2235,7 +2236,7 @@ int ecm (
 	giant	N;		/* Number being factored */
 	giant	factor;		/* Factor found, if any */
 	gwnum	Ad4 = NULL;
-	int	msglen, continueECM;
+	int	msglen, continueECM, prpAfterEcmFactor;
 	char	*str, *msg;
 	double	timers[10];
 
@@ -2376,7 +2377,7 @@ int j, min_test, max_test, test, cnt, NUM_X87_TESTS, NUM_SSE2_TESTS, NUM_AVX_TES
 #define timeit(a,n,w) (((void**)a)[0]=w,((uint32_t*)a)[2]=n,gwtimeit(a))
 
 gwinit (&gwdata);
-gwsetup (&gwdata, 1.0, 2, 500 /*10000000*/, -1);
+gwsetup (&gwdata, 1.0, 2, 10000000, -1);
 workbuf = (void *) aligned_malloc (40000000, 4096);
 memset (workbuf, 0, 40000000);
 RDTSC_TIMING = 2;
@@ -2413,10 +2414,10 @@ timers[2] /= cnt;
 strcat (buf, ", avg: ");
 print_timer (timers, 2, buf, TIMER_NL | TIMER_CLR);
 OutputBoth (thread_num, buf);
-if (min_test) exit (0);
 }
 aligned_free (workbuf);
 gwdone (&gwdata);
+if (min_test) exit (0);
 return 0;
 }
 #endif
@@ -2556,9 +2557,10 @@ for ( ; ; ) {
 /* More random initializations */
 	
 	gwsetnormroutine (&ecmdata.gwdata, 0, ERRCHK, 0);
-	last_output = ecmdata.modinv_count = 0;
+	last_output = last_output_t = ecmdata.modinv_count = 0;
 	gw_clear_fft_count (&ecmdata.gwdata);
 	first_iter_msg = TRUE;
+	calc_output_frequencies (&ecmdata.gwdata, &output_frequency, &output_title_frequency);
 
 /* Compute the number we are factoring */
 
@@ -2739,7 +2741,7 @@ OutputStr (thread_num, buf);
 
 restart0:
 	ecm_stage1_memory_usage (thread_num, &ecmdata);
-	last_output = ecmdata.modinv_count = 0;
+	last_output = last_output_t = ecmdata.modinv_count = 0;
 	gw_clear_fft_count (&ecmdata.gwdata);
 
 /* Allocate memory */
@@ -2804,34 +2806,33 @@ restart1:
 
 		w->pct_complete = prime * one_over_B;
 
+/* Output the title every so often */
+
+		if (first_iter_msg ||
+		    (ITER_OUTPUT != 999999999 &&
+		     gw_get_fft_count (&ecmdata.gwdata) >= last_output_t + 2 * ITER_OUTPUT * output_title_frequency)) {
+			char	mask[80];
+			sprintf (mask, "%%.%df%%%% of %%s ECM curve %%d stage 1", PRECISION);
+			sprintf (buf, mask, trunc_percent (w->pct_complete), gwmodulo_as_string (&ecmdata.gwdata), curve);
+			title (thread_num, buf);
+			last_output_t = gw_get_fft_count (&ecmdata.gwdata);
+		}
+
 /* Print a message every so often */
 
 		if (first_iter_msg ||
 		    (ITER_OUTPUT != 999999999 &&
-		     gw_get_fft_count (&ecmdata.gwdata) >=
-					last_output + 2 * ITER_OUTPUT)) {
+		     gw_get_fft_count (&ecmdata.gwdata) >= last_output + 2 * ITER_OUTPUT * output_frequency)) {
 			char	mask[80];
-			double	pct;
-			pct = trunc_percent (w->pct_complete);
-			sprintf (mask, "%%.%df%%%% of %%s ECM curve %%d stage 1",
-				 PRECISION);
-			sprintf (buf, mask, pct,
-				 gwmodulo_as_string (&ecmdata.gwdata), curve);
-			title (thread_num, buf);
-			sprintf (mask,
-				 "%%s curve %%d stage 1 at prime %%.0f [%%.%df%%%%].",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&ecmdata.gwdata),
-				 curve, (double) prime, pct);
+			sprintf (mask, "%%s curve %%d stage 1 at prime %%.0f [%%.%df%%%%].", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&ecmdata.gwdata), curve, (double) prime, trunc_percent (w->pct_complete));
 			end_timer (timers, 0);
 			if (first_iter_msg) {
 				strcat (buf, "\n");
 				clear_timer (timers, 0);
 			} else {
 				strcat (buf, " Time: ");
-				print_timer (timers, 0, buf,
-					     TIMER_NL | TIMER_OPT_CLR);
+				print_timer (timers, 0, buf, TIMER_NL | TIMER_OPT_CLR);
 			}
 			if (prime != 2)
 				OutputStr (thread_num, buf);
@@ -2862,7 +2863,7 @@ restart1:
 		 gw_get_fft_count (&ecmdata.gwdata), ecmdata.modinv_count);
 	print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
 	OutputStr (thread_num, buf);
-	last_output = ecmdata.modinv_count = 0;
+	last_output = last_output_t = ecmdata.modinv_count = 0;
 	gw_clear_fft_count (&ecmdata.gwdata);
 
 /* Print out round off error */
@@ -2896,7 +2897,7 @@ skip_stage_2:	start_timer (timers, 0);
 
 		if (IniGetInt (INI_FILE, "GmpEcmHook", 0)) {
 			char	*msg, *buf;
-			int	msglen, i;
+			int	msglen, i, leadingzeroes;
 			giant	gx;
 			char	*hex = "0123456789ABCDEF";
 
@@ -2911,30 +2912,24 @@ skip_stage_2:	start_timer (timers, 0);
 			msglen = N->sign * 8 + 5;
 			buf = (char *) malloc (msglen + msglen + 80);
 			if (buf == NULL) goto oom;
-			strcpy (buf, "N=");
+			strcpy (buf, "N=0x");
 			msg = buf + strlen (buf);
+			leadingzeroes = 1; /* Still eat leading zeroes? */
 			for (i = 0; i < N->sign * 8; i++) {
-				msg[i+2] = hex[ ( N->n[N->sign - 1 - i/8] 
-			                    >> ((7-i%8)*4)) & 0xF ];
+				char nibble = ( N->n[N->sign - 1 - i/8] >> ((7-i%8)*4)) & 0xF;
+				if (nibble != 0) leadingzeroes = 0;
+				if (!leadingzeroes) *msg++ = hex[nibble];
 			}
-			msg[i+2] = 0;
-			for (i = 0; i < N->sign * 8 - 1; i++)
-				if (msg[i+2] != '0') break;
-			msg[i] = '0'; msg[i+1] = 'x';
-			strcpy (msg, msg+i);
-			strcat (buf, "; QX=");
-			msg = buf + strlen (buf);
+			strcpy (msg, "; QX=0x");
+			msg = msg + strlen (msg);
+			leadingzeroes = 1;
 			for (i = 0; i < gx->sign * 8; i++) {
-				msg[i+2] = hex[ ( gx->n[gx->sign - 1 - i/8] 
-				                    >> ((7-i%8)*4)) & 0xF ];
+				char nibble = ( gx->n[gx->sign - 1 - i/8] >> ((7-i%8)*4)) & 0xF;
+				if (nibble != 0) leadingzeroes = 0;
+				if (!leadingzeroes) *msg++ = hex[nibble];
 			}
-			msg[2+i] = 0;
-			for (i = 0; i < gx->sign * 8 - 1; i++)
-				if (msg[i+2] != '0') break;
-			msg[i] = '0'; msg[i+1] = 'x';
-			strcpy (msg, msg+i);
-			strcat (buf, "; SIGMA=");
-			msg = buf + strlen (buf);
+			strcpy (msg, "; SIGMA=");
+			msg = msg + strlen (msg);
 			sprintf (msg, "%.0f\n", sigma);
 			writeResults (buf);
 			free (buf);
@@ -3158,7 +3153,7 @@ restart3:
 		 gw_get_fft_count (&ecmdata.gwdata), ecmdata.modinv_count);
 	print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
 	OutputStr (thread_num, buf);
-	last_output = ecmdata.modinv_count = 0;
+	last_output = last_output_t = ecmdata.modinv_count = 0;
 	gw_clear_fft_count (&ecmdata.gwdata);
 
 /* Now do stage 2 */
@@ -3247,34 +3242,33 @@ restart3:
 		w->pct_complete = (prime - B) * one_over_C_minus_B;
 		if (w->pct_complete > 1.0) w->pct_complete = 1.0;
 
+/* Output the title every so often */
+
+		if (first_iter_msg ||
+		    (ITER_OUTPUT != 999999999 &&
+		     gw_get_fft_count (&ecmdata.gwdata) >= last_output_t + 2 * ITER_OUTPUT * output_title_frequency)) {
+			char	mask[80];
+			sprintf (mask, "%%.%df%%%% of %%s ECM curve %%d stage 2", PRECISION);
+			sprintf (buf, mask, trunc_percent (w->pct_complete), gwmodulo_as_string (&ecmdata.gwdata), curve);
+			title (thread_num, buf);
+			last_output_t = gw_get_fft_count (&ecmdata.gwdata);
+		}
+
 /* Print a message every so often */
 
 		if (first_iter_msg ||
 		    (ITER_OUTPUT != 999999999 &&
-		     gw_get_fft_count (&ecmdata.gwdata) >=
-					last_output + 2 * ITER_OUTPUT)) {
+		     gw_get_fft_count (&ecmdata.gwdata) >= last_output + 2 * ITER_OUTPUT * output_frequency)) {
 			char	mask[80];
-			double	pct;
-			pct = trunc_percent (w->pct_complete);
-			sprintf (mask, "%%.%df%%%% of %%s ECM curve %%d stage 2",
-				 PRECISION);
-			sprintf (buf, mask, pct,
-				 gwmodulo_as_string (&ecmdata.gwdata), curve);
-			title (thread_num, buf);
-			sprintf (mask,
-				 "%%s curve %%d stage 2 at prime %%.0f [%%.%df%%%%].",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&ecmdata.gwdata),
-				 curve, (double) prime, pct);
+			sprintf (mask, "%%s curve %%d stage 2 at prime %%.0f [%%.%df%%%%].", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&ecmdata.gwdata), curve, (double) prime, trunc_percent (w->pct_complete));
 			end_timer (timers, 0);
 			if (first_iter_msg) {
 				strcat (buf, "\n");
 				clear_timer (timers, 0);
 			} else {
 				strcat (buf, " Time: ");
-				print_timer (timers, 0, buf,
-					     TIMER_NL | TIMER_OPT_CLR);
+				print_timer (timers, 0, buf, TIMER_NL | TIMER_OPT_CLR);
 			}
 			OutputStr (thread_num, buf);
 			start_timer (timers, 0);
@@ -3316,7 +3310,7 @@ restart3:
 		 gw_get_fft_count (&ecmdata.gwdata), ecmdata.modinv_count);
 	print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
 	OutputStr (thread_num, buf);
-	last_output = ecmdata.modinv_count = 0;
+	last_output = last_output_t = ecmdata.modinv_count = 0;
 	gw_clear_fft_count (&ecmdata.gwdata);
 
 /* Print out round off error */
@@ -3437,7 +3431,8 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 
 /* Output the validated factor */
 
-	sprintf (msg, "%s has a factor: %s\n", gwmodulo_as_string (&ecmdata.gwdata), str);
+	sprintf (msg, "%s has a factor: %s (ECM curve %d, B1=%.0f, B2=%.0f)\n",
+		 gwmodulo_as_string (&ecmdata.gwdata), str, (int) curve, (double) B, (double) C);
 	OutputStr (thread_num, msg);
 	formatMsgForResultsFile (msg, w);
 	writeResults (msg);
@@ -3445,8 +3440,9 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 /* See if the cofactor is prime and set flag if we will be continuing ECM */
 
 	continueECM = IniGetInt (INI_FILE, "ContinueECM", 0);
-	if (w->n < 100000 || continueECM) divg (factor, N);
-	if (w->n < 100000 && isProbablePrime (&ecmdata.gwdata, N)) {
+	prpAfterEcmFactor = IniGetInt (INI_FILE, "PRPAfterECMFactor", bitlen (N) < 100000);
+	if (prpAfterEcmFactor || continueECM) divg (factor, N);
+	if (prpAfterEcmFactor && isProbablePrime (&ecmdata.gwdata, N)) {
 		OutputBoth (thread_num, "Cofactor is a probable prime!\n");
 		continueECM = FALSE;
 	}
@@ -3541,7 +3537,6 @@ int ecm_QA (
 	struct PriorityInfo *sp_info)	/* SetPriority information */
 {
 	FILE	*fd;
-	int	savefiles;
 
 /* Set the title */
 
@@ -3579,7 +3574,6 @@ int ecm_QA (
 
 		if (b == 1) {
 			QA_TYPE = c;
-			savefiles = B1;
 			continue;
 		}
 
@@ -3674,7 +3668,7 @@ typedef struct {
 	unsigned long pairs_set;/* Number of pairs originally set in */
 				/* bitarray */
 	unsigned long pairs_done;/* Number of pairs completed */
-	double	pct_mem_to_use;	/* If we get memory allocation errors, we *
+	double	pct_mem_to_use;	/* If we get memory allocation errors, we */
 				/* progressively try using less and less. */
 } pm1handle;
 
@@ -4326,7 +4320,7 @@ int choose_pminus1_implementation (
 	unsigned long numvals;
 	int	using_t3;
 	double	cost, best_cost;
-	int	stop_reason, do_later;
+	int	stop_reason;
 
 /* Copy some pm1data variables for easier access */
 
@@ -4370,7 +4364,6 @@ int choose_pminus1_implementation (
 
 		if (cost < best_cost) {
 			best_cost = cost;
-			do_later = 0;
 			*using_t3_result = using_t3;
 			pm1data->rels_this_pass =
 				numvals - (pm1data->E+1) - using_t3;
@@ -4550,15 +4543,16 @@ void calc_exp (
 		return;
 	}
 
-/* For Mersenne numbers, 2^n-1, make sure we include 2n in the calculated */
-/* exponent (since factors are of the form 2kn+1).  For Fermat numbers, */
-/* 2^n+1 (n is a power of 2), make sure the exponent is included in the */
-/* calculated exponent as factors are of the form kn+1.  Otherwise, do */
-/* nothing special -- start with one. */
+/* For Mersenne numbers, 2^n-1, make sure we include 2n in the calculated exponent (since factors */
+/* are of the form 2kn+1).  For generalized Fermat numbers, b^n+1 (n is a power of 2), make sure n */
+/* is included in the calculated exponent as factors are of the form kn+1 (actually forum posters */
+/* have pointed out that Fermat numbers should include 4n and generalized Fermat should include 2n). */
+/* Heck, maybe other forms may also need n included, so just always include 2n -- it is very cheap. */
 
-	if (lower == 0 && k == 1.0 && b == 2 && c == -1) itog (2*n, g);
-	else if (lower == 0 && k == 1.0 && b == 2 && c == 1) itog (n, g);
-	else setone (g);
+//	if (lower == 0 && k == 1.0 && b == 2 && c == -1) itog (2*n, g);
+//	else if (lower == 0 && k == 1.0 && c == 1) itog (n, g);
+//	else setone (g);
+	itog (2*n, g);
 
 /* Find all the primes in the range and use as many powers as possible */
 
@@ -4597,7 +4591,8 @@ int pminus1 (
 	int	have_save_file;
 	int	res, stop_reason, stage, saving, near_fft_limit, echk;
 	double	one_over_len, one_over_B, one_pair_pct;
-	double	base_pct_complete, last_output, last_output_r;
+	double	base_pct_complete, last_output, last_output_t, last_output_r;
+	double	output_frequency, output_title_frequency;
 	int	first_iter_msg;
 	int	using_t3;	/* Indicates we are using the gwnum t3 */
 				/* to avoid a gwfftadd3 in stage 2 */
@@ -4706,9 +4701,10 @@ restart:
 
 /* More miscellaneous initializations */
 
-	last_output = last_output_r = 0;
+	last_output = last_output_t = last_output_r = 0;
 	gw_clear_fft_count (&pm1data.gwdata);
 	first_iter_msg = TRUE;
+	calc_output_frequencies (&pm1data.gwdata, &output_frequency, &output_title_frequency);
 
 /* Output message about the FFT length chosen */
 
@@ -4787,7 +4783,8 @@ restart:
 
 		if (error_recovery_mode) {
 			gwstartnextfft (&pm1data.gwdata, FALSE);
-			gwsquare (&pm1data.gwdata, x);
+			gwsetnormroutine (&pm1data.gwdata, 0, 0, 0);
+			gwsquare_carefully (&pm1data.gwdata, x);
 			pm1_save (&pm1data, filename, w, processed, x, gg);
 			error_recovery_mode = 0;
 		}
@@ -4931,83 +4928,65 @@ restart0:
 /* get us past the offending iteration. */
 
 		if (error_recovery_mode && bit_number == error_recovery_mode) {
+			gwstartnextfft (&pm1data.gwdata, FALSE);
+			gwsetnormroutine (&pm1data.gwdata, 0, 0, bitval (exp, len - bit_number - 1));
 			gwsquare_carefully (&pm1data.gwdata, x);
-			if (bitval (exp, len - bit_number - 1)) {
-				gwnum	three;
-				three = gwalloc (&pm1data.gwdata);
-				if (three == NULL) goto oom;
-				dbltogw (&pm1data.gwdata, 3.0, three);
-				gwsetnormroutine (&pm1data.gwdata, 0, 0, 0);
-				gwmul (&pm1data.gwdata, three, x);
-				gwfree (&pm1data.gwdata, three);
-			}
 			error_recovery_mode = 0;
 			saving = TRUE;
 		}
 
-/* Set various flags.  They control whether error-checking or the next FFT */
-/* can be started. */
+/* Set various flags.  They control whether error-checking or the next FFT can be started. */
 
 		else {
 			stop_reason = stopCheck (thread_num);
 			saving = testSaveFilesFlag (thread_num);
-			echk = stop_reason || ERRCHK || near_fft_limit;
-			if ((bit_number & 127) == 64) echk = 1;
+			echk = stop_reason || saving || ERRCHK || near_fft_limit || ((bit_number & 127) == 64);
 
 /* Either square x or square x and multiply it by three. */
 
 #ifndef SERVER_TESTING
-			gwstartnextfft (&pm1data.gwdata,
-					!stop_reason && !saving &&
-					!error_recovery_mode &&
-					bit_number+1 != len);
-			if (bitval (exp, len - bit_number - 1)) {
-				gwsetnormroutine (&pm1data.gwdata, 0, echk, 1);
-				gwsquare (&pm1data.gwdata, x);
-			} else {
-				gwsetnormroutine (&pm1data.gwdata, 0, echk, 0);
-				gwsquare (&pm1data.gwdata, x);
-			}
+			gwstartnextfft (&pm1data.gwdata, !stop_reason && !saving && bit_number+1 != error_recovery_mode && bit_number+1 != len);
+			gwsetnormroutine (&pm1data.gwdata, 0, echk, bitval (exp, len - bit_number - 1));
+			gwsquare (&pm1data.gwdata, x);
 #endif
 		}
 
 /* Test for an error */
 
-		if (gw_test_for_error (&pm1data.gwdata) ||
-		    gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
+		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
 		bit_number++;
 
 /* Calculate our stage 1 percentage complete */
 
 		w->pct_complete = (double) bit_number * one_over_len;
 
+/* Output the title every so often */
+
+		if (first_iter_msg ||
+		    (ITER_OUTPUT != 999999999 &&
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output_t + 2 * ITER_OUTPUT * output_title_frequency)) {
+			char	mask[80];
+			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 1", PRECISION);
+			sprintf (buf, mask, trunc_percent (w->pct_complete), gwmodulo_as_string (&pm1data.gwdata));
+			title (thread_num, buf);
+			last_output_t = gw_get_fft_count (&pm1data.gwdata);
+		}
+
 /* Every N squarings, output a progress report */
 
 		if (first_iter_msg ||
 		    (ITER_OUTPUT != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output + 2 * ITER_OUTPUT)) {
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output + 2 * ITER_OUTPUT * output_frequency)) {
 			char	mask[80];
-			double	pct;
-			pct = trunc_percent (w->pct_complete);
-			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 1",
-				 PRECISION);
-			sprintf (buf, mask, pct,
-				 gwmodulo_as_string (&pm1data.gwdata));
-			title (thread_num, buf);
-			sprintf (mask,
-				 "%%s stage 1 is %%.%df%%%% complete.",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 1 is %%.%df%%%% complete.", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), trunc_percent (w->pct_complete));
 			end_timer (timers, 0);
 			if (first_iter_msg) {
 				strcat (buf, "\n");
 				clear_timer (timers, 0);
 			} else {
 				strcat (buf, " Time: ");
-				print_timer (timers, 0, buf,
-					     TIMER_NL | TIMER_OPT_CLR);
+				print_timer (timers, 0, buf, TIMER_NL | TIMER_OPT_CLR);
 			}
 			if (bit_number > 1)
 				OutputStr (thread_num, buf);
@@ -5018,18 +4997,13 @@ restart0:
 
 /* Every N squarings, output a progress report to the results file */
 
-		if ((ITER_OUTPUT_RES != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output_r + 2 * ITER_OUTPUT_RES) ||
+		if ((ITER_OUTPUT_RES != 999999999 && gw_get_fft_count (&pm1data.gwdata) >= last_output_r + 2 * ITER_OUTPUT_RES) ||
 		    (NO_GUI && stop_reason)) {
 			char	mask[80];
 			double	pct;
 			pct = trunc_percent (w->pct_complete);
-			sprintf (mask,
-				 "%%s stage 1 is %%.%df%%%% complete.\n",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 1 is %%.%df%%%% complete.\n", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), pct);
 			writeResults (buf);
 			last_output_r = gw_get_fft_count (&pm1data.gwdata);
 		}
@@ -5048,7 +5022,8 @@ restart0:
 
 	if (error_recovery_mode) {
 		gwstartnextfft (&pm1data.gwdata, FALSE);
-		gwsquare (&pm1data.gwdata, x);
+		gwsetnormroutine (&pm1data.gwdata, 0, 0, 0);
+		gwsquare_carefully (&pm1data.gwdata, x);
 		pm1_save (&pm1data, filename, w, bit_number, x, NULL);
 		error_recovery_mode = 0;
 	}
@@ -5111,33 +5086,33 @@ restart1:
 
 		stop_reason = stopCheck (thread_num);
 
+/* Output the title every so often */
+
+		if (first_iter_msg ||
+		    (ITER_OUTPUT != 999999999 &&
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output_t + 2 * ITER_OUTPUT * output_title_frequency)) {
+			char	mask[80];
+			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 1", PRECISION);
+			sprintf (buf, mask, trunc_percent (w->pct_complete), gwmodulo_as_string (&pm1data.gwdata));
+			title (thread_num, buf);
+			last_output_t = gw_get_fft_count (&pm1data.gwdata);
+		}
+
 /* Every N primes, output a progress report */
 
 		if (first_iter_msg ||
 		    (ITER_OUTPUT != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output + 2 * ITER_OUTPUT)) {
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output + 2 * ITER_OUTPUT * output_frequency)) {
 			char	mask[80];
-			double	pct;
-			pct = trunc_percent (w->pct_complete);
-			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 1",
-				 PRECISION);
-			sprintf (buf, mask, pct,
-				 gwmodulo_as_string (&pm1data.gwdata));
-			title (thread_num, buf);
-			sprintf (mask,
-				 "%%s stage 1 is %%.%df%%%% complete.",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 1 is %%.%df%%%% complete.", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), trunc_percent (w->pct_complete));
 			end_timer (timers, 0);
 			if (first_iter_msg) {
 				strcat (buf, "\n");
 				clear_timer (timers, 0);
 			} else {
 				strcat (buf, " Time: ");
-				print_timer (timers, 0, buf,
-					     TIMER_NL | TIMER_OPT_CLR);
+				print_timer (timers, 0, buf, TIMER_NL | TIMER_OPT_CLR);
 			}
 			OutputStr (thread_num, buf);
 			start_timer (timers, 0);
@@ -5148,17 +5123,13 @@ restart1:
 /* Every N primes, output a progress report to the results file */
 
 		if ((ITER_OUTPUT_RES != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output_r + 2 * ITER_OUTPUT_RES) ||
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output_r + 2 * ITER_OUTPUT_RES) ||
 		    (NO_GUI && stop_reason)) {
 			char	mask[80];
 			double	pct;
 			pct = trunc_percent (w->pct_complete);
-			sprintf (mask,
-				 "%%s stage 1 is %%.%df%%%% complete.\n",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 1 is %%.%df%%%% complete.\n", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), pct);
 			writeResults (buf);
 			last_output_r = gw_get_fft_count (&pm1data.gwdata);
 		}
@@ -5195,7 +5166,7 @@ more_B:		pm1data.B = B;
 	print_timer (timers, 1, buf, TIMER_NL | TIMER_CLR);
 	OutputStr (thread_num, buf);
 	clear_timers (timers, sizeof (timers) / sizeof (timers[0]));
-	last_output = last_output_r = 0;
+	last_output = last_output_t = last_output_r = 0;
 	gw_clear_fft_count (&pm1data.gwdata);
 
 /* Print out round off error */
@@ -5506,34 +5477,33 @@ found_a_bit:;
 errchk:		if (gw_test_for_error (&pm1data.gwdata) ||
 		    gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
 
+/* Output the title every so often */
+
+		if (first_iter_msg ||
+		    (ITER_OUTPUT != 999999999 &&
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output_t + 2 * ITER_OUTPUT * output_title_frequency)) {
+			char	mask[80];
+			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 2 (using %%dMB)", PRECISION);
+			sprintf (buf, mask, trunc_percent (w->pct_complete), gwmodulo_as_string (&pm1data.gwdata), memused);
+			title (thread_num, buf);
+			last_output_t = gw_get_fft_count (&pm1data.gwdata);
+		}
+
 /* Write out a message every now and then */
 
 		if (first_iter_msg ||
 		    (ITER_OUTPUT != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output + 2 * ITER_OUTPUT)) {
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output + 2 * ITER_OUTPUT * output_frequency)) {
 			char	mask[80];
-			double	pct;
-			pct = trunc_percent (w->pct_complete);
-			sprintf (mask, "%%.%df%%%% of %%s P-1 stage 2 (using %%dMB)",
-				 PRECISION);
-			sprintf (buf, mask, pct,
-				 gwmodulo_as_string (&pm1data.gwdata),
-				 memused);
-			title (thread_num, buf);
-			sprintf (mask,
-				 "%%s stage 2 is %%.%df%%%% complete.",
-				 PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 2 is %%.%df%%%% complete.", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), trunc_percent (w->pct_complete));
 			end_timer (timers, 0);
 			if (first_iter_msg) {
 				strcat (buf, "\n");
 				clear_timer (timers, 0);
 			} else {
 				strcat (buf, " Time: ");
-				print_timer (timers, 0, buf,
-					     TIMER_NL | TIMER_OPT_CLR);
+				print_timer (timers, 0, buf, TIMER_NL | TIMER_OPT_CLR);
 			}
 			OutputStr (thread_num, buf);
 			start_timer (timers, 0);
@@ -5544,17 +5514,13 @@ errchk:		if (gw_test_for_error (&pm1data.gwdata) ||
 /* Write out a message to the results file every now and then */
 
 		if ((ITER_OUTPUT_RES != 999999999 &&
-		     gw_get_fft_count (&pm1data.gwdata) >=
-					last_output_r + 2 * ITER_OUTPUT_RES) ||
+		     gw_get_fft_count (&pm1data.gwdata) >= last_output_r + 2 * ITER_OUTPUT_RES) ||
 		    (NO_GUI && stop_reason)) {
 			char	mask[80];
 			double	pct;
 			pct = trunc_percent (w->pct_complete);
-			sprintf (mask,
-				"%%s stage 2 is %%.%df%%%% complete.\n",
-				PRECISION);
-			sprintf (buf, mask,
-				 gwmodulo_as_string (&pm1data.gwdata), pct);
+			sprintf (mask, "%%s stage 2 is %%.%df%%%% complete.\n", PRECISION);
+			sprintf (buf, mask, gwmodulo_as_string (&pm1data.gwdata), pct);
 			writeResults (buf);
 			last_output_r = gw_get_fft_count (&pm1data.gwdata);
 		}
@@ -5679,7 +5645,7 @@ msg_and_exit:
 	formatMsgForResultsFile (buf, w);
 	writeResults (buf);
 
-/* Send P-1 completed message to the server.  Although don't do it for puny
+/* Send P-1 completed message to the server.  Although don't do it for puny */
 /* B1 values as this is just the user tinkering with P-1 factoring. */
 
 	if (B >= 10000 || IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
@@ -5788,8 +5754,15 @@ bingo:	if (stage == 1)
 
 /* Output the validated factor */
 
-	sprintf (msg, "%s has a factor: %s\n",
-		 gwmodulo_as_string (&pm1data.gwdata), str);
+	if (stage == 1)
+		sprintf (msg, "%s has a factor: %s (P-1, B1=%.0f)\n",
+			 gwmodulo_as_string (&pm1data.gwdata), str, (double) B);
+	else if (pm1data.E <= 2)
+		sprintf (msg, "%s has a factor: %s (P-1, B1=%.0f, B2=%.0f)\n",
+			 gwmodulo_as_string (&pm1data.gwdata), str, (double) B, (double) C);
+	else
+		sprintf (msg, "%s has a factor: %s (P-1, B1=%.0f, B2=%.0f, E=%d)\n",
+			 gwmodulo_as_string (&pm1data.gwdata), str, (double) B, (double) C, (int) pm1data.E);
 	OutputStr (thread_num, msg);
 	formatMsgForResultsFile (msg, w);
 	writeResults (msg);
@@ -5880,7 +5853,6 @@ int pminus1_QA (
 	struct PriorityInfo *sp_info)	/* SetPriority information */
 {
 	FILE	*fd;
-	int	savefiles;
 
 /* Set the title */
 
@@ -5916,7 +5888,6 @@ int pminus1_QA (
 
 		if (n == 1) {
 			QA_TYPE = c;
-			savefiles = B1;
 			continue;
 		}
 
