@@ -16,6 +16,8 @@ extern double globalk;
 
 #define BITSINULONG 32
 
+char pbuf[256];
+
 int gmodi (	/* Returns g%i as an integer */ 
 	uint32_t i, giant g) { 
 	uint32_t wordweight, j, k, size, value;
@@ -150,181 +152,233 @@ uint32_t Bachet(uint32_t u, uint32_t v, long *a, long *b) {
 }
 
 int gen_v1(giant k, uint32_t n, int debug, uint32_t maxres) {
-    long sign, j2N, jNd, jNa, v, vcand;
-    long idred, iared, iorderd, iordera, kdiff, ndiff;
-    uint32_t nbres, kmod3, rawd, d, dred, kmodd, tpnmd, i, orderd, Nmodd;
-    uint32_t V, W, dsqW, aplus, aminus, b, bcand, rplus, rminus, found, iseps2;
-    uint32_t nmodorderd, ared, kmoda, tpnma, ordera, nmodordera, Nmoda;
-    uint32_t dk, dn, kmod, nmod, modulk, moduln;
-    nbres = 0;
-    if (n>2)
-	j2N = 1;
-    else
-	j2N = -1;
-    kmod3 = gmodi (3, k);
-    if (maxres == 1 && kmod3)		// Consider only the simple case !
-	if ((kmod3 == 1 && !(n&1)) || (kmod3 == 2 && (n&1))) {
-	    if (debug)
-		printf ("d = 3 divides N !\n");
-	    return (-3);
-	}
-	else {
-	    if (debug) {
-		printf ("epsilon = 2+sqrt(3)\n");
-		printf ("k = %d (mod 3), n = %d (mod 2)\n", kmod3, n&1);
-		printf ("v1 = 4, d = 3, a = 6, b = 2, r = 24, +1\n");
-		printf ("v1 = 4, d = 3, a = 2, b = 2, r = 8, -1\n");
-	    }
-	    return (4);
-	}
-    for (v=3; (rawd = v*v-4)<MAXULONG; v++) {
-	Reduce (rawd, &d, &b);
-	if (!(d&1)) {
-	    sign = j2N;
-	    dred = d>>1;
-	}
-	else {
-	    sign = 1;
-	    dred = d;
-	}
-	if (d==2) {
-	    if (n > 2) continue;
-	}
-	else {
-	  kmodd = gmodi (dred, k);
-	  if (!kmodd) continue;
-	  if (n>1 && (((dred-1)/2) & 1)) sign = - sign;
-	  tpnmd = twopownmodm (n, dred, &orderd, &nmodorderd);
-	  Nmodd = (kmodd*tpnmd-1)%dred;
-	  if (!Nmodd) {
-	    if (debug)
-		if (d&1)
-		    printf ("d = %d divides N !\n", dred);
-		else
-		    printf ("d/2 = %d divides N !\n", dred);
-	    return (-(int)dred);
-	  }
-	  if ((jNd = jacobi(Nmodd,dred)) > 1) {
-	    if (debug)
-		printf ("%d divides d = %d and N !\n", jNd, d);
-	    return (-jNd);
-	  }
-	  if ((sign*jNd) != -1) continue;
-	}
-	found = 0;
-	for (W=1; (dsqW=d*W*W) < MAXULONG; W++)
-	    if (dsqW>4 && (V=issquare(dsqW-4))) {
-		vcand = dsqW-2;
-		bcand = V*W;
-		iseps2 = 1;
-		found = 1;
-		break;
-	    }
-	    else if (V=issquare(dsqW+4)) {
-		vcand = V;
-		bcand = W;
-		iseps2 = 0;
-		found = 1;
-		break;
-	    }
-	if (found && v==vcand && b==bcand) {
-	    aplus = v+2;
-	    aminus = v-2;
-	    rplus = 4*aplus;
-	    rminus = 4*aminus;
-	    if (iseps2) {
-		nbres++;
-		if (debug) {
-		    if (V&1 || W&1)
-			if (W != 1)
-			    printf ("epsilon = [%d+%d*sqrt(%d)]/2\n", V, W, d);
-			else
-			    printf ("epsilon = [%d+sqrt(%d)]/2\n", V, d);
-		    else
-			if (W/2 != 1)
-			    printf ("epsilon = %d+%d*sqrt(%d)\n", V/2, W/2, d);
-			else
-			    printf ("epsilon = %d+sqrt(%d)\n", V/2, d);
-		    printf ("k = %d (mod %d), n = %d (mod %d)\n", kmodd, dred, nmodorderd, orderd);
-		    printf ("v1 = %d, d = %d, a = %d, b = %d, r = %d, +1,eps2\n",
-				v, d, aplus, b, rplus);
-		    printf ("v1 = %d, d = %d, a = %d, b = %d, r = %d, -1,eps2\n",
-				v, d, aminus, b, rminus);
+	long sign, j2N, jNd, jNa, v, vcand;
+	long idred, iared, iorderd, iordera, kdiff, ndiff;
+	uint32_t nbres, kmod3, rawd, d, dred, kmodd, tpnmd, i, orderd, Nmodd;
+	uint32_t V, W, dsqW, aplus, aminus, b, bcand, rplus, rminus, found, iseps2;
+	uint32_t nmodorderd, ared, kmoda, tpnma, ordera, nmodordera, Nmoda;
+	uint32_t dk, dn, kmod, nmod, modulk, moduln;
+
+	nbres = 0;
+	if (n>2)
+		j2N = 1;
+	else
+		j2N = -1;
+	kmod3 = gmodi (3, k);
+
+	if (maxres == 1 && kmod3) {					// Consider only the simple case !
+		if ((kmod3 == 1 && !(n&1)) || (kmod3 == 2 && (n&1))) {
+			if (debug) {
+				sprintf (pbuf,"d = 3 divides N !\n");
+				OutputBoth (pbuf);
+			}
+			return (-3);
 		}
-		if (nbres == maxres) return v;
-	    }
-	    else {
-		for (ared=aplus, i=0; !(ared & 1); ared >>= 1) i++;
-		if (i&1)
-		    sign = j2N;
-		else
-		    sign = 1;
-		kmoda = gmodi (ared, k);
-		if (!kmoda) continue;
-		if (n>1 && (((ared-1)/2) & 1)) sign = - sign;
-		tpnma = twopownmodm (n, ared, &ordera, &nmodordera);
-		Nmoda = (kmoda*tpnma-1)%ared;
-		if (!Nmoda) {
-	 	   if (debug)
-			printf ("a/%d = %d divides N !\n", aplus/ared, ared);
-		    return (-(int)ared);
+		else {
+			if (debug) {
+				sprintf (pbuf,"epsilon = 2+sqrt(3)\n");
+				OutputBoth (pbuf);
+				sprintf (pbuf, "k = %d (mod 3), n = %d (mod 2)\n", kmod3, n&1);
+				OutputBoth (pbuf);
+				sprintf (pbuf, "v1 = 4, d = 3, a = 6, b = 2, r = 24, sign = +1\n");
+				OutputBoth (pbuf);
+				sprintf (pbuf, "v1 = 4, d = 3, a = 2, b = 2, r = 8, sign = -1\n");
+				OutputBoth (pbuf);
+			}
+			return (4);
 		}
-		if ((jNa = jacobi(Nmoda,ared)) > 1) {
-		    if (debug)
-			printf ("%d divides a = %d and N !\n", jNa, aplus);
-		    return (-jNa);
+	}											// End simple case
+
+	for (v=3; (rawd = v*v-4)<MAXULONG; v++) {	// General case
+		Reduce (rawd, &d, &b);
+		if (!(d&1)) {
+			sign = j2N;
+			dred = d>>1;
 		}
-		if ((sign*jNa) != -1) continue;
-		nbres++;
-		if (debug) {
-		    if (V&1 || W&1)
-			if (W != 1)
-			    printf ("epsilon = [%d+%d*sqrt(%d)]/2\n", V, W, d);
+		else {
+			sign = 1;
+			dred = d;
+		}
+		if (d==2) {
+			if (n > 2) continue;
+		}
+		else {
+			kmodd = gmodi (dred, k);
+			if (!kmodd) continue;
+			if (n>1 && (((dred-1)/2) & 1)) sign = - sign;
+			tpnmd = twopownmodm (n, dred, &orderd, &nmodorderd);
+			Nmodd = (kmodd*tpnmd-1)%dred;
+			if (!Nmodd) {
+				if (debug) {
+					if (d&1) {
+						sprintf (pbuf, "d = %d divides N !\n", dred);
+						OutputBoth (pbuf);
+					}
+					else {
+						sprintf (pbuf, "d/2 = %d divides N !\n", dred);
+						OutputBoth (pbuf);
+					}
+				}
+				return (-(int)dred);
+			}
+			if ((jNd = jacobi(Nmodd,dred)) > 1) {
+				if (debug) {
+					sprintf (pbuf, "%d divides d = %d and N !\n", jNd, d);
+					OutputBoth (pbuf);
+				}
+				return (-jNd);
+			}
+			if ((sign*jNd) != -1) continue;
+		}										// End d != 2
+
+//		Now, we have v, b and d such as jacobi(d, N) == -1
+
+		for (W=1; (dsqW=d*W*W) < MAXULONG; W++) {
+			if (dsqW>4 && (V=issquare(dsqW-4))) {
+				vcand = dsqW-2;
+				bcand = V*W;
+				iseps2 = 1;
+				found = 1;
+				break;
+			}
+			else if (V=issquare(dsqW+4)) {
+				vcand = V;
+				bcand = W;
+				iseps2 = 0;
+				found = 1;
+				break;
+			}
 			else
-			    printf ("epsilon = [%d+sqrt(%d)]/2\n", V, d);
-		    else
-			if (W/2 != 1)
-			    printf ("epsilon = %d+%d*sqrt(%d)\n", V/2, W/2, d);
-			else
-			    printf ("epsilon = %d+sqrt(%d)\n", V/2, d);
-		    dk = Bachet (dred, ared, &idred, &iared);
-		    modulk = dred*(ared/dk);		// lcm(dred, ared).
-		    kdiff = kmoda-kmodd;
-		    if (kdiff >=0) {
-			while (idred<0)
-			    idred += ared;
-			kmod = (kmodd + idred*(kdiff/dk)*dred)%modulk;
-		    }
-		    else {
-			kdiff = -kdiff;
-			while (iared<0)
-			    iared += dred;
-			kmod = (kmoda + iared*(kdiff/dk)*ared)%modulk;
-		    }
-		    dn = Bachet (orderd, ordera, &iorderd, &iordera);
-		    moduln = orderd*(ordera/dn);	// lcm(orderd, ordera).
-		    ndiff = nmodordera-nmodorderd;
-		    if (ndiff >=0) {
-			while (iorderd<0)
-			    iorderd += ordera;
-			nmod = (nmodorderd + iorderd*(ndiff/dn)*orderd)%moduln;
-		    }
-		    else {
-			ndiff = -ndiff;
-			while (iordera<0)
-			    iordera += orderd;
-			nmod = (nmodordera + iordera*(ndiff/dn)*ordera)%moduln;
-		    }
-		    printf ("k = %d (mod %d), n = %d (mod %d)\n", kmod, modulk, nmod, moduln);
-		    printf ("v1 = %d, d = %d, a = %d, b = %d, r = %d, +1\n",
-				v, d, aplus, b, rplus);
-		    printf ("v1 = %d, d = %d, a = %d, b = %d, r = %d, -1\n",
-				v, d, aminus, b, rminus);
-		}
-		if (nbres == maxres) return v;
-	    }
-	}
-    }
+				found = 0;
+			if (found && v==vcand && b==bcand) {
+				aplus = v+2;
+				aminus = v-2;
+				rplus = 4*aplus;
+				rminus = 4*aminus;
+				if (iseps2) {
+					nbres++;
+					if (debug) {
+						if (V&1 || W&1) {
+							if (W != 1) {
+								sprintf (pbuf, "epsilon = [%d+%d*sqrt(%d)]/2\n", V, W, d);
+								OutputBoth (pbuf);
+							}
+							else {
+								sprintf (pbuf, "epsilon = [%d+sqrt(%d)]/2\n", V, d);
+								OutputBoth (pbuf);
+							}
+						}
+						else {
+							if (W/2 != 1) {
+								sprintf (pbuf, "epsilon = %d+%d*sqrt(%d)\n", V/2, W/2, d);
+								OutputBoth (pbuf);
+							}
+							else {
+								sprintf (pbuf, "epsilon = %d+sqrt(%d)\n", V/2, d);
+								OutputBoth (pbuf);
+							}
+						}
+						sprintf (pbuf, "k = %d (mod %d), n = %d (mod %d)\n", kmodd, dred, nmodorderd, orderd);
+						OutputBoth (pbuf);
+						sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, +1,eps2\n", v, d, aplus, b, rplus);
+						OutputBoth (pbuf);
+						sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, -1,eps2\n", v, d, aminus, b, rminus);
+						OutputBoth (pbuf);
+					}							// End if (debug)
+					if (nbres == maxres) return v;
+				}								// End iseps2
+				else {
+					for (ared=aplus, i=0; !(ared & 1); ared >>= 1) i++;
+					if (i&1)
+						sign = j2N;
+					else
+						sign = 1;
+					kmoda = gmodi (ared, k);
+					if (!kmoda)
+						continue;
+					if (n>1 && (((ared-1)/2) & 1))
+						sign = - sign;
+					tpnma = twopownmodm (n, ared, &ordera, &nmodordera);
+					Nmoda = (kmoda*tpnma-1)%ared;
+					if (!Nmoda) {
+						if (debug) {
+							sprintf (pbuf, "a/%d = %d divides N !\n", aplus/ared, ared);
+							OutputBoth (pbuf);
+						}
+						return (-(int)ared);
+					}
+					if ((jNa = jacobi(Nmoda,ared)) > 1) {
+						if (debug) {
+							sprintf (pbuf, "%d divides a = %d and N !\n", jNa, aplus);
+							OutputBoth (pbuf);
+						}
+						return (-jNa);
+					}
+					if ((sign*jNa) != -1)
+						continue;
+					else
+						nbres++;
+					if (debug) {
+						if (V&1 || W&1) {
+							if (W != 1) {
+								sprintf (pbuf, "epsilon = [%d+%d*sqrt(%d)]/2\n", V, W, d);
+								OutputBoth (pbuf);
+							}
+							else {
+								sprintf (pbuf, "epsilon = [%d+sqrt(%d)]/2\n", V, d);
+								OutputBoth (pbuf);
+							}
+						}
+						else {
+							if (W/2 != 1) {
+								sprintf (pbuf, "epsilon = %d+%d*sqrt(%d)\n", V/2, W/2, d);
+								OutputBoth (pbuf);
+							}
+							else {
+								sprintf (pbuf, "epsilon = %d+sqrt(%d)\n", V/2, d);
+								OutputBoth (pbuf);
+							}
+						}
+						dk = Bachet (dred, ared, &idred, &iared);
+						modulk = dred*(ared/dk);		// lcm(dred, ared).
+						kdiff = kmoda-kmodd;
+						if (kdiff >=0) {
+							while (idred<0)
+								idred += ared;
+							kmod = (kmodd + idred*(kdiff/dk)*dred)%modulk;
+						}
+						else {
+							kdiff = -kdiff;
+							while (iared<0)
+								iared += dred;
+							kmod = (kmoda + iared*(kdiff/dk)*ared)%modulk;
+						}
+						dn = Bachet (orderd, ordera, &iorderd, &iordera);
+						moduln = orderd*(ordera/dn);	// lcm(orderd, ordera).
+						ndiff = nmodordera-nmodorderd;
+						if (ndiff >=0) {
+							while (iorderd<0)
+								iorderd += ordera;
+							nmod = (nmodorderd + iorderd*(ndiff/dn)*orderd)%moduln;
+						}
+						else {
+							ndiff = -ndiff;
+							while (iordera<0)
+								iordera += orderd;
+							nmod = (nmodordera + iordera*(ndiff/dn)*ordera)%moduln;
+						}
+						sprintf (pbuf, "k = %d (mod %d), n = %d (mod %d)\n", kmod, modulk, nmod, moduln);
+						OutputBoth (pbuf);
+						sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, +1\n", v, d, aplus, b, rplus);
+						OutputBoth (pbuf);
+						sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, -1\n",v, d, aminus, b, rminus);
+						OutputBoth (pbuf);
+					}									// End if (debug)
+					if (nbres == maxres) return v;
+				}										// End !iseps2
+			}											// End if (found && v==vcand && b==bcand)
+		}												// End for (W=1; (dsqW=d*W*W) < MAXULONG; W++)
+    }													// End for (v=3; (rawd = v*v-4)<MAXULONG; v++)
     return -1;		// Unable to find a value for v...
 }
 

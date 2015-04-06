@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#include <sys/wait.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -76,7 +77,7 @@ int SINGLETEST = 0;
 
 #include "Jacobi.c"
 #include "kronecker.c"
-#include "Riesel.c"
+#include "Qfields.c"
 #include "factor.c"
 #include "Llr.c"
 
@@ -395,7 +396,7 @@ DIGITSONLY:
 
 		case 'V':
 		case 'v':
-			printf ("Primality Testing of k*b^n+/-1 Program - beta Version 3.8.13\n");
+			printf ("Primality Testing of k*b^n+/-1 Program - Version 3.8.14\n");
 			return (0); 
 
 /* -W - use a different working directory */

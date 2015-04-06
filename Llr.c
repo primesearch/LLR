@@ -183,6 +183,7 @@ char abcadstring[] = "($a*$b^$c$d)/$e";
 #define	CREATE_FILE_ACCESS	0666
 #endif
 
+char	greatbuf[10001] = {0};
 char	INI_FILE[80] = {0};
 char	RESFILE[80] = {0};
 char	LOGFILE[80] = {0};
@@ -284,6 +285,8 @@ unsigned int testgm = FALSE;
 unsigned int testgq = FALSE;
 unsigned int testfac = FALSE;
 unsigned int nofac = FALSE;
+unsigned int general = FALSE;
+unsigned int eps2 = FALSE;
 unsigned int debug = FALSE;
 unsigned int nocare = FALSE;
 unsigned int care = FALSE;
@@ -293,9 +296,11 @@ unsigned int abonroundoff = FALSE;
 unsigned int will_try_larger_fft = FALSE;
 unsigned int checknumber = 0;
 unsigned int error_count = 0;
-unsigned int sleep5 = FALSE;
+unsigned int sleep5 = FALSE, showdigits = FALSE;
 unsigned int maxerr_recovery_mode [10] = {0};
 unsigned int lasterr_point = 0;
+unsigned long primolimit = 30000;
+unsigned long maxaprcl = 200;
 unsigned long interimFiles, interimResidues, throttle, facfrom, facto;
 unsigned long factored = 0, eliminated = 0;
 unsigned long pdivisor = 1000000, pquotient = 1;
@@ -4124,6 +4129,137 @@ unsigned long gnbdg (giant nb, unsigned long digitbase) {
 	}
 }
 
+int aprcltest (int prptest, int verbose)		// Primality test using external APRCL program
+{
+	int ofd;
+#ifdef WIN32
+	unsigned long exitcode;
+	char titre[] = "APRT-CLE Primality Test";
+	char line[40] = {0};
+	STARTUPINFO stinfo;
+	PROCESS_INFORMATION prinfo;
+#else
+	int  exitcode;
+	int idfils;
+#endif
+	ofd = _open ("__pc__", _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+	if (ofd) {
+		_write (ofd, greatbuf, strlen (greatbuf));
+		_close (ofd);
+	}
+	else
+		return (8);				// Could not create the file...
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+	if ((idfils = fork ()) == -1) {
+		_unlink ("__pc__");
+		return (9);				// Echec de la création du processus fils
+	}
+	if (idfils) {
+		while (!waitpid (idfils, &exitcode, WNOHANG)) {
+		}
+		exitcode >>= 8;
+	}
+	else {
+		if (prptest)
+			execl ("aprcl", "aprcl", "__pc__", "prp", 0);
+		else if (verbose == 1)
+			execl ("aprcl", "aprcl", "__pc__", "prime", "progress", 0);
+		else if (verbose == 2)
+			execl ("aprcl", "aprcl", "__pc__", "prime", "details", 0);
+		else
+			execl ("aprcl", "aprcl", "__pc__", 0);
+		perror ("aprcl");	// Si on revient, c'est l'échec de execl!
+		_unlink ("__pc__");
+		exit (9);
+	}
+#else
+
+//	Initialisation de la structure stinfo avec les seules données requises
+
+	stinfo.cb = sizeof (STARTUPINFO);
+	stinfo.lpDesktop = NULL;
+	stinfo.lpTitle = titre;
+	stinfo.dwFlags = STARTF_USESHOWWINDOW;
+	stinfo.lpReserved2 = NULL;
+
+	exitcode = STILL_ACTIVE;
+
+// Construire la ligne de commande
+
+	if (prptest)
+		sprintf (line, "aprcl __pc__ prp");
+	else if (verbose == 1)
+		sprintf (line, "aprcl __pc__ prime progress");
+	else if (verbose == 2)
+		sprintf (line, "aprcl __pc__ prime details");
+	else
+		sprintf (line, "aprcl __pc__");
+
+// Creer le processus fils
+
+	if (!CreateProcess (				// Tentative de creation du processus fils
+		"aprcl.exe",
+		line,
+		NULL,
+		NULL,
+		FALSE,
+		0L,
+		NULL,
+		NULL,
+		&stinfo,
+		&prinfo))
+
+	{									// Echec...
+		_unlink ("__pc__");
+		return (9);
+	}
+
+	while (exitcode == STILL_ACTIVE) {
+		GetExitCodeProcess(prinfo.hProcess, &exitcode);
+	}
+
+#endif
+	_unlink ("__pc__");
+	return (exitcode);
+}
+
+int saprcltest (char *str, int prptest, int verbose) {
+	int i;
+	for (i=0;i<10000;i++) {
+		greatbuf[i] = str[i];
+		if (!str[i])
+			break;
+	}
+	return (aprcltest(prptest, verbose));
+}
+
+int gaprcltest (giant N, int prptest, int verbose) {
+	if (gnbdg (N,10) > 10000)
+		return (-1);						// Number too large...
+	if (N->sign == 1)						// Trial divisions test is sufficient for this small number...
+		return (isPrime (N->n[0]) ? 12 : 10);
+	gtoc (N, greatbuf, 10000);
+	return (aprcltest(prptest, verbose));
+}
+
+int MakePrimoInput (giant N, char *str) {
+	char buffer[100], primofilename[11];
+	FILE *fout;
+
+	tempFileName (primofilename, 't', N);	// Construct an input file name for Primo
+	sprintf (primofilename + strlen(primofilename), ".in");
+	fout = fopen (primofilename, "w");
+	if (fout != NULL) {
+		fprintf (fout, "[candidate]\n");	// Write the Primo input file
+		fprintf (fout, "N=%s\n", str);
+		fclose (fout);
+		sprintf (buffer,"Candidate saved in file %s for further test with Primo.\n", primofilename);
+		OutputBoth(buffer);
+	}
+	return (fout != NULL);
+}
+
+
 /* Test if M divides a^(N-1) - 1 -- gwsetup has already been called. */
 
 int isexpdiv (
@@ -4192,7 +4328,8 @@ int isexpdiv (
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -4451,7 +4588,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -4468,6 +4606,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -4587,7 +4727,8 @@ int commonFrobeniusPRP (
 			bit = 1;
 			gwcopy (gwdata, gw2, x);		// Initial values
 			gwcopy (gwdata, gwA, y);
-			care = FALSE;
+//			care = FALSE;
+			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 			IniWriteString(INI_FILE, "Error_Count", NULL);
 		}
 	}
@@ -5189,7 +5330,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 //	IniWriteInt(INI_FILE, "Error_Count", IniGetInt(INI_FILE, "Error_Count", 0) + 1);
 
 /* Sleep five minutes before restarting */
@@ -5207,6 +5349,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -5280,13 +5424,17 @@ int commonPRP (
 
 	else {
 		clear_timers ();	// Init. timers
-		sprintf (buf, "Starting probable prime test of %s\n", str);
+		if (showdigits)
+			sprintf (buf, "Starting probable prime test of %s (%lu decimal digits)\n", str, nbdg);
+		else
+			sprintf (buf, "Starting probable prime test of %s\n", str);
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -5597,7 +5745,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -5614,6 +5763,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -5702,14 +5853,18 @@ int commonCC1P (
 			}
 		}
 		else {
-			sprintf (buf, "Starting Pocklington prime test of %s\n", str);
+			if (showdigits)
+				sprintf (buf, "Starting Pocklington prime test of %s (%lu decimal digits)\n", str, nbdg);
+			else
+				sprintf (buf, "Starting Pocklington prime test of %s\n", str);
 			OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
 		}
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -5974,7 +6129,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -5991,6 +6147,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -6075,14 +6233,18 @@ int commonCC2P (
 	else {
 		clear_timers ();	// Init. timers
 		D = D = P*P-4;
-		sprintf (buf, "Starting Lucas sequence\n");
+		if (showdigits)
+			sprintf (buf, "Starting Lucas sequence (%lu decimal digits)\n", nbdg);
+		else
+			sprintf (buf, "Starting Lucas sequence\n");
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, 2.0, x);
 		dbltogw (gwdata, (double)P, y);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -6418,7 +6580,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -6435,6 +6598,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -7113,6 +7278,7 @@ int IsPRP (							// General PRP test
 {  
 	char	str[sgkbufsize+256], sgk1[sgkbufsize], buf[sgkbufsize+256]; 
 	unsigned long bits, retval, smallbase = 0;
+	int resaprcl;
 	double dk;
 	giant gd, gr;
 
@@ -7236,29 +7402,92 @@ int IsPRP (							// General PRP test
 		else {
 			divg (gd, N);
 			quotient = TRUE;
-///			strong = FALSE;			// Do a simple Fermat PRP test (not strong).
+//			strong = FALSE;			// Do a simple Fermat PRP test (not strong).
 		}
 	}
 
-	if (N->sign == 1) {				// N is a small number, so we make a simple test...
-		if (isPrime (N->n[0])) {
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "0000000000000000");
-			*res = TRUE;
+	if ((nbdg = gnbdg(N, 10)) < 2000) {		// Attempt an APRCL test...
+		start_timer(1);
+		if (nbdg > maxaprcl)
+			resaprcl = gaprcltest (N, 1, 0);	// Make only a Strong BPSW PRP test
+		else if (verbose)
+			resaprcl = gaprcltest (N, 0, 2);	// Primality test while showing progress 
+		else
+			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10) {
+			sprintf (buf,"%s is not prime. (Trial divisions)", str);
 		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "????????????????");
-			*res = FALSE;
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
+		else if (resaprcl == 0)
+			goto PRPCONTINUE;					// Continue the PRP test to get the residue...
+		else if (resaprcl == 1)
+			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", str, nbdg);
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", str);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PRPCONTINUE;					// Continue the PRP test to get the residue...
 		}
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PRPCONTINUE;					// Continue the PRP test to get the residue...
+		}
+		*res = ((resaprcl == 1)||(resaprcl == 2)||(resaprcl == 12));
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
+			OutputStr("\033[7m");
+			OutputBoth(buf);
+			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
+#endif
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 		OutputBoth (buf);
+		if (resaprcl == 1)
+			MakePrimoInput (N, str);
 		retval = TRUE; 
 	}
 	else {
-
+PRPCONTINUE:
 		Nlen = bitlen (N); 
 		klen = bitlen(gk);
 		fpart = (1.0-(double)klen/Nlen)*100.0;
+
+
 
 		if (klen > 53 || generic || !smallbase) {	// we must use generic reduction
 			dk = 0.0;
@@ -7272,9 +7501,13 @@ int IsPRP (							// General PRP test
 		globalk = dk;
 
 		retval = isPRPinternal (str, dk, gb, n, incr, res);
-		if (res) {
-			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
-			OutputBoth (buf);
+		if (*res) {
+			if (klen > 1) {
+				sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
+				OutputBoth (buf);
+			}
+			if (nbdg < primolimit)
+				MakePrimoInput (N, str);
 		}
 
 	}
@@ -7304,6 +7537,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	char	str[sgkbufsize+256], sgk1[sgkbufsize], buf[sgkbufsize+256]; 
 	unsigned long bits, retval, smallbase = 0;
 	double dk;
+	int resaprcl;
 
 
 
@@ -7337,22 +7571,75 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	mulg (gk, N);
 	iaddg (incr, N);
 
-	if (N->sign == 1) {				// N is a small number, so we make a simple test...
-		if (isPrime (N->n[0])) {
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "0000000000000000");
-			*res = TRUE;
+	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+		start_timer(1);
+			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10) {
+			sprintf (buf,"%s is not prime. (Trial divisions)", str);
 		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "????????????????");
-			*res = FALSE;
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
+		else if (resaprcl == 0) {
+			goto CCPCONTINUE;					// Continue the CCP test to get the residue...
 		}
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", str);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto CCPCONTINUE;					// Continue the CCP test
+		}
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto CCPCONTINUE;					// Continue the CCP test
+		}
+		*res = ((resaprcl == 2)||(resaprcl == 12));
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
+			OutputStr("\033[7m");
+			OutputBoth(buf);
+			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
+#endif
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 		OutputBoth (buf);
 		retval = TRUE; 
 	}
 	else {
-
+CCPCONTINUE:
 		klen = bitlen(gk);
 
 		if (klen > 53 || generic || !smallbase) {	// we must use generic reduction
@@ -7668,8 +7955,8 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 		gtog (gbase, gbpc[i]);
 		divg (b, gbpc[i]);
 		gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
-		if (bitlen(b) < 40) {			// The cofactor is prime !
-			gtog (b, gbpf[i]);
+		if (bitlen(b) <= 40 || (gaprcltest (b, 0, 0) == 2)) {
+			gtog (b, gbpf[i]);			// The cofactor is prime !
 			free (b);
 			return TRUE;
 		}
@@ -7685,11 +7972,13 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
 			gtog (b, gbpf[i]);
 			free (b);
-			if ((bitlen(gbpf[i-1]) <= 40) && (bitlen(gbpf[i]) <= 40)) {	// The two factors are prime !
-				return TRUE;
-			}
+			if ((bitlen(gbpf[i-1]) <= 40) && (bitlen(gbpf[i]) <= 40))
+				return TRUE;				// The two factors are prime !
 			else {
-				return FALSE;				// The factors must be factorized further...
+				if ((gaprcltest (gbpf[i-1], 0, 0) == 2) && (gaprcltest (gbpf[i], 0 ,0) == 2))
+					return TRUE;			// The two factors are prime !
+				else
+					return FALSE;			// The factors must be factorized further...
 			}
 		}
 	}
@@ -7803,7 +8092,8 @@ int Lucasequence (
 		bit = 1;
 		dbltogw (gwdata, 2.0, x);			// Initial values
 		dbltogw (gwdata, (double)P, y);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -8293,6 +8583,7 @@ int Lucasequence (
 				}
 				else
 					sprintf (buf, "%s may be prime, but N divides U((N+1)/%d), P = %lu\n", str, bpf[j], P);
+				OutputStr (buf);
 				if (verbose)
 					writeResults (buf);	
 				frestart = TRUE;
@@ -8402,7 +8693,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -8421,6 +8713,8 @@ error:
 //		return (-1);
 	}
 //	goto restart;
+	if (care)
+		_unlink (filename);
 	return (-1);
 }
 
@@ -8442,7 +8736,7 @@ int plusminustest (
 	giant grem, tmp, tmp2, tmp3;
 	gwnum x, y;
 	long	write_time = DISK_WRITE_TIME * 60;
-	int	echk, saving, stopping, D, jmin, jmax, j, retval, Psample, factorized;
+	int	resaprcl, echk, saving, stopping, D, jmin, jmax, j, retval, Psample, factorized;
 	time_t	start_time, current_time;
 	double	reallyminerr = 1.0;
 	double	reallymaxerr = 0.0;
@@ -8513,21 +8807,77 @@ int plusminustest (
 
 	globalk = dk;
 
-	if (N->sign == 1) {		// N is a small number, so we make a simple test...
-		if (*res = isPrime (N->n[0])) {
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "0000000000000000");
+	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+		start_timer(1);
+			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10) {
+			sprintf (buf,"%s is not prime. (Trial divisions)", str);
 		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			sprintf (res64, "????????????????");
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
+		else if (resaprcl == 0) {
+			goto PLMCONTINUE;					// Continue the PLM test to get the residue...
 		}
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", str);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PLMCONTINUE;					// Continue the PLM test
+		}
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PLMCONTINUE;					// Continue the PLM test
+		}
+		*res = ((resaprcl == 2)||(resaprcl == 12));
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
+			OutputStr("\033[7m");
+			OutputBoth(buf);
+			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
+#endif
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
 		OutputBoth (buf);
-		free(gk);
-		free(N);
+		free (gk);
+		free (N);
 		return (TRUE); 
 	}
 
+PLMCONTINUE:
 
 	if (klen > Nlen) {
 		if ((gformat == ABCDN) || (gformat == ABCDNG))
@@ -8539,8 +8889,10 @@ int plusminustest (
 		fpart = (1.0-(double)klen/Nlen)*100.0;
 		retval = isPRPinternal (str, dk, gb, n, incr, res);
 		if (res) {
-			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
 			OutputBoth (buf);
+			if (nbdg < primolimit)
+				MakePrimoInput (N, str);
 		}
 		free(gk);
 		free(N);
@@ -8776,14 +9128,18 @@ int plusminustest (
 		}
 		else {
 			clear_timers ();		// Init. timers
-			sprintf (buf, "Starting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
+			if (showdigits)
+				sprintf (buf, "Starting N%c%d prime test of %s (%lu decimal digits)\n", incr < 0 ? '+' : '-', abs(incr), str, nbdg);
+			else
+				sprintf (buf, "Starting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
 		}
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);	
 		bit = 1;
 		dbltogw (gwdata, (double)a, x);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -9286,7 +9642,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -9304,6 +9661,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	goto restart;
 
 }
@@ -9337,7 +9696,7 @@ int isLLRP (
 	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256],
 			sgk1[sgkbufsize], fft_desc[256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int		echk, saving, stopping, v1, first = 1, inc = -1; 
+	int		resaprcl, echk, saving, stopping, v1, first = 1, inc = -1; 
 	time_t	start_time, current_time; 
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
@@ -9348,7 +9707,6 @@ int isLLRP (
 	unsigned long idk = 0;
 	giant gk1;
 // Lei end
-
 	if (!(format == ABCC || format == ABCK)) {
 // Lei
 		if (b_else != 1) {					// Compute the length of b_else^ninput
@@ -9451,27 +9809,79 @@ int isLLRP (
 
 	globalk = dk;
 
-	if (N->sign == 1) {		// N is a small number, so we make a simple test...
-		if (*res = isPrime (N->n[0])) {
-#ifndef WIN32
+	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+		start_timer(1);
+			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10) {
+			sprintf (buf,"%s is not prime. (Trial divisions)", str);
+		}
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
+		else if (resaprcl == 0) {
+			goto LLRCONTINUE;					// Continue the LLR test to get the residue...
+		}
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", str);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			OutputBoth(buf);
+			goto LLRCONTINUE;					// Continue the LLR test
+		}
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto LLRCONTINUE;					// Continue the LLR test
+		}
+		*res = ((resaprcl == 2)||(resaprcl == 12));
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
 			OutputStr("\033[7m");
-#endif
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-#ifndef WIN32
+			OutputBoth(buf);
 			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
 #endif
-			sprintf (res64, "0000000000000000");
-		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-			sprintf (res64, "????????????????");
-		}
-		free(gk);
-		free(N);
+
+		sprintf (buf, "  Time : "); 
+
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		OutputBoth (buf);
+		free (gk);
+		free (N);
 		return (TRUE); 
 	}
+
+LLRCONTINUE:
 
 	if (klen > n) {
 		if ((format == ABCDN) || (format == ABCDNG))
@@ -9479,7 +9889,6 @@ int isLLRP (
 		else
 			sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
-
 // Lei
 // Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
 		if ((format == ABCDN) || (format == ABCDNG))
@@ -9493,8 +9902,10 @@ int isLLRP (
 		retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
 // Lei end
 		if (res) {
-			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
 			OutputBoth (buf);
+			if (nbdg < primolimit)
+				MakePrimoInput (N, str);
 		}
 
 		free(gbinput);
@@ -9656,7 +10067,7 @@ restart:
 	    }
 
 	    filename[0] = 'u';
-	    if ((v1 = gen_v1(gk, n, 0, vindex)) < 0) {
+	    if ((v1 = gen_v1(gk, n, general, eps2, debug)) < 0) {
 			if (v1 == -1)
 				sprintf (buf, "Cannot compute V1 to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
 			else
@@ -9697,21 +10108,25 @@ restart:
 			start_timer (1); 
 			time (&start_time); 
 			if (setuponly) {
-				if (gwdata->FFTLEN != OLDFFTLEN) {
+				if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
 					OutputBoth (str); 
 					OutputBoth (" : "); 
 				}
 			}
 			else {
-				sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s\n", str);
+				if (showdigits)
+					sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s (%lu decimal digits)\n", str, nbdg);
+				else
+					sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s\n", str);
 				OutputStr (buf); 
-				care = FALSE;
+//				care = FALSE;
+				care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 				IniWriteString(INI_FILE, "Error_Count", NULL);
 			}
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "Using %s\n", fft_desc);
 			if (setuponly) {
-				if (gwdata->FFTLEN != OLDFFTLEN) {
+				if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
 					OutputBoth(buf);
 					OLDFFTLEN = gwdata->FFTLEN;
 				}
@@ -9971,7 +10386,8 @@ MERSENNE:
 	    OutputStr (buf); 
 		LineFeed();
 		j = 1;
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	} 
 
@@ -10214,7 +10630,8 @@ error:
 /* Output a message saying we are restarting */ 
  
 	if (sleep5) OutputBoth (ERRMSG2); 
-	OutputBoth (ERRMSG3); 
+	if (!care)
+		OutputBoth (ERRMSG3); 
  
 /* Sleep five minutes before restarting */ 
  
@@ -10232,6 +10649,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	goto restart; 
 
 } 
@@ -10340,7 +10759,7 @@ int isProthP (
 	char	filename[20], buf[sgkbufsize+256], 
 		str[sgkbufsize+256], fft_desc[256], sgk1[sgkbufsize]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int	echk, saving, stopping, inc = +1; 
+	int	resaprcl, echk, saving, stopping, inc = +1; 
 	time_t	start_time, current_time; 
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
@@ -10434,27 +10853,77 @@ int isProthP (
 	Nlen = bitlen (N); 
 	klen = bitlen(gk);
 
-	if (N->sign == 1) {					// N is a small number, so we make a simple test...
-		if (*res = isPrime (N->n[0])) {
-#ifndef WIN32
+	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+		start_timer(1);
+			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10) {
+			sprintf (buf,"%s is not prime. (Trial divisions)", str);
+		}
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
+		else if (resaprcl == 0) {
+			goto PRCONTINUE;					// Continue the PROTH test to get the residue...
+		}
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", str);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PRCONTINUE;					// Continue the PROTH test
+		}
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto PRCONTINUE;					// Continue the PROTH test
+		}
+		*res = ((resaprcl == 2)||(resaprcl == 12));
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
 			OutputStr("\033[7m");
-#endif
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-#ifndef WIN32
+			OutputBoth(buf);
 			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
 #endif
-			sprintf (res64, "0000000000000000");
-		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-			sprintf (res64, "????????????????");
-		}
-		free(gk);
-		free(N);
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		OutputBoth (buf);
+		free (gk);
+		free (N);
 		return (TRUE); 
 	}
+
+PRCONTINUE:
 
 	globalk = dk;
 
@@ -10478,8 +10947,10 @@ int isProthP (
 		retval = isPRPinternal (str, dk, gbinput, ninput, 1, res);
 // Lei end
 		if (res) {
-			sprintf (buf, "(Factored part = %4.2f%%)\n", fpart);
+			sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
 			OutputBoth (buf);
+			if (nbdg < primolimit)
+				MakePrimoInput (N, str);
 		}
 
 		free(gbinput);
@@ -10584,12 +11055,16 @@ restart:
 			}
 		}
 		else {
-			sprintf (buf, "Starting Proth prime test of %s\n", str);
+			if (showdigits)
+				sprintf (buf, "Starting Proth prime test of %s (%lu decimal digits)\n", str, nbdg);
+			else
+				sprintf (buf, "Starting Proth prime test of %s\n", str);
 			OutputStr (buf);
 		}
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
@@ -10875,7 +11350,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -10893,6 +11369,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	goto restart;
 } 
 
@@ -10994,7 +11472,7 @@ int isGMNP (
 	unsigned long n,
 	int	*res) 
 { 
-	unsigned long iters; 
+	unsigned long nbdg1, nbdg2, iters; 
 	unsigned long ubx, uby, atemp, abits = 0; 
 	uint32_t hi, lo;
 	unsigned long bit, bits, explen, expx, expy, loopshift, howfar = 0; 
@@ -11002,10 +11480,9 @@ int isGMNP (
 	ghandle *gdata;
 	gwnum	x, y; 
 	giant	tmp, tmp2, tmp3, apow4; 
-	char	filename[20], buf[sgkbufsize+256], 
-		str[sgkbufsize+256], strp[sgkbufsize+256], fft_desc[256]; 
+	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256], strp[sgkbufsize+256], fft_desc[256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int	echk, saving, stopping, sign, fisok = 0, fres = 0, fhandle = 0, inc = +1; 
+	int	echk, saving, stopping, sign, fisok = 0, fres = 0, fhandle = 0, inc = +1, resaprcl1 = 0, resaprcl2 = 0; 
 	time_t	start_time, current_time; 
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
@@ -11065,46 +11542,129 @@ int isGMNP (
 	iaddg (1, M);					// M  = N*N' = 2^(2*n) + 1
 
 	Nlen = 2*n+1; 
+	nbdg1 = gnbdg (N, 10);			// Size of the two candidates
+	nbdg2 = gnbdg (NP, 10);
 
-	res1 = res2 = 1;				// Assume N and NP are prime...
+	if (!facto && (nbdg1 < 2000) && (nbdg2 < 2000)) {
+		a = 0;						// N and NP are small numbers, so we may make APRCL tests...
+		res1 = res2 = 0;			// Clear the results...		
+		start_timer(1);				// Beginning the test of the GMN...
+		if (nbdg1 < 100) {			// Attempt an APRCL test only on M.N. less than 100 digits large...
+				resaprcl1 = gaprcltest (N, 0, 0);// Primality test silently done
+			res1 = ((resaprcl1 == 2)||(resaprcl1 == 12));
+			if (resaprcl1 == 10)
+				sprintf (buf,"%s is not prime. (Trial divisions)\n", str);
+			else if (resaprcl1 == 12)
+				sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)\n", str, nbdg1);
+			else if (resaprcl1 == 0)
+				sprintf (buf,"%s is not prime. (APRCL test)\n", str);
+			else if (resaprcl1 == 2)
+				sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)\n", str, nbdg1);
+			else if (resaprcl1 == 6)
+				sprintf (buf,"Invalid numerical string in %s\n", str);
+			else if (resaprcl1 == 7)
+				sprintf (buf,"APRCL error while testing %s...\n", str);
+			else {
+				if (resaprcl1 == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", str);
+				else
+					sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl1, str);
+			}
+			if (res1) {
+#ifndef WIN32
+				OutputStr("\033[7m");
+#endif
+				OutputBoth(buf);
+#ifndef WIN32
+				OutputStr("\033[0m");
+#endif
+			}
+			else {
+				if (resaprcl1) {				// Not prime message is useless here...
+					if (verbose)
+						OutputBoth(buf);
+					else
+						OutputStr (buf);
+				}
+			}
 
-	if (!facto && N->sign == 1 && NP->sign == 1) {	// N and NP are small numbers, so we make simple tests...
-		a = 0;
-		if (isPrime (N->n[0])) {
-#ifndef WIN32
+		}
+		if (nbdg2 > maxaprcl)					// Now testing the cofactor, if not too large...
+			resaprcl2 = gaprcltest (NP, 1, 0);	// Make only a Strong BPSW PRP test
+		else if (verbose)
+			resaprcl2 = gaprcltest (NP, 0, 2);	// Primality test while showing progress 
+		else
+			resaprcl2 = gaprcltest (NP, 0, 0);	// Primality test silently done
+		end_timer (1);
+		res2 = ((resaprcl2 == 1)||(resaprcl2 == 2)||(resaprcl2 == 12));
+		if (resaprcl2 == 10)
+			sprintf (buf,"%s is not prime. (Trial divisions)", strp);
+		else if (resaprcl2 == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", strp, nbdg2);
+		else if (resaprcl2 == 0) {				// Not prime message is useless here...
+			if ((N->sign > 1)||(NP->sign > 1))
+				goto COFCONTINUE;				// Continue the PRP test to get the residue...
+		}
+		else if (resaprcl2 == 1)				// BPSW PRP candidate
+			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", strp, nbdg2);
+		else if (resaprcl2 == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", strp, nbdg2);
+		else if (resaprcl2 == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", strp);
+		else if (resaprcl2 == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", strp);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			if ((N->sign > 1)||(NP->sign > 1))
+				goto COFCONTINUE;				// Continue the PRP test
+		}
+		else {
+			if (resaprcl2 == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", strp);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl2, strp);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			if ((N->sign > 1)||(NP->sign > 1))
+				goto COFCONTINUE;				// Continue the PRP test
+		}
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (res2) {
 			OutputStr("\033[7m");
-#endif
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-#ifndef WIN32
+			OutputBoth(buf);
 			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
 #endif
-			sprintf (res64, "0000000000000000");
-		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", str, N->n[0]); 
-			OutputBoth (buf);
-			sprintf (res64, "????????????????");
-			res1 = 0;
-		}
-		if (isPrime (NP->n[0])) {
-#ifndef WIN32
-			OutputStr("\033[7m");
+
+		sprintf (buf, "  Time : "); 
+
 #endif
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", strp, NP->n[0]); 
-			OutputBoth (buf);
-#ifndef WIN32
-			OutputStr("\033[0m");
-#endif
-			sprintf (res64, "0000000000000000");
-		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", strp, NP->n[0]); 
-			OutputBoth (buf);
-			sprintf (res64, "????????????????");
-			res2 = 0;
-		}
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		OutputBoth (buf);
+		if (resaprcl2 == 1)										// BPSW PRP candidate
+			MakePrimoInput (NP, strp);
 		*res = (res1 || res2);
+		if ((!res1 || !res2)&&((N->sign > 1)||(NP->sign > 1)))	// At least one candidate is not prime...
+			goto COFCONTINUE;									// Continue the test to get the residue(s)...
 		free(N);
 		free(NP);
 		free(M);
@@ -11116,6 +11676,10 @@ int isGMNP (
 
 		return (TRUE); 
 	}
+
+COFCONTINUE:
+
+	res1 = res2 = 1;				// Assume N and NP are prime...
 
 #ifndef X86_64
 
@@ -11464,7 +12028,7 @@ primetest:
 
 restart:
 
-	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
+//	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	gwinitjp (gwdata);
 	gdata = &gwdata->gdata;
@@ -11543,12 +12107,16 @@ restart:
 			}
 		}
 		else {
-			sprintf (buf, "Starting Proth prime test of %s\n", str);
+			if (showdigits)
+				sprintf (buf, "Starting Proth prime test of %s (%lu decimal digits)\n", str, nbdg1);
+			else
+				sprintf (buf, "Starting Proth prime test of %s\n", str);
 			OutputStr (buf);
 		}
 
 		bit = 1;
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
@@ -11876,6 +12444,7 @@ restart:
 
 /* See if we've found a Proth prime.  If not, format a 64-bit residue. */
 
+	if (resaprcl1 != 2)	{			// Exclude if previous APRCL positive result
 	if (gcompg (N, tmp) != 0) {
 		res1 = FALSE;				/* Not a prime */
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
@@ -11888,36 +12457,48 @@ restart:
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-	if (res1)
-		sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg);
-	else
-		sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
+	if (res1) {
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg1);
+		else
+			sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
+	}
+	else {
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
+		else
+			sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
+	}
 
 #if defined(WIN32) && !defined(_CONSOLE)
 
 	ReplaceableLine (2);	/* Replace line */ 
-	OutputBoth (buf);
+	if ((resaprcl2 != 1) && (resaprcl2 != 2))
+		OutputBoth (buf);				// Avoid a double display...
 
 #else
 
 	clearline(100);
 
 #ifdef _CONSOLE
-	OutputBoth(buf);
+	if ((resaprcl2 != 1) && (resaprcl2 != 2))
+		OutputBoth(buf);				// Avoid a double display...
 #else
 	if (res1) {
 		OutputStr("\033[7m");
-		OutputBoth(buf);
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			OutputBoth(buf);			// Avoid a double display...
 		OutputStr("\033[0m");
 	}
 	else
-		OutputBoth(buf);
+	if ((resaprcl2 != 1) && (resaprcl2 != 2))
+		OutputBoth(buf);				// Avoid a double display...
 #endif
 
 	sprintf (buf, "  Time : "); 
 
 #endif
-
+	}									// End Exclude...
 	gtog (testn, tmp);
 	gtog (testnp, tmp2);
 
@@ -11939,6 +12520,8 @@ restart:
 		modg (NP, tmp2);
 	}
 
+	if ((resaprcl2 != 1) && (resaprcl2 != 2)) {	// Exclude if previous APRCL positive reult
+
 	if (gcompg (tmp2, tmp) != 0) {
 		subg (tmp2, tmp);
 		res2 = FALSE;				/* Not a prime */
@@ -11952,10 +12535,11 @@ restart:
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
+//	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
+
 
 	if (res2)
-		sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg);
+		sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg2);
 	else
 		sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
 
@@ -11976,11 +12560,27 @@ restart:
 
 #endif
 
+	}								// End exclude...
+	else
+#ifdef WIN32
+
+		sprintf (buf+strlen(buf), "  Time: ");
+
+#else
+
+		sprintf (buf, "  Time: ");
+
+#endif
+
 /* Output the final timings */
 
-	end_timer (1);
-	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
-	OutputBoth (buf);
+	if (!(resaprcl1 == 2) || !((resaprcl2 == 2) || (resaprcl2 == 1))) {
+		end_timer (1);
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		OutputBoth (buf);
+		if (res2 && (resaprcl2 != 1) && (resaprcl2 != 2) && (nbdg2 < primolimit))
+			MakePrimoInput (NP, strp);
+	}
 
 	*res = (res1 || res2);
 
@@ -12036,7 +12636,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -12054,6 +12655,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	goto restart;
 } 
 
@@ -12077,10 +12680,9 @@ int isWSPRP (
 	ghandle *gdata;
 	gwnum	x, y; 
 	giant	tmp, tmp2, gx0; 
-	char	filename[20], buf[sgkbufsize+256], 
-		fft_desc[256], oldres64[17]; 
+	char	filename[20], buf[sgkbufsize+256], fft_desc[256], oldres64[17]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int	echk, saving, stopping, fisok = 0, fres = 0, fhandle = 0, inc = +1; 
+	int	resaprcl, echk, saving, stopping, fisok = 0, fres = 0, fhandle = 0, inc = +1; 
 	time_t	start_time, current_time; 
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
@@ -12108,20 +12710,78 @@ int isWSPRP (
 	gtog (M, NP);					// NP  = 2^n + 1
 	uldivg (3, NP);					// NP  = (2^n + 1)/3
 
-	if (!facto && NP->sign == 1) {	// NP is a small number, so we make a simple test...
-		a = 0;
-		if (isPrime (NP->n[0])) {
-			sprintf (buf, "%s = %lu is prime! (trial divisions)\n", sgk, NP->n[0]); 
-			sprintf (res64, "0000000000000000");
-			*res = TRUE;
+	if (!facto && ((nbdg = gnbdg(NP, 10)) < 2000)) {	// Attempt an APRCL test...
+		start_timer(1);
+		if (nbdg > maxaprcl)
+			resaprcl = gaprcltest (NP, 1, 0);			// Make only a Strong BPSW PRP test
+		else if (verbose)
+			resaprcl = gaprcltest (NP, 0, 2);			// Primality test while showing progress 
+		else
+			resaprcl = gaprcltest (NP, 0, 0);			// Primality test silently done
+		end_timer (1);
+		if (resaprcl == 10)
+			sprintf (buf,"%s is not prime. (Trial divisions)", sgk);
+		else if (resaprcl == 12)
+			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", sgk, nbdg);
+		else if (resaprcl == 0)
+			goto WSTFCONTINUE;							// Continue the PRP test to get the residue...
+		else if (resaprcl == 1)
+			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", sgk, nbdg);
+		else if (resaprcl == 2)
+			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", sgk, nbdg);
+		else if (resaprcl == 6)
+			sprintf (buf,"Invalid numerical string in %s\n", sgk);
+		else if (resaprcl == 7) {
+			sprintf (buf,"APRCL error while testing %s...\n", sgk);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto WSTFCONTINUE;							// Continue the PRP test to get the residue...
 		}
-		else	{
-			sprintf (buf, "%s = %lu is  not prime. (trial divisions)\n", sgk, NP->n[0]); 
-			sprintf (res64, "????????????????");
-			*res = FALSE;
+		else {
+			if (resaprcl == 9)
+				sprintf (buf, "APRCL primality test not available for %s\n", sgk);
+			else
+				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl, sgk);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf);
+			goto WSTFCONTINUE;							// Continue the PRP test to get the residue...
 		}
-		OutputBoth (buf);
+		*res = ((resaprcl == 1)||(resaprcl == 2)||(resaprcl == 12));
 
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+
+#else
+
+		clearline(100);
+
+#ifdef _CONSOLE
+		OutputBoth(buf);
+#else
+		if (*res) {
+			OutputStr("\033[7m");
+			OutputBoth(buf);
+			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth(buf);
+#endif
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings for APRCL test */
+
+		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		OutputBoth (buf);
+		if (resaprcl == 1)
+			MakePrimoInput (NP, sgk);
 		free(NP);
 		free(M);
 		free(testn);
@@ -12129,6 +12789,8 @@ int isWSPRP (
 		free(testx);
 		return (TRUE); 
 	}
+
+WSTFCONTINUE:
 
 #ifndef X86_64
 
@@ -12329,13 +12991,22 @@ restart:
 
 	else {
 		clear_timers ();		// Init. timers
-		if (dovrbareix)
-			sprintf (buf, "Starting Vrba-Reix test of %s\n", sgk);
-		else
-			sprintf (buf, "Starting SPRP test of %s\n", sgk);
+		if (showdigits) {
+			if (dovrbareix)
+				sprintf (buf, "Starting Vrba-Reix test of %s (%lu decimal digits)\n", sgk, nbdg);
+			else
+				sprintf (buf, "Starting SPRP test of %s (%lu decimal digits)\n", sgk, nbdg);
+		}
+		else {
+			if (dovrbareix)
+				sprintf (buf, "Starting Vrba-Reix test of %s\n", sgk);
+			else
+				sprintf (buf, "Starting SPRP test of %s\n", sgk);
+		}
 		OutputStr (buf);
 		bit = 1;
-		care = FALSE;
+//		care = FALSE;
+		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
@@ -12711,7 +13382,7 @@ restart:
 	lasterr_point = 0;
 	gwdone (gwdata);
 	_unlink (filename);
-	if (dualtest && *res)				// If dual test required and positive result
+	if (dualtest && *res) {				// If dual test required and positive result
 		if (vrbareix && dovrbareix) {
 			free (gx0);
 			dovrbareix = FALSE;
@@ -12721,6 +13392,9 @@ restart:
 			dovrbareix = TRUE;
 			goto restart;				// Do now a Vrba-Reix test
 		}
+	}
+	if (*res && (nbdg < primolimit))
+		MakePrimoInput (NP, sgk);
 	free(NP);
 	free(M);
 	free(testn);
@@ -12761,7 +13435,8 @@ error:
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
+	if (!care)
+		OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
@@ -12779,6 +13454,8 @@ error:
 		_unlink (filename);
 		will_try_larger_fft = FALSE;
 	}
+	if (care)
+		_unlink (filename);
 	goto restart;
 
 }
@@ -12953,6 +13630,7 @@ void primeContinue ()
 	    hline = IniGetInt (INI_FILE, "HeaderLine", 0);
 	    verbose = IniGetInt (INI_FILE, "Verbose", 0);
 	    setuponly = IniGetInt (INI_FILE, "SetupOnly", 0);
+		showdigits = IniGetInt (INI_FILE, "ShowDigits", 0);
 	    nosaving = IniGetInt (INI_FILE, "NoSaveFile", 0);
 		begline = IniGetInt(INI_FILE, "BegLine", 0);
 		testgm  = IniGetInt(INI_FILE, "TestGM", 1);
@@ -12960,6 +13638,8 @@ void primeContinue ()
 		testfac  = IniGetInt(INI_FILE, "TestFac", 0);
 		facfrom =  IniGetInt(INI_FILE, "FacFrom", 0);
 		facto =  IniGetInt(INI_FILE, "FacTo", 0);
+		general =  IniGetInt(INI_FILE, "Vgene", 0);
+		eps2 =  IniGetInt(INI_FILE, "Veps2", 0);
 		debug =  IniGetInt(INI_FILE, "Debug", 0);
 		nocare =  IniGetInt(INI_FILE, "Nocare", 0);
 		postfft =  IniGetInt(INI_FILE, "Postfft", 1);
@@ -12971,6 +13651,8 @@ void primeContinue ()
 		rising_ns =  IniGetInt(INI_FILE, "Rising_ns", 0);
 		rising_ks =  IniGetInt(INI_FILE, "Rising_ks", 0);
 		nofac =  IniGetInt(INI_FILE, "NoPrefactoring", 0);
+		maxaprcl = IniGetInt(INI_FILE, "MaxAprcl", 200);
+		primolimit = IniGetInt(INI_FILE, "PrimoLimit", 30000);
 
 /* A new option to create interim save files every N iterations. */
 /* This allows two machines to simultanously work on the same exponent */
@@ -13493,11 +14175,14 @@ OPENFILE :
 									if (! process_num (format, "1", sgb, nn, -atoi(sgk), shift, &res))
 										goto done;
 								}
-								else
+								else {
 									if (! process_num (format, sgk, sgb, nn, -1, shift, &res))
 										goto done;
-								if (!res)
+								}
+								if (!res) {
+//									i = chainlen;
 									break;
+								}
 							}
 							if (mask & MODE_PLUS) {
 								if (mask & MODE_DUAL) {

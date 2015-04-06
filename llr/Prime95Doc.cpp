@@ -517,7 +517,7 @@ void CPrime95Doc::ReplaceableLine (
 #include "llr.h"
 #include "gwcommon.h"
 #include "jacobi.c"
-#include "Riesel.c"
+#include "Qfields.c"
 #include "factor.c"
 #include "llr.c"
 #include "llr95.c"
