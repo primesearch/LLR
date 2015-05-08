@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.14 !
+		Welcome to LLR program Version 3.8.15 !
 
 
 1) Main features :
@@ -20,11 +20,12 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (28.6) of George Woltman's Gwnum
+  This version uses the last release version (28.7) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
-  A bug has been fixed in this version : It affected only tests on a CPU which
-  supports AVX code, and, indeed, if this feature was activated. This bug
-  existed in gwnum versions 27.1 and higher, and so, in LLR from version 3.8.9
+  A bug has been fixed in 28.6 version, and a related new issue in 28.7 : 
+  They affected only tests on a CPU which supports AVX code, and, indeed, 
+  if this feature was activated. This bug existed in gwnum versions 27.1
+  and higher, and so, in LLR from version 3.8.9.
 
   The main advantage of this gwnum version is better performances on 64bit
   machines ; also, several internal bugs in V26 have been corrected.
@@ -43,6 +44,18 @@
   careful squarings or multiplications when more than 5 have been found...
   Moreover, in this case, the save file is removed, in order to force a restart
   at the first iteration.
+
+  - To improve reliability, error checking may now be forced, if the program
+  is working near the current FFT limit. This feature may be adjusted by using
+  the option -oPercentFFTLimit=dd.d, the default value beeing 0.5 ; note that
+  setting echk to one is generally not much time consuming : typically 5% more.
+  Also, this feature may be wiped out by setting PercentFFTLimit to 0.0!
+
+  - For those wo do not like to force error checking, I implemented a new
+  option : -oNextFFTifNearLimit=1 (default is zero). If activated, and if the
+  default FFT length at setting is too near the limit, then, FFT_Increment is
+  incremented by one, a message is displayed and the test is immediatly 
+  restarted ; indeed, in this case, echk can no more be forced...
 
   - In all versions of LLR, a simple trial division test was done for candidates
   not larger than 32 bits ; now, an APR-CL test as been added as a new feature

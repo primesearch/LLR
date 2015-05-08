@@ -1,5 +1,5 @@
 
-		Welcome to LLR program beta Version 3.8.13 !
+		Welcome to LLR program Version 3.8.15 !
 
 
 1) Main features :
@@ -20,8 +20,12 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last beta version (28.5) of George Woltman's Gwnum
+  This version uses the last release version (28.7) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
+  A bug has been fixed in 28.6 version, and a related new issue in 28.7 : 
+  They affected only tests on a CPU which supports AVX code, and, indeed, 
+  if this feature was activated. This bug existed in gwnum versions 27.1
+  and higher, and so, in LLR from version 3.8.9.
 
   The main advantage of this gwnum version is better performances on 64bit
   machines ; also, several internal bugs in V26 have been corrected.
@@ -33,22 +37,23 @@
   LLR can run on all machines where gwnum code can run, so, on all Intel x86
   compatible machines.
 
-  - Two bugs have been fixed since previous 3.8.4 version :
-
-  -oErrorCheck=1 was ignored in command line, due to a bug in user interface.
-  - Base Two CC chains processing was incorrect.
-
   - The option -oNoSaveFile=1 has been added at the request of an user.
     Indeed, if it is set, any test is restarted at beginning if stopped...
 
-  - In this new version, three new bugs have been fixed, concerning
-  Fermat, Lucas and Frobenius PRP tests on non base two numbers or abs(c)!=1
-
-  - 28/03/11 : New bug fixed, concerning Frobenius PRP test on quotients
-  such as Repunits or generalized repunits(final modular reduction was missing).
-
   - 02/04/11 : Roundoff errors recovery has been improved ; continuing with
   careful squarings or multiplications when more than 5 have been found...
+  Moreover, in this case, the save file is removed, in order to force a restart
+  at the first iteration.
+
+  - To improve reliability, error checking may now be forced, if the program
+  is working near the current FFT limit. This feature may be adjusted by using
+  the option -oPercentFFTLimit=dd.d, the default value beeing 0.5
+
+  - In all versions of LLR, a simple trial division test was done for candidates
+  not larger than 32 bits ; now, an APR-CL test as been added as a new feature
+  in all primality or PRP tests, for all candidates not larger than 100 decimal
+  digits. This code is implemented in a binary application called as a child
+  process.
 
   - The new option -oBPSW=1 allows to replace the standard Lucas PRP test by
   the Baillie-PSW one (see http://www.trnicely.net/misc/bpsw.html for details)

@@ -300,6 +300,7 @@ unsigned int sleep5 = FALSE, showdigits = FALSE;
 unsigned int maxerr_recovery_mode [10] = {0};
 unsigned int lasterr_point = 0;
 unsigned long primolimit = 30000;
+unsigned long nextifnear = FALSE;
 unsigned long maxaprcl = 200;
 unsigned long interimFiles, interimResidues, throttle, facfrom, facto;
 unsigned long factored = 0, eliminated = 0;
@@ -309,7 +310,8 @@ giantstruct*		gbpf[30] = {NULL};			// Large integer prime factors
 giantstruct*		gbpc[30] = {NULL};			// Large integer cofactors
 unsigned long nrestarts = 0;					// Nb. of restarts for an N+1 or N-1 prime test
 unsigned long nbdg = 0, globalb = 2;			// number of digits ; base of the candidate in a global
-double		globalk = 1.0;						// k value of the candidate in a global
+double	globalk = 1.0;							// k value of the candidate in a global
+double	pcfftlim = 0.5;							// limit for gwnear_fft_limit function to return TRUE.
 
 
 double timers[10] = {0.0};			/* Up to five separate timers */
@@ -1328,7 +1330,7 @@ static	time_t	last_time = 0;
 			last_time = this_time;
 			buf[0] = '[';
 			strcpy (buf+1, ctime (&this_time));
-			sprintf (buf+25, " - ver %s]\n", VERSION);
+			sprintf (buf+25, " - ver %s]\n", LLR_VERSION);
 			_write (fd, buf, strlen (buf));
 		}
 
@@ -4342,11 +4344,8 @@ int isexpdiv (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s\n", fft_desc);
-#else
-	sprintf (buf, "Using %s", fft_desc);
-#endif
+
 	OutputStr (buf);
 	LineFeed ();
 	if (verbose) {
@@ -4372,7 +4371,7 @@ int isexpdiv (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -4743,11 +4742,8 @@ int commonFrobeniusPRP (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, P = %d, Q = %d\n", fft_desc, P, Q);
-#else
-	sprintf (buf, "Using %s, P = %d, Q = %d", fft_desc, P, Q);
-#endif
+
 	OutputStr (buf);
 	LineFeed ();
 	if (verbose) {
@@ -4773,7 +4769,7 @@ int commonFrobeniusPRP (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -5036,11 +5032,8 @@ Frobeniusresume:
 /* Output a message about the FFT length */
 
 		gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 		sprintf (buf, "Using %s, Q = %d\n", fft_desc, Q);
-#else
-		sprintf (buf, "Using %s, Q = %d", fft_desc, Q);
-#endif
+
 		OutputStr (buf);
 		LineFeed();
 		if (verbose) {
@@ -5074,7 +5067,7 @@ Frobeniusresume:
 /* 30 minute interval expired), and every 128th iteration. */
 
 			stopping = stopCheck ();
-			echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+			echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 			if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 				echk = 1;
 				time (&current_time);
@@ -5447,11 +5440,8 @@ int commonPRP (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
-#else
-	sprintf (buf, "Using %s, a = %d", fft_desc, a);
-#endif
+
 	OutputStr (buf);
 	LineFeed();
 	if (verbose) {
@@ -5477,7 +5467,7 @@ int commonPRP (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -5877,11 +5867,8 @@ int commonCC1P (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
-#else
-	sprintf (buf, "Using %s, a = %d", fft_desc, a);
-#endif
+
 	OutputStr (buf);
 	LineFeed();
 	if (verbose) {
@@ -5908,7 +5895,7 @@ int commonCC1P (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -6262,11 +6249,8 @@ int commonCC2P (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, P);
-#else
-	sprintf (buf, "Using %s, P = %lu", fft_desc, P);
-#endif
+
 	OutputStr (buf);
 	LineFeed();
 	if (verbose) {
@@ -6291,7 +6275,7 @@ int commonCC2P (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -6629,7 +6613,8 @@ int fastIsPRP (
 
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
@@ -6637,7 +6622,15 @@ int fastIsPRP (
 			free (gwdata);
 			return FALSE;
 		}
-//		asm_data = (struct gwasm_data *) gwdata->asm_data;	// Get the struct pointer
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
+		}
 
 /* Do the PRP test */
 
@@ -6675,13 +6668,23 @@ int fastIsCC1P (
 	a = IniGetInt (INI_FILE, "FBase", 3);
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Pocklington test */
@@ -6731,13 +6734,23 @@ int fastIsCC2P (
 	}
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Morrison test */
@@ -6821,7 +6834,8 @@ int fastIsFrobeniusPRP (
 	}
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
@@ -6829,6 +6843,15 @@ int fastIsFrobeniusPRP (
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Frobenius PRP test */
@@ -6908,7 +6931,8 @@ int slowIsFrobeniusPRP (
 	}
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
@@ -6917,6 +6941,15 @@ int slowIsFrobeniusPRP (
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Frobenius PRP test */
@@ -6958,13 +6991,23 @@ int slowIsWieferich (
 	a = IniGetInt (INI_FILE, "FBase", 2);
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, M))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the divisibility test */
@@ -7032,13 +7075,23 @@ int slowIsPRP (
 
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the PRP test */
@@ -7072,13 +7125,23 @@ int slowIsCC1P (
 	a = IniGetInt (INI_FILE, "FBase", 3);
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Pocklington test */
@@ -7124,13 +7187,23 @@ int slowIsCC2P (
 	}
 
 	do {
-		gwinitjp (gwdata);
+restart:
+		gwinit (gwdata);
 		gdata = &gwdata->gdata;
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
 			return FALSE;
+		}
+
+//		Restart with next FFT length if we are too near the limit...
+
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
 /* Do the Morrison test */
@@ -7410,7 +7483,7 @@ int IsPRP (							// General PRP test
 		start_timer(1);
 		if (nbdg > maxaprcl)
 			resaprcl = gaprcltest (N, 1, 0);	// Make only a Strong BPSW PRP test
-		else if (verbose)
+		else if (debug)
 			resaprcl = gaprcltest (N, 0, 2);	// Primality test while showing progress 
 		else
 			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
@@ -8110,11 +8183,8 @@ int Lucasequence (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, (int)P);
-#else
-	sprintf (buf, "Using %s, P = %lu", fft_desc, (int)P);
-#endif
+
 	OutputStr (buf);
 	LineFeed ();
 	if (verbose) {
@@ -8142,7 +8212,7 @@ int Lucasequence (
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= explen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= explen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -8942,10 +9012,11 @@ PLMCONTINUE:
 					sprintf (buf+strlen(buf), "\n");
 			}
 		}
-		if (verbose)
-			OutputBoth(buf);
-		else
-			OutputStr(buf);
+		if (!setuponly)
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr(buf);
 	}
 
 
@@ -8974,10 +9045,11 @@ PLMCONTINUE:
 				sprintf (buf+strlen(buf), "%d\n", bpf[j]);
 	}
 
-	if (verbose)
-		OutputBoth(buf);
-	else
-		OutputStr(buf);
+	if (!setuponly)
+		if (verbose)
+			OutputBoth(buf);
+		else
+			OutputStr(buf);
 
 	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 10);
 	nrestarts = IniGetInt (INI_FILE, "NRestarts", 0);
@@ -9007,7 +9079,7 @@ PLMCONTINUE:
 
 /* Setup the gwnum code */
 
-	gwinitjp (gwdata);
+	gwinit (gwdata);
 	gdata = &gwdata->gdata;
 
 	*res = TRUE;
@@ -9093,6 +9165,19 @@ PLMCONTINUE:
 		}
 	}
 
+//	Restart with next FFT length if we are too near the limit...
+
+	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+		free (M);
+		free (tmp);
+		free (tmp2);
+		free (tmp3);
+		gwdone (gwdata);
+		goto restart;
+	}
+
 /* Init filename */
 
 	tempFileName (filename, 'z', N);
@@ -9122,20 +9207,28 @@ PLMCONTINUE:
 /* Otherwise, output a message indicating we are starting test */
 
 	else {
-		if (frestart) {
-			sprintf (buf, "Restarting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
-			frestart = FALSE;
+		if (setuponly) {
+			if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
+				OutputBoth (str);
+				OutputBoth (" : ");
+			}
 		}
 		else {
-			clear_timers ();		// Init. timers
-			if (showdigits)
-				sprintf (buf, "Starting N%c%d prime test of %s (%lu decimal digits)\n", incr < 0 ? '+' : '-', abs(incr), str, nbdg);
-			else
-				sprintf (buf, "Starting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
-		}
+			if (frestart) {
+				sprintf (buf, "Restarting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
+				frestart = FALSE;
+			}
+			else {
+				clear_timers ();		// Init. timers
+				if (showdigits)
+					sprintf (buf, "Starting N%c%d prime test of %s (%lu decimal digits)\n", incr < 0 ? '+' : '-', abs(incr), str, nbdg);
+				else
+					sprintf (buf, "Starting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
+			}
 		OutputStr (buf);
 		if (verbose)
 			writeResults (buf);	
+		}
 		bit = 1;
 		dbltogw (gwdata, (double)a, x);
 //		care = FALSE;
@@ -9152,20 +9245,38 @@ PLMCONTINUE:
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
-#else
-	sprintf (buf, "Using %s, a = %d", fft_desc, a);
-#endif
-	OutputStr (buf);
-	LineFeed ();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
-		writeResults (buf);
+	sprintf (buf, "Using %s, a = %d\n", fft_desc,a);
+
+	if (setuponly) {
+		if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
+			OutputBoth(buf);
+			OLDFFTLEN = gwdata->FFTLEN;
+		}
 	}
-	ReplaceableLine (1);	/* Remember where replaceable line is */
+	else if (verbose){
+		OutputBoth(buf);
+	}
+	else {
+		OutputStr(buf);
+	}
+	if (setuponly) {
+		stopping = stopCheck ();
+		free(gk);
+		free(N);
+                free(M);
+		free(tmp);
+		free(tmp2);
+		free(tmp3);
+		gwfree (gwdata, x);
+		gwfree (gwdata, y);
+		gwdone(gwdata);
+		*res = FALSE;
+		end_timer (1);
+		free (gwdata);
+		return(!stopping);
+	}
+	LineFeed ();
+	ReplaceableLine (1);    /* Remember where replaceable line is */
 
 /* Init the title */
 
@@ -9188,7 +9299,7 @@ PLMCONTINUE:
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= explen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= explen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -9403,7 +9514,7 @@ DoLucas:
 				if (retval < 0)	{		// Restart required for any reason
 					sprintf (buf, "Restarting Lucas sequence with P = %lu\n", P);
 								// Setup again the gwnum code.
-					gwinitjp (gwdata);
+					gwinit (gwdata);
 					gdata = &gwdata->gdata;
 					gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 					gwsetmaxmulbyconst (gwdata, max(a, P));
@@ -9963,7 +10074,7 @@ LLRCONTINUE:
 
 restart: 
 
-	gwinitjp (gwdata);
+	gwinit (gwdata);
 	gdata = &gwdata->gdata;
 
 	vindex = 1;					// First attempt
@@ -9991,6 +10102,15 @@ restart:
 			return FALSE;
 		}
 
+	}
+
+//	Restart with next FFT length if we are too near the limit...
+
+	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+		gwdone (gwdata);
+		goto restart;
 	}
 
 	if (!IniGetInt(INI_FILE, "Testdiff", 0))	// Unless test of MAXDIFF explicitly required
@@ -10125,6 +10245,7 @@ restart:
 			}
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "Using %s\n", fft_desc);
+
 			if (setuponly) {
 				if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
 					OutputBoth(buf);
@@ -10201,7 +10322,7 @@ restart:
 /* 30 minute interval expired), and every 128th iteration. */ 
  
 			stopping = stopCheck (); 
-			echk = stopping || ERRCHK || (index <= 50); 
+			echk = stopping || ERRCHK || (index <= 50) || gwnear_fft_limit (gwdata, pcfftlim); 
 			if (((index & 127) == 0) || (index == 2) || (index == (lasterr_point-1))) {
 				echk = 1;
 				time (&current_time);
@@ -10406,7 +10527,7 @@ MERSENNE:
 /* 30 minute interval expired), and every 128th iteration. */ 
 
 		stopping = stopCheck (); 
-		echk = stopping || ERRCHK || (j <= 50) || (j >= last - 50); 
+		echk = stopping || ERRCHK || (j <= 50) || (j >= last - 50) || gwnear_fft_limit (gwdata, pcfftlim); 
 		if (((j & 127) == 0) || (j == 1) || (j == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -10982,7 +11103,7 @@ if ((a = genProthBase(gk, n)) < 0) {
 restart:
 
 	nbdg = gnbdg (N, 10);	// Compute the number of decimal digits of the tested number.
-	gwinitjp (gwdata);
+	gwinit (gwdata);
 	gdata = &gwdata->gdata;
 
 	gwsetmaxmulbyconst (gwdata, a);
@@ -11009,6 +11130,15 @@ restart:
 			*res = FALSE;
 			return FALSE;
 		}
+	}
+
+//	Restart with next FFT length if we are too near the limit...
+
+	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+		gwdone (gwdata);
+		goto restart;
 	}
 
 /* Init tmp = (N-1)/2 to compute a^(N-1)/2 mod N */
@@ -11075,11 +11205,8 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
-#else
-	sprintf (buf, "Using %s, a = %d", fft_desc, a);
-#endif
+
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
 		if (!setuponly)
@@ -11122,7 +11249,7 @@ restart:
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -11550,7 +11677,7 @@ int isGMNP (
 		res1 = res2 = 0;			// Clear the results...		
 		start_timer(1);				// Beginning the test of the GMN...
 		if (nbdg1 < 100) {			// Attempt an APRCL test only on M.N. less than 100 digits large...
-				resaprcl1 = gaprcltest (N, 0, 0);// Primality test silently done
+			resaprcl1 = gaprcltest (N, 0, 0);// Primality test silently done
 			res1 = ((resaprcl1 == 2)||(resaprcl1 == 12));
 			if (resaprcl1 == 10)
 				sprintf (buf,"%s is not prime. (Trial divisions)\n", str);
@@ -11580,18 +11707,16 @@ int isGMNP (
 #endif
 			}
 			else {
-				if (resaprcl1) {				// Not prime message is useless here...
-					if (verbose)
-						OutputBoth(buf);
-					else
-						OutputStr (buf);
-				}
+				if (verbose)
+					OutputBoth(buf);
+				else
+					OutputStr (buf);
 			}
 
 		}
 		if (nbdg2 > maxaprcl)					// Now testing the cofactor, if not too large...
 			resaprcl2 = gaprcltest (NP, 1, 0);	// Make only a Strong BPSW PRP test
-		else if (verbose)
+		else if (debug)
 			resaprcl2 = gaprcltest (NP, 0, 2);	// Primality test while showing progress 
 		else
 			resaprcl2 = gaprcltest (NP, 0, 0);	// Primality test silently done
@@ -11601,8 +11726,10 @@ int isGMNP (
 			sprintf (buf,"%s is not prime. (Trial divisions)", strp);
 		else if (resaprcl2 == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", strp, nbdg2);
-		else if (resaprcl2 == 0) {				// Not prime message is useless here...
-			if ((N->sign > 1)||(NP->sign > 1))
+		else if (resaprcl2 == 0) {				// Not prime message may be useless here...
+			if (nbdg1 < 100)
+				sprintf (buf,"%s is not prime. (APRCL test)", strp);
+			else if ((N->sign > 1)||(NP->sign > 1))
 				goto COFCONTINUE;				// Continue the PRP test to get the residue...
 		}
 		else if (resaprcl2 == 1)				// BPSW PRP candidate
@@ -11613,24 +11740,12 @@ int isGMNP (
 			sprintf (buf,"Invalid numerical string in %s\n", strp);
 		else if (resaprcl2 == 7) {
 			sprintf (buf,"APRCL error while testing %s...\n", strp);
-			if (verbose)
-				OutputBoth(buf);
-			else
-				OutputStr (buf);
-			if ((N->sign > 1)||(NP->sign > 1))
-				goto COFCONTINUE;				// Continue the PRP test
 		}
 		else {
 			if (resaprcl2 == 9)
 				sprintf (buf, "APRCL primality test not available for %s\n", strp);
 			else
 				sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl2, strp);
-			if (verbose)
-				OutputBoth(buf);
-			else
-				OutputStr (buf);
-			if ((N->sign > 1)||(NP->sign > 1))
-				goto COFCONTINUE;				// Continue the PRP test
 		}
 #if defined(WIN32) && !defined(_CONSOLE)
 
@@ -11663,7 +11778,7 @@ int isGMNP (
 		if (resaprcl2 == 1)										// BPSW PRP candidate
 			MakePrimoInput (NP, strp);
 		*res = (res1 || res2);
-		if ((!res1 || !res2)&&((N->sign > 1)||(NP->sign > 1)))	// At least one candidate is not prime...
+		if ((nbdg1 >= 100)&&((N->sign > 1)||(NP->sign > 1)))	// APRCL test not done on N
 			goto COFCONTINUE;									// Continue the test to get the residue(s)...
 		free(N);
 		free(NP);
@@ -12030,7 +12145,7 @@ restart:
 
 //	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
-	gwinitjp (gwdata);
+	gwinit (gwdata);
 	gdata = &gwdata->gdata;
 
 	gwsetmaxmulbyconst (gwdata, a);
@@ -12054,6 +12169,15 @@ restart:
 		return FALSE;
 	}
 
+
+//	Restart with next FFT length if we are too near the limit...
+
+	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+		gwdone (gwdata);
+		goto restart;
+	}
 
 	expx = n-1;
 	expy = expx/2;
@@ -12149,11 +12273,8 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
-#else
-	sprintf (buf, "Using %s, a = %d", fft_desc, a);
-#endif
+
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
 		if (!setuponly)
@@ -12206,7 +12327,7 @@ restart:
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= (50+loopshift)) || (bit >= explen-50);
+		echk = stopping || ERRCHK || (bit <= (50+loopshift)) || (bit >= explen-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -12444,58 +12565,59 @@ restart:
 
 /* See if we've found a Proth prime.  If not, format a 64-bit residue. */
 
-	if (resaprcl1 != 2)	{			// Exclude if previous APRCL positive result
-	if (gcompg (N, tmp) != 0) {
-		res1 = FALSE;				/* Not a prime */
-		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
-		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
-	}
+	if (resaprcl1 != 2)	{			// Exclude this output if previous APRCL positive result
+		if (gcompg (N, tmp) != 0) {
+			res1 = FALSE;				/* Not a prime */
+			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
+				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			else
+				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+		}
 
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-	if (res1) {
-		if ((resaprcl2 != 1) && (resaprcl2 != 2))
-			sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg1);
-		else
-			sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
-	}
-	else {
-		if ((resaprcl2 != 1) && (resaprcl2 != 2))
-			sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
-		else
-			sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
-	}
+		if (res1) {
+			if ((resaprcl2 != 1) && (resaprcl2 != 2))
+				sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg1);
+			else
+				sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
+		}
+		else {
+			if ((resaprcl2 != 1) && (resaprcl2 != 2))
+				sprintf (buf, "%s is not prime.  Proth RES64: %s\n", str, res64);
+			else
+				sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
+		}
 
 #if defined(WIN32) && !defined(_CONSOLE)
 
-	ReplaceableLine (2);	/* Replace line */ 
-	if ((resaprcl2 != 1) && (resaprcl2 != 2))
-		OutputBoth (buf);				// Avoid a double display...
+		ReplaceableLine (2);	/* Replace line */ 
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			OutputBoth (buf);				// Avoid a double display...
 
 #else
 
-	clearline(100);
+		clearline(100);
 
 #ifdef _CONSOLE
-	if ((resaprcl2 != 1) && (resaprcl2 != 2))
-		OutputBoth(buf);				// Avoid a double display...
-#else
-	if (res1) {
-		OutputStr("\033[7m");
 		if ((resaprcl2 != 1) && (resaprcl2 != 2))
-			OutputBoth(buf);			// Avoid a double display...
-		OutputStr("\033[0m");
-	}
-	else
-	if ((resaprcl2 != 1) && (resaprcl2 != 2))
-		OutputBoth(buf);				// Avoid a double display...
+			OutputBoth(buf);				// Avoid a double display...
+#else
+		if (res1) {
+			OutputStr("\033[7m");
+			if ((resaprcl2 != 1) && (resaprcl2 != 2))
+				OutputBoth(buf);			// Avoid a double display...
+			OutputStr("\033[0m");
+		}
+		else
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			OutputBoth(buf);				// Avoid a double display...
 #endif
 
-	sprintf (buf, "  Time : "); 
+		if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			sprintf (buf, "  Time : "); 	// Avoid a double display...
 
 #endif
 	}									// End Exclude...
@@ -12520,57 +12642,49 @@ restart:
 		modg (NP, tmp2);
 	}
 
-	if ((resaprcl2 != 1) && (resaprcl2 != 2)) {	// Exclude if previous APRCL positive reult
+	if ((resaprcl2 != 1) && (resaprcl2 != 2)) {	// Exclude this output if previous APRCL positive result
 
-	if (gcompg (tmp2, tmp) != 0) {
-		subg (tmp2, tmp);
-		res2 = FALSE;				/* Not a prime */
-		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
-		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
-	}
+		if (gcompg (tmp2, tmp) != 0) {
+			subg (tmp2, tmp);
+			res2 = FALSE;				/* Not a prime */
+			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
+				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			else
+				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+		}
 
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-//	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
+//		nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
 
 
-	if (res2)
-		sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg2);
-	else
-		sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
+		if (res2)
+			sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg2);
+		else
+			sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
 
-#ifdef WIN32
-
-	sprintf (buf+strlen(buf), "  Time: ");
-
-#else
-
-	if (res2) {
-		OutputStr("\033[7m");
-		OutputBoth (buf);
-		OutputStr("\033[0m");
-	}
-	else
-		OutputBoth (buf);
-	sprintf (buf, "  Time: ");
-
-#endif
-
-	}								// End exclude...
-	else
 #ifdef WIN32
 
 		sprintf (buf+strlen(buf), "  Time: ");
 
 #else
 
+		if (res2) {
+			OutputStr("\033[7m");
+			OutputBoth (buf);
+			OutputStr("\033[0m");
+		}
+		else
+			OutputBoth (buf);
 		sprintf (buf, "  Time: ");
 
 #endif
+
+	}								// End Exclude...
+	else
+		sprintf (buf+strlen(buf), "  Time: ");
 
 /* Output the final timings */
 
@@ -12714,7 +12828,7 @@ int isWSPRP (
 		start_timer(1);
 		if (nbdg > maxaprcl)
 			resaprcl = gaprcltest (NP, 1, 0);			// Make only a Strong BPSW PRP test
-		else if (verbose)
+		else if (debug)
 			resaprcl = gaprcltest (NP, 0, 2);			// Primality test while showing progress 
 		else
 			resaprcl = gaprcltest (NP, 0, 0);			// Primality test silently done
@@ -12919,7 +13033,7 @@ restart:
 
 	nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
 
-	gwinitjp (gwdata);
+	gwinit (gwdata);
 	gdata = &gwdata->gdata;
 
 	globalk = 1.0;
@@ -12946,6 +13060,8 @@ restart:
 		*res = FALSE;
 		free(NP);
 		free(M);
+		if (dovrbareix)
+			free (gx0);
 		free(testn);
 		free(testf);
 		free(testx);
@@ -12953,6 +13069,17 @@ restart:
 		return (FALSE); 
 	}
 
+
+//	Restart with next FFT length if we are too near the limit...
+
+	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+		if (dovrbareix)
+			free (gx0);
+		gwdone (gwdata);
+		goto restart;
+	}
 
 /* More initializations... */
 
@@ -13049,11 +13176,8 @@ restart:
 /* Output a message about the FFT length. */
 
 	gwfft_description (gwdata, fft_desc);
-#ifdef WIN32
 	sprintf (buf, "Using %s\n", fft_desc);
-#else
-	sprintf (buf, "Using %s", fft_desc);
-#endif
+
 	OutputStr (buf);
 	LineFeed ();
 	if (verbose) {
@@ -13081,7 +13205,7 @@ restart:
 /* 30 minute interval expired), and every 128th iteration. */
 
 		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= expx-50);
+		echk = stopping || ERRCHK || (bit <= 50) || (bit >= expx-50) || gwnear_fft_limit (gwdata, pcfftlim);
 		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
 			echk = 1;
 			time (&current_time);
@@ -13535,7 +13659,8 @@ int process_num (
 			n -= ninput;
 			b_else = base;				// Is odd...
 			b_2up = binput / b_else;	// binput = b_else*b_2up
-			if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK)))) {
+			if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK) || (format == ABCRU)
+												|| (format == ABCGRU) || (format == ABCVARAQS)))) {
 				superPRP = 0;			// Then b_2up^ninput > b_else^ninput
 			}							// N = k*binput^ninput+c = (k*b_else^ninput)*2^n+c
 			else {
@@ -13612,7 +13737,7 @@ void primeContinue ()
 /* Handle a sieving program output file */
 
 	if (work == 0) {
-	    char	inputfile[80], outputfile[80], cmaxroundoff[10], sgk[sgkbufsize], buff[sgkbufsize+256];
+	    char	inputfile[80], outputfile[80], cmaxroundoff[10], cpcfftlim[10], sgk[sgkbufsize], buff[sgkbufsize+256];
 		char	hbuff[sgkbufsize+256], outbuf[sgkbufsize+256], last_processed_k[sgkbufsize+256];
 	    FILE *fd;
 	    unsigned long i, chainlen, n, nfudge, nn;
@@ -13623,7 +13748,9 @@ void primeContinue ()
 	    IniGetString (INI_FILE, "PgenInputFile", inputfile, 80, NULL);
 	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, 80, NULL);
 	    IniGetString (INI_FILE, "MaxRoundOff", cmaxroundoff, 5, "0.40");
+	    IniGetString (INI_FILE, "PercentFFTLimit", cpcfftlim, 5, "0.50");
 		maxroundoff = atof (cmaxroundoff);
+		pcfftlim = atof (cpcfftlim);
 	    firstline = IniGetInt (INI_FILE, "PgenLine", 1);
 		last_processed_n = (unsigned long)IniGetInt(INI_FILE, "Last_Processed_n", 0);
 		IniGetString(INI_FILE, "Last_Processed_k",last_processed_k, sgkbufsize, NULL);
@@ -13653,6 +13780,7 @@ void primeContinue ()
 		nofac =  IniGetInt(INI_FILE, "NoPrefactoring", 0);
 		maxaprcl = IniGetInt(INI_FILE, "MaxAprcl", 200);
 		primolimit = IniGetInt(INI_FILE, "PrimoLimit", 30000);
+		nextifnear = IniGetInt(INI_FILE, "NextFFTifNearLimit", 0);
 
 /* A new option to create interim save files every N iterations. */
 /* This allows two machines to simultanously work on the same exponent */
