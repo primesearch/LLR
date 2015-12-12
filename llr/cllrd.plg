@@ -6,14 +6,14 @@
 --------------------Configuration: cllrd - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPEA.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP302.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllrd___Win32_Release/cllrd.pch" /YX /Fo"cllrd___Win32_Release/" /Fd"cllrd___Win32_Release/" /FD /c 
-"I:\D\Jean\LLR\llr38fsrc\lmenu.c"
-"I:\D\Jean\LLR\llr38fsrc\lprime.c"
+"I:\D\Jean\LLRTEMP\llr38gsrc\lmenu.c"
+"I:\D\Jean\LLRTEMP\llr38gsrc\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPEA.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPEB.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP302.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP303.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllrd___Win32_Release/cllrd.pdb" /machine:I386 /out:"cllrd___Win32_Release/cllrd.exe" 
 .\cllrd___Win32_Release\lmenu.obj
@@ -22,23 +22,23 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPEB.tmp" with cont
 .\factor32lp.obj
 ..\gwnum\gwnumd.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPEB.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP303.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c
 lprime.c
-I:\D\Jean\LLR\llr38fsrc\Qfields.c(37) : warning C4244: '+=' : conversion from '__int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Qfields.c(147) : warning C4244: '=' : conversion from 'unsigned __int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(9832) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(10905) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(11868) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(11868) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(12926) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(12926) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLR\llr38fsrc\Llr.c(11868) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLR\llr38fsrc\Llr.c(11868) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLR\llr38fsrc\Llr.c(12926) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLR\llr38fsrc\Llr.c(12926) : warning C4761: integral size mismatch in argument; conversion supplied
+I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(37) : warning C4244: '+=' : conversion from '__int64 ' to 'unsigned __int32 ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(147) : warning C4244: '=' : conversion from 'unsigned __int64 ' to 'unsigned __int32 ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(9782) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(10847) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
+I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
 Linking...
 
 

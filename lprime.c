@@ -37,6 +37,7 @@
 #include <process.h>
 #include <windows.h>
 #define $LLF "%I64d"
+
 #endif
 #include <sys/timeb.h>
 
@@ -623,6 +624,8 @@ void ReplaceableLine (int x)
 void linuxContinue (
 	char	*error_message)
 {
+	int completed = FALSE;
+
 #ifdef __APPLE__
 #define PROCNAME	"/proc/%d/exe"
 #endif
@@ -674,12 +677,12 @@ void linuxContinue (
 ok:	IniWriteInt (INI_FILE, "Pid", my_pid);
 
 #endif
-	primeContinue ();
+	completed = primeContinue ();
 	IniWriteInt (INI_FILE, "Pid", 0);
 	_unlink ("$temp.npg");
 	_unlink ("$temp.res");
 	if (PROCESSFILE && IniGetInt (INI_FILE, "WorkDone", 0))
 			IniWriteString (INI_FILE, "PgenLine", NULL);
-	if (SINGLETEST)
+	if (SINGLETEST && completed)
 		_unlink (INI_FILE);
 }

@@ -7,6 +7,8 @@
  
 #define CHECK_IF_ANY_ERROR(X,J,N,K) \
 		checknumber = K;\
+		restarting = FALSE;\
+		will_try_larger_fft = FALSE;\
 /* If the sum of the output values is an error (such as infinity) */\
 /* then raise an error. */\
 \
@@ -56,7 +58,7 @@
 		if (gw_get_maxerr(gwdata) > maxroundoff) {\
 			lasterr_point = J;\
 			if (J == last_bit[K] &&\
-			    gw_get_maxerr(gwdata) == last_maxerr[K] && !abonroundoff && !will_try_larger_fft) {\
+			    gw_get_maxerr(gwdata) == last_maxerr[K] && !abonroundoff && !care) {\
 				clearline(100);\
 				OutputBoth (ERROK);\
 				gwdata->GWERROR = 0;\
@@ -64,12 +66,18 @@
 				IniWriteInt(INI_FILE, "Error_Count", error_count = IniGetInt(INI_FILE, "Error_Count", 0) + 1);\
 				if (error_count > MAX_ERROR_COUNT) {\
 					OutputBoth (ERRMSG9);\
-					care = TRUE;\
+					IniWriteString(INI_FILE, "Error_Count", NULL);\
+					will_try_larger_fft = TRUE;\
+					last_bit[K]  = 0;\
+					last_maxerr[K]  = 0.0;\
+					maxerr_recovery_mode[K] = FALSE;\
 				}\
-				else\
+				else {\
 					OutputBoth (ERRMSG6);\
-				maxerr_recovery_mode[K] = TRUE;\
+					maxerr_recovery_mode[K] = TRUE;\
+				}\
 				sleep5 = FALSE;\
+				restarting = TRUE;\
 				goto error;\
 			} else {\
 				char	msg[80];\
@@ -80,6 +88,8 @@
 				if (J == last_bit[K])\
 					will_try_larger_fft = TRUE;\
 				if (will_try_larger_fft) {\
+					OutputBoth (ERRMSG8);\
+					IniWriteString(INI_FILE, "Error_Count", NULL);\
 					last_bit[K]  = 0;\
 					last_maxerr[K]  = 0.0;\
 				}\
@@ -87,7 +97,9 @@
 					last_bit[K] = J;\
 					last_maxerr[K] = gw_get_maxerr(gwdata);\
 				}\
+				maxerr_recovery_mode[K] = FALSE;\
 				sleep5 = FALSE;\
+				restarting = TRUE;\
 				goto error;\
 			}\
 		}\
@@ -209,6 +221,10 @@ double maxdiffmult = 1.0;
 
 /* PRP and LLR global variables */
 
+#ifdef _CONSOLE
+HANDLE hConsole;		// Handle to Console attributes
+#endif
+
 #define	sgkbufsize 20000
 
 giant	N = NULL;		/* Number being tested */
@@ -261,11 +277,11 @@ int pfactor64();
 void* aligned_malloc (unsigned long, unsigned long);
 void  aligned_free (void *);
 
-static unsigned long last_bit[10] = {0};
+static unsigned long last_bit[10] = {0};				// Bit or iter. currently tested on operaton N° index.
 static double last_suminp[10] = {0.0};
 static double last_sumout[10] = {0.0};
-static double last_maxerr[10] = {0.0};
-static double maxroundoff = 0.40;
+static double last_maxerr[10] = {0.0};					// Current Roundoff on operation N° index.
+static double maxroundoff = 0.40;						// Largest acceptable Roundoff Error
 static double fpart = 0.0;
 
 static unsigned long mask;
@@ -288,17 +304,18 @@ unsigned int nofac = FALSE;
 unsigned int general = FALSE;
 unsigned int eps2 = FALSE;
 unsigned int debug = FALSE;
-unsigned int nocare = FALSE;
-unsigned int care = FALSE;
+unsigned int restarting = FALSE;				// Actually set by Roundoff error condition ; reset by the macro.
+unsigned int care = FALSE;						// Set after a careful iteration ; reset after a normal one.
 unsigned int postfft = TRUE;
 unsigned int generic = FALSE;
-unsigned int abonroundoff = FALSE;
-unsigned int will_try_larger_fft = FALSE;
-unsigned int checknumber = 0;
-unsigned int error_count = 0;
+unsigned int aborted = FALSE;
+unsigned int abonroundoff = FALSE;				// Abort the test in a Roundoff error occurs.
+unsigned int will_try_larger_fft = FALSE;		// Set if unrecoverable error or too much errors ; reset by the macro.
+unsigned int checknumber = 0;					// N° of currently checked gwnum operation ; only displayed in abort message
+unsigned int error_count = 0;					// Number of reproducible errors that previously occured.
 unsigned int sleep5 = FALSE, showdigits = FALSE;
-unsigned int maxerr_recovery_mode [10] = {0};
-unsigned int lasterr_point = 0;
+unsigned int maxerr_recovery_mode [10] = {0};	// Set if a reproducible error occured in the current operation.
+unsigned int lasterr_point = 0;					// Last bit or iteration that caused an error.
 unsigned long primolimit = 30000;
 unsigned long nextifnear = FALSE;
 unsigned long maxaprcl = 200;
@@ -364,7 +381,8 @@ char ERRMSG5[] = "Fatal Error, Check Number = %d, test of %s aborted\n";
 char ERRMSG6[] = "For added safety, redoing iteration using a slower, more reliable method.\n";
 char ERRMSG7[] = "Fatal Error, divisibility test of %d^(N-1)-1 aborted\n";
 char ERRMSG8[] = "Unrecoverable error, Restarting with next larger FFT length...\n";
-char ERRMSG9[] = "Too much errors while using the standard method ; continuing with a slower, more reliable one.\n";
+//char ERRMSG9[] = "Too much errors while using the standard method ; continuing with a slower, more reliable one.\n";
+char ERRMSG9[] = "Too much errors ; Restarting with next larger FFT length...\n";
 char WRITEFILEERR[] = "Error writing intermediate file: %s\n";
 
 void	trace(int n) {			// Debugging tool...
@@ -622,6 +640,12 @@ void getCpuInfo (void)
 	temp = IniGetInt (INI_FILE, "CpuSupportsSSE2", 99); 
 	if (temp == 0) CPU_FLAGS &= ~CPU_SSE2; 
 	if (temp == 1) CPU_FLAGS |= CPU_SSE2; 
+	temp = IniGetInt (INI_FILE, "CPUSupportsAVX", 99); 
+	if (temp == 0) CPU_FLAGS &= ~CPU_AVX; 
+	if (temp == 1) CPU_FLAGS |= CPU_AVX; 
+	temp = IniGetInt (INI_FILE, "CPUSupportsFMA3", 99); 
+	if (temp == 0) CPU_FLAGS &= ~CPU_FMA3; 
+	if (temp == 1) CPU_FLAGS |= CPU_FMA3; 
  
 SAVE_CPU_FLAGS = CPU_FLAGS;		// Duplicate these values
 
@@ -654,6 +678,8 @@ void getCpuDescription (
 		if (CPU_FLAGS & CPU_MMX) strcat (buf, "MMX, "); 
 		if (CPU_FLAGS & CPU_SSE) strcat (buf, "SSE, "); 
 		if (CPU_FLAGS & CPU_SSE2) strcat (buf, "SSE2, "); 
+		if (CPU_FLAGS & CPU_AVX) strcat (buf, "AVX, "); 
+		if (CPU_FLAGS & CPU_FMA3) strcat (buf, "FMA3, "); 
 		strcpy (buf + strlen (buf) - 2, "\n"); 
 	} 
 	strcat (buf, "L1 cache size: "); 
@@ -1406,7 +1432,7 @@ static	time_t	last_time = 0;
 		strcpy (buf+1, ctime (&this_time));
 		buf[25] = ']';
 		buf[26] = '\n';
-		if (verbose)
+		if (verbose || restarting)
 			_write (fd, buf, 27);
 	}
 
@@ -4315,9 +4341,8 @@ int isexpdiv (
 			 PRECISION);
 		sprintf (buf, fmt_mask, a, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -4326,13 +4351,10 @@ int isexpdiv (
 		clear_timers ();	// Init. timers
 		sprintf (buf, "Starting divisibility test of %d^(N-1)-1\n", a);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -4347,11 +4369,7 @@ int isexpdiv (
 	sprintf (buf, "Using %s\n", fft_desc);
 
 	OutputStr (buf);
-	LineFeed ();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -4389,13 +4407,13 @@ int isexpdiv (
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if (!care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
+		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 
 		if (debug && (bit < 50)) {
@@ -4414,9 +4432,8 @@ int isexpdiv (
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -4467,6 +4484,7 @@ int isexpdiv (
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -4562,51 +4580,50 @@ int isexpdiv (
 	iaddg (1, N);					// Restore the modulus
 	Nlen = bitlen (N);
 	_unlink (filename);
-	lasterr_point = 0;
+	lasterr_point = 0;				// Reset the last error point.
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	iaddg (1, N);					// Restore the value of N
 	Nlen = bitlen (N);
 	pushg (gdata, 1);
 	gwfree (gwdata, x);
-	*res = FALSE;					// To avoid credit mesage...
+	*res = FALSE;					// To avoid credit message...
 
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf,ERRMSG7,a);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -4683,7 +4700,6 @@ int commonFrobeniusPRP (
 		sprintf (buf, fmt_mask, bit, pct);
 		start_timer (0);
 		start_timer (1);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		goto Frobeniusresume;
 	}
 	else {
@@ -4709,9 +4725,8 @@ int commonFrobeniusPRP (
 				PRECISION);
 			sprintf (buf, fmt_mask, bit, pct);
 			OutputStr (buf);
-			if (verbose)
+			if (verbose || restarting)
 				writeResults (buf);
-			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 		}
 
 /* Otherwise, output a message indicating we are starting a Lucas test */
@@ -4720,15 +4735,12 @@ int commonFrobeniusPRP (
 //			clear_timers ();	// Init. timers
 			sprintf (buf, "Starting Lucas sequence\n");
 			OutputStr (buf);
-			if (verbose)
+			if (verbose || restarting)
 				writeResults (buf);
 
 			bit = 1;
 			gwcopy (gwdata, gw2, x);		// Initial values
 			gwcopy (gwdata, gwA, y);
-//			care = FALSE;
-			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-			IniWriteString(INI_FILE, "Error_Count", NULL);
 		}
 	}
 
@@ -4745,11 +4757,7 @@ int commonFrobeniusPRP (
 	sprintf (buf, "Using %s, P = %d, Q = %d\n", fft_desc, P, Q);
 
 	OutputStr (buf);
-	LineFeed ();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -4760,7 +4768,6 @@ int commonFrobeniusPRP (
 
 /* Do the PRP test */
 
-	will_try_larger_fft = FALSE;
 	iters = 0;
 	while (bit <= Nlen) {
 
@@ -4785,16 +4792,14 @@ int commonFrobeniusPRP (
 		if ( bitv = bitval (tmp3, Nlen-bit)) {
 			if (abs(gwdata->c)==1)				// Warning : gwsetaddin must not be used if abs(c) != 1 !!
 				gwsetaddin (gwdata, 0);
-			if (!care && (bit+26 < Nlen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
+			if ((bit+26 < Nlen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[1])) {
 				gwsafemul (gwdata, y, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, y, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[1] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
@@ -4802,37 +4807,32 @@ int commonFrobeniusPRP (
 			gwsub3 (gwdata, x, gwA, x);
 			if (abs(gwdata->c)==1)
 				gwsetaddin (gwdata, -2);		// Warning : gwsetaddin must not be used if abs(c) != 1 !!
-			if (!care && (bit+26 < Nlen) && (bit > 26) &&
+			if ((bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[2] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
 			CHECK_IF_ANY_ERROR(y, (bit), Nlen, 2)
 			if (abs(gwdata->c)!=1)
 				gwsubquick (gwdata, gw2, y);	// gwsetaddin has not been used because abs(c) != 1 !!
-//				gwsub (gwdata, gw2, y);
 		}
 		else {
 			if (abs(gwdata->c)==1)
 				gwsetaddin (gwdata, 0);			// Warning : gwsetaddin must not be used if abs(c) != 1 !!
-			if (!care && (bit+26 < Nlen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
+			if ((bit+26 < Nlen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[3])) {
 				gwsafemul (gwdata, x, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, x, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[3] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
@@ -4840,30 +4840,26 @@ int commonFrobeniusPRP (
 			gwsub3 (gwdata, y, gwA, y);
 			if (abs(gwdata->c)==1)
 				gwsetaddin (gwdata, -2);		// Warning : gwsetaddin must not be used if abs(c) != 1 !!
-			if (!care && (bit+26 < Nlen) && (bit > 26) &&
+			if ((bit+26 < Nlen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[4] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
 			CHECK_IF_ANY_ERROR(x, (bit), Nlen, 4)
 			if (abs(gwdata->c)!=1)
 				gwsubquick (gwdata, gw2, x);	// gwsetaddin has not been used because abs(c) != 1 !!
-//				gwsub (gwdata, gw2, x);
 		}
 
  /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -4956,11 +4952,10 @@ int commonFrobeniusPRP (
 		}
 	}
 
-	will_try_larger_fft = FALSE;
-
 /* See if we've found a Lucas probable prime.  If not, format a 64-bit residue. */
 
 	clearline (100);
+	lasterr_point = 0;				// Reset last error point.
 
 	gwtogiant (gwdata, x, tmp);		// V(m)
 	gwtogiant (gwdata, y, tmp2);	// V(m+1)
@@ -4987,17 +4982,12 @@ int commonFrobeniusPRP (
 			else
 				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
 	}
+
 	if (*res) {						// N may be prime ; do now the Frobenius PRP test
 		_unlink (filename);			// Remove Lucas save file
-
 		tempFileName (filename, 'F', N);	// Reinit file name
-
 		bit = 1;
-		care = FALSE;
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 		gwcopy (gwdata, gwQ, y);	// Init : y = Q
-//		dbltogw (gwdata, (double)Q, y);		// causes a crash when Q is negative...
-//		lasterr_point = 0;			// Reset a possible Lucas roundoff error point
 		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
 			if (bpsw)
 				sprintf (buf, "%s is BPSW PRP, Starting Frobenius test sequence\n", str);
@@ -5018,7 +5008,7 @@ Frobeniusresume:
 	clearline (100);
 
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		gtog (N, tmp3);				// compute (N-1)/2 to compute y mod N
 		ulsubg (1, tmp3);
@@ -5035,11 +5025,7 @@ Frobeniusresume:
 		sprintf (buf, "Using %s, Q = %d\n", fft_desc, Q);
 
 		OutputStr (buf);
-		LineFeed();
-		if (verbose) {
-#if !defined(WIN32) 
-			strcat (buf, "\n");
-#endif
+		if (verbose || restarting) {
 			writeResults (buf);
 		}
 		ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -5050,8 +5036,6 @@ Frobeniusresume:
 
 /* Do the PRP test */
 		
-//		asm_data = (struct gwasm_data *) gwdata->asm_data;	// Get the struct pointer
-//		asm_data->SPREAD_CARRY_OVER_4_WORDS = TRUE;			// Does not change anything when set...
 		if (abs(gwdata->c)==1)
 			gwsetaddin (gwdata, 0);			// Warning : gwsetaddin must not be used if abs(c) != 1 !!
 		if (abs(Q) <= GWMULBYCONST_MAX)
@@ -5084,13 +5068,13 @@ Frobeniusresume:
 			} else {
 				gwsetnormroutine (gwdata, 0, echk, 0);
 			}
-			if (!care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+			if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 				gwsquare (gwdata, y);
+				care = FALSE;
+			}
 			else {
 				gwsquare_carefully (gwdata, y);
-				will_try_larger_fft = TRUE;
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[6] = FALSE;
+				care = TRUE;
 			}
 
 			if (debug && (bit < 50))
@@ -5099,12 +5083,12 @@ Frobeniusresume:
 
 			if (bitv && (abs(Q) > GWMULBYCONST_MAX)) {
 				gwsafemul (gwdata, gwQ, y);		// multiply by Q if abs(Q) is too big...
+				care = FALSE;
 			}
 /* That iteration succeeded, bump counters */
 
-			if (will_try_larger_fft && (bit == lasterr_point))
+			if (bit == lasterr_point)
 				saving = 1;					// Be sure to restart after this recovery iteration!
-			will_try_larger_fft = FALSE;
 			bit++;
 			iters++;
 
@@ -5155,7 +5139,7 @@ Frobeniusresume:
 
 			if (saving || stopping) {
 				write_time = DISK_WRITE_TIME * 60;
-				saving = 0;
+				saving = FALSE;
 				if (! writeToFile (gwdata, gdata, filename, bit, x, y)) {
 					sprintf (buf, WRITEFILEERR, filename);
 					OutputBoth (buf);
@@ -5197,11 +5181,10 @@ Frobeniusresume:
 			}
 		}
 		gwsetnormroutine (gwdata, 0, 1, 0);
-		will_try_larger_fft = TRUE;
 		gwmul_carefully (gwdata, x, y);	// y = B*V(m)
+		care = TRUE;
 //		gwmul (gwdata, x, y);			// y = B*V(m) ; gwmul not reliable enough here...
 		CHECK_IF_ANY_ERROR (y, (Nlen), Nlen, 6);
-		will_try_larger_fft = FALSE;
 		gwsubquick (gwdata, gw2, y);
 		gwtogiant (gwdata, y, tmp);
 		modg (N, tmp);					// External modulus and gwnum's one may be different...
@@ -5264,17 +5247,20 @@ Frobeniusresume:
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -5297,7 +5283,7 @@ Frobeniusresume:
 	lasterr_point = 0;
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	Nlen = bitlen (N);
@@ -5312,38 +5298,36 @@ error:
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
-//	IniWriteInt(INI_FILE, "Error_Count", IniGetInt(INI_FILE, "Error_Count", 0) + 1);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -5379,8 +5363,8 @@ int commonPRP (
 	while (bitval (tmp2, firstone) == 0)	// position of first one bit in N-1
 		firstone++;
 
-	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
-	*res = TRUE;		/* Assume it is a probable prime */
+	nbdg = gnbdg (N, 10);	// Compute the number of decimal digits of the tested number.
+	*res = TRUE;			/* Assume it is a probable prime */
 
 /* Init filename */
 
@@ -5408,9 +5392,8 @@ int commonPRP (
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -5422,13 +5405,10 @@ int commonPRP (
 		else
 			sprintf (buf, "Starting probable prime test of %s\n", str);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -5443,11 +5423,7 @@ int commonPRP (
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 
 	OutputStr (buf);
-	LineFeed();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -5485,14 +5461,13 @@ int commonPRP (
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if (!care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
 		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 
 		if (debug && (bit < 50))
@@ -5501,9 +5476,8 @@ int commonPRP (
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -5554,6 +5528,7 @@ int commonPRP (
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -5680,17 +5655,20 @@ int commonPRP (
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -5712,7 +5690,7 @@ int commonPRP (
 	lasterr_point = 0;
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg (gdata, 2);
@@ -5725,36 +5703,35 @@ error:
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -5827,9 +5804,8 @@ int commonCC1P (
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -5848,14 +5824,11 @@ int commonCC1P (
 			else
 				sprintf (buf, "Starting Pocklington prime test of %s\n", str);
 			OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		}
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -5870,11 +5843,7 @@ int commonCC1P (
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 
 	OutputStr (buf);
-	LineFeed();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -5912,13 +5881,13 @@ int commonCC1P (
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
-		if (!care && (bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if ((bit+25 < Nlen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
+		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 
 		if (debug && (bit < 50))
@@ -5927,9 +5896,8 @@ int commonCC1P (
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -5986,6 +5954,7 @@ int commonCC1P (
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -6065,17 +6034,20 @@ int commonCC1P (
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -6096,7 +6068,7 @@ int commonCC1P (
 	lasterr_point = 0;
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg (gdata, 2);
@@ -6106,36 +6078,35 @@ error:
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -6193,6 +6164,8 @@ int commonCC2P (
 
 	explen = bitlen (exponent);
 
+	*res = TRUE;							/* Assume a positive result */
+
 /* Init filename */
 
 	tempFileName (filename, 'L', N);
@@ -6209,10 +6182,9 @@ int commonCC2P (
 			 PRECISION);
 		sprintf (buf, fmt_mask, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		D = P*P-4;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -6225,14 +6197,11 @@ int commonCC2P (
 		else
 			sprintf (buf, "Starting Lucas sequence\n");
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, 2.0, x);
 		dbltogw (gwdata, (double)P, y);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 	ultog (D, tmp3);						// Compute the inverse of D modulo N
@@ -6252,11 +6221,7 @@ int commonCC2P (
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, P);
 
 	OutputStr (buf);
-	LineFeed();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 
@@ -6266,7 +6231,6 @@ int commonCC2P (
 
 	iters = 0;
 	gwsetnormroutine (gwdata, 0, 1, 0);
-	will_try_larger_fft = FALSE;
 
 	while (bit <= explen) {
 
@@ -6293,16 +6257,14 @@ int commonCC2P (
 		if ( bitv = bitval (exponent, explen-bit)) {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
+			if ((bit+26 < explen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[1])) {
 				gwsafemul (gwdata, y, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, y, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[1] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
@@ -6311,16 +6273,14 @@ int commonCC2P (
 				gwsmalladd (gwdata, -(double)P, x);
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -2);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
+			if ((bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[2] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
@@ -6331,16 +6291,14 @@ int commonCC2P (
 		else {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
+			if ((bit+26 < explen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[3])) {
 				gwsafemul (gwdata, x, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, x, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[3] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
@@ -6349,16 +6307,14 @@ int commonCC2P (
 				gwsmalladd (gwdata, -(double)P, y);
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -2);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
+			if ((bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[4] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
@@ -6369,9 +6325,8 @@ int commonCC2P (
 
  /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -6422,6 +6377,7 @@ int commonCC2P (
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, bit, x, y)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -6465,7 +6421,7 @@ int commonCC2P (
 
 	clearline (100);
 
-	will_try_larger_fft = TRUE;
+	care = TRUE;					// All errors are now flagged as unrecoverable...
 
 	if (abs(gwdata->c) == 1)
 		gwsetaddin (gwdata, 0);			// Reset addin constant.
@@ -6482,7 +6438,6 @@ int commonCC2P (
 	gwsetnormroutine (gwdata, 0, 1, 0);	// reset mul by const
 	gwtogiant (gwdata, y, tmp);		// tmp = U(N+1) modulo N
 
-	will_try_larger_fft = FALSE;
 
 	if (!isZero (tmp)) {
 		*res = FALSE;				// Not a prime.
@@ -6505,17 +6460,20 @@ int commonCC2P (
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -6538,7 +6496,7 @@ int commonCC2P (
 	lasterr_point = 0;
 	return TRUE;
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 
@@ -6554,36 +6512,35 @@ error:
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -7530,17 +7487,20 @@ int IsPRP (							// General PRP test
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -7689,17 +7649,20 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -8092,6 +8055,8 @@ int Lucasequence (
 
 // restart:
 
+	*res = TRUE;								/* Assume a positive result */
+
 	/* Get the current time */
 
 	time (&start_time);
@@ -8149,25 +8114,21 @@ int Lucasequence (
 			 PRECISION);
 		sprintf (buf, fmt_mask, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);	
 		D = P*P - 4;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
 
 	else {
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);	
 		D = P*P - 4;
 		bit = 1;
 		dbltogw (gwdata, 2.0, x);			// Initial values
 		dbltogw (gwdata, (double)P, y);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 	ultog (D, tmp);						// Compute inverse of D modulo N
@@ -8186,11 +8147,7 @@ int Lucasequence (
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, (int)P);
 
 	OutputStr (buf);
-	LineFeed ();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -8204,7 +8161,6 @@ int Lucasequence (
 	iters = 0;
 	start_timer (0);
 	start_timer (1);
-	will_try_larger_fft = FALSE;
 	while (bit <= explen) {
 
 /* Error check the last 50 iterations, before writing an */
@@ -8230,16 +8186,14 @@ int Lucasequence (
 		if ( bitv = bitval (tmp2, explen-bit)) {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
+			if ((bit+26 < explen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[1])) {
 				gwsafemul (gwdata, y, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, y, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[1] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
@@ -8248,16 +8202,14 @@ int Lucasequence (
 				gwsmalladd (gwdata, -(double)P, x);
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -2);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
+			if ((bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[2])) {
 				gwsquare (gwdata, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[2] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
@@ -8268,16 +8220,14 @@ int Lucasequence (
 		else {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
-				((bit != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
+			if ((bit+26 < explen) && (bit > 26) &&
+				((bit != lasterr_point) || !maxerr_recovery_mode[3])) {
 				gwsafemul (gwdata, x, y);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwmul_carefully (gwdata, x, y);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[3] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, y, N, tmp, buf, str, bit, BIT);
@@ -8286,16 +8236,14 @@ int Lucasequence (
 				gwsmalladd (gwdata, -(double)P, y);
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -2);
-			if (!care && (bit+26 < explen) && (bit > 26) &&
+			if ((bit+26 < explen) && (bit > 26) &&
 				((bit != lasterr_point) || !maxerr_recovery_mode[4])) {
 				gwsquare (gwdata, x);
-				will_try_larger_fft = FALSE;
+				care = FALSE;
 			}
 			else {
 				gwsquare_carefully (gwdata, x);
-				if (bit == lasterr_point)
-					maxerr_recovery_mode[4] = FALSE;
-				will_try_larger_fft = TRUE;
+				care = TRUE;
 			}
 			if (debug && (bit < 50))
 				writeresidue (gwdata, x, N, tmp, buf, str, bit, BIT);
@@ -8306,9 +8254,8 @@ int Lucasequence (
 
  /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -8358,6 +8305,7 @@ int Lucasequence (
 /* disk-full situation) */
 
 		if (saving || stopping) {
+			saving = FALSE;
 			write_time = DISK_WRITE_TIME * 60;
 			if (! writeToFileB (gwdata, gdata, filename, bit, P, nrestarts, bpf, x, y)) {
 				sprintf (buf, WRITEFILEERR, filename);
@@ -8414,7 +8362,7 @@ int Lucasequence (
 		}
 	}
 
-	will_try_larger_fft = TRUE;			// All following errors are considered unrecoverable...
+	care = TRUE;						// All following errors are considered unrecoverable...
 
 	// Compute the matrix at (N+1)/base
 
@@ -8482,6 +8430,7 @@ int Lucasequence (
 	gwcopy (gwdata, a22, b22);
 
 	explen = bitlen (gb);
+	lasterr_point = 0;					// Reset last error point.
 	bit = 1;
 
 	while (bit < explen) {					// Finish to compute U(N+1)
@@ -8578,6 +8527,7 @@ int Lucasequence (
 			gwcopy (gwdata, c22, a22);
 
 			explen = bitlen (gbpc[j]);
+			lasterr_point = 0;					// Reset last error point.
 			bit = 1;
 			
 			while (bit < explen) {
@@ -8690,8 +8640,6 @@ int Lucasequence (
 	if (*res && !frestart)
 		sprintf (buf, "%s is prime! (%lu decimal digits, P = %lu)", str, nbdg, P);
 
-	will_try_larger_fft = FALSE;// Reset the "unrecoverable" condition.
-
 	pushg (gdata, 2);
 	gwfree (gwdata, x);			// Clean up
 	gwfree (gwdata, y);
@@ -8725,7 +8673,7 @@ int Lucasequence (
 		return TRUE;
 	}
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg (gdata, 2);
@@ -8753,38 +8701,35 @@ error:
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
-		will_try_larger_fft = FALSE;
 		_unlink (filename);
-		return (FALSE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
-//		return (-1);
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-//	goto restart;
-	if (care)
-		_unlink (filename);
 	return (-1);
 }
 
@@ -8922,17 +8867,20 @@ int plusminustest (
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -9199,9 +9147,8 @@ PLMCONTINUE:
 			 PRECISION);
 		sprintf (buf, fmt_mask, incr < 0 ? '+' : '-', abs(incr), str, bit, pct);
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);	
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -9226,14 +9173,11 @@ PLMCONTINUE:
 					sprintf (buf, "Starting N%c%d prime test of %s\n", incr < 0 ? '+' : '-', abs(incr), str);
 			}
 		OutputStr (buf);
-		if (verbose)
+		if (verbose || restarting)
 			writeResults (buf);	
 		}
 		bit = 1;
 		dbltogw (gwdata, (double)a, x);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 /* Get the current time */
@@ -9253,7 +9197,7 @@ PLMCONTINUE:
 			OLDFFTLEN = gwdata->FFTLEN;
 		}
 	}
-	else if (verbose){
+	else if (verbose || restarting){
 		OutputBoth(buf);
 	}
 	else {
@@ -9317,14 +9261,13 @@ PLMCONTINUE:
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
 
-		if (!care && (bit+25 < explen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if ((bit+25 < explen) && (bit > 25) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
 		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 
 		if (debug && (bit < 50))
@@ -9333,9 +9276,8 @@ PLMCONTINUE:
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -9386,6 +9328,7 @@ PLMCONTINUE:
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFileB (gwdata, gdata, filename, bit, a, nrestarts, bpf, x, y)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -9432,9 +9375,10 @@ PLMCONTINUE:
 	}
 
 	clearline (100);
+	lasterr_point = 0;							// Reset last error point.
 
 	if (incr == +1) {
-		will_try_larger_fft = TRUE;			// All following errors are considered unrecoverable...
+		care = TRUE;							// All following errors are considered unrecoverable...
 		bit = 1;
 		explen = bitlen (gb);
 		gwcopy (gwdata, x, y);
@@ -9452,6 +9396,8 @@ PLMCONTINUE:
 			bit++;
 		}
 	}
+
+	lasterr_point = 0;				// Reset last error point.
 
 /* See if we've found a probable prime.  If not, format a 64-bit residue. */
 /* Old versions of PRP used a non-standard 64-bit residue, computing */
@@ -9546,7 +9492,7 @@ DoLucas:
 					}
 				}
 			}	while (retval < 0);
-			if (retval == FALSE) {
+			if (retval == FALSE) {				// Lucas sequence stopped.
 				free (N);
 				free (gk);
 				free (M);
@@ -9568,6 +9514,7 @@ DoLucas:
 					continue;
 				gwcopy (gwdata, y, x);		// Computing a^((N-1)/q)
 				bit = 1;
+				lasterr_point = 0;			// Reset last error point.
 				explen = bitlen (gbpc[j]);
 				while (bit < explen) {
 //					gwsquare (gwdata, x);
@@ -9640,7 +9587,6 @@ DoLucas:
 					}
 				}
 			}
-			will_try_larger_fft = FALSE;	
 			if (*res && !frestart)
 				sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg);
 			gwfree (gwdata, x);
@@ -9674,17 +9620,20 @@ DoLucas:
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else // Linux or Mac Intel
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -9722,7 +9671,7 @@ DoLucas:
 	free (gwdata);
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	free (M);
@@ -9731,12 +9680,12 @@ error:
 	free (tmp3);
 	gwfree (gwdata, x);
 	gwfree (gwdata, y);
-	gwdone (gwdata);
 	*res = FALSE;
 
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
 		free (N);
@@ -9744,22 +9693,27 @@ error:
 		_unlink (filename);
 		if (IniGetInt(INI_FILE, "PRPdone", 0))
 			IniWriteString(INI_FILE, "PRPdone", NULL);
-		will_try_larger_fft = FALSE;
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
+		gwdone (gwdata);
 		free (gwdata);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
-/* Output a message saying we are restarting */
+	gwdone (gwdata);
+
+	/* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) { 
-		will_try_larger_fft = FALSE;
 		free (gwdata);
 		return (FALSE);
 	}
@@ -9767,13 +9721,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	goto restart;
 
 }
@@ -9966,17 +9916,20 @@ int isLLRP (
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -10145,10 +10098,11 @@ restart:
 			PRECISION); 
 		sprintf (buf, fmt_mask, str, j, pct); 
 		OutputStr (buf); 
+		if (verbose || restarting)
+			writeResults (buf);
 		start_timer (0); 
 		start_timer (1); 
 		time (&start_time); 
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	} 
  
 
@@ -10214,13 +10168,15 @@ restart:
 			 PRECISION); 
 			sprintf (buf, fmt_mask, str, klen - j, pct); 
 			OutputStr (buf); 
-			LineFeed();
+			OutputStr ("\n");
+			if (verbose || restarting) {
+				strcat (buf, "\n");
+				writeResults (buf);
+			}
 			ReplaceableLine (1);	/* Remember where replacable line is */ 
-			will_try_larger_fft = TRUE;
 			start_timer (0); 
 			start_timer (1); 
 			time (&start_time); 
-			care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
 	    } 
 	    else {
 			clear_timers ();		// Init. timers
@@ -10239,9 +10195,8 @@ restart:
 				else
 					sprintf (buf, "Starting Lucas Lehmer Riesel prime test of %s\n", str);
 				OutputStr (buf); 
-//				care = FALSE;
-				care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-				IniWriteString(INI_FILE, "Error_Count", NULL);
+				if (verbose || restarting)
+					writeResults (buf);
 			}
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "Using %s\n", fft_desc);
@@ -10252,7 +10207,7 @@ restart:
 					OLDFFTLEN = gwdata->FFTLEN;
 				}
 			}
-			else if (verbose)
+			else if (verbose || restarting)
 				OutputBoth(buf);
 			else {
 				OutputStr(buf);
@@ -10282,23 +10237,21 @@ restart:
 			gwcopy (gwdata, x, y);
 			if (debug)
 				writeresidue (gwdata, y, N, tmp, buf, str, 0, ITER);
-			will_try_larger_fft = FALSE;
 			gwsetnormroutine (gwdata, 0, 1, 0);
 			gwsetaddin (gwdata, -2);
-			if (!care && ((1 != lasterr_point) || !maxerr_recovery_mode[0]))
+			if ((1 != lasterr_point) || !maxerr_recovery_mode[0]) {
 				gwsquare (gwdata, y);
+				care = FALSE;
+			}
 			else {
 				gwsquare_carefully (gwdata, y);
-				will_try_larger_fft = TRUE;
-				if (1 == lasterr_point)
-					maxerr_recovery_mode[0] = FALSE;
+				care = TRUE;
 			}
 			if (debug)
 				writeresidue (gwdata, y, N, tmp, buf, str, 1, ITER);
 			CHECK_IF_ANY_ERROR(y, 1, klen, 0)
-			if (will_try_larger_fft && (1 == lasterr_point))
+			if (1 == lasterr_point)
 				saving = 1;					// Be sure to restart after this recovery iteration!
-			will_try_larger_fft = FALSE;
 			j = klen - 2;
  	    }
 					/* Computing u0 (cf Hans Riesel) */
@@ -10334,29 +10287,25 @@ restart:
 
 			if (bit) {
 				gwsetaddin (gwdata, -v1);
-				if (!care && ((index != lasterr_point) || (!maxerr_recovery_mode[1] && !maxerr_recovery_mode[2]))) {
+				if ((index != lasterr_point) || !maxerr_recovery_mode[1]) {
 					gwsafemul (gwdata, y, x);
-					will_try_larger_fft = FALSE;
+					care = FALSE;
 				}
 				else {
 					gwmul_carefully (gwdata, y, x);
-					will_try_larger_fft = TRUE;
-					if (index == lasterr_point)
-						maxerr_recovery_mode[1] = FALSE;
+					care = TRUE;
 				}
 				if (debug && (index < 30))
 					writeresidue (gwdata, x, N, tmp, buf, str, index, ITER);
 				CHECK_IF_ANY_ERROR(x, (index), klen, 1)
 				gwsetaddin (gwdata, -2);
-				if (!care && ((index != lasterr_point) || !maxerr_recovery_mode[2])) {
+				if ((index != lasterr_point) || !maxerr_recovery_mode[2]) {
 					gwsquare (gwdata, y);
-					will_try_larger_fft = FALSE;
+					care = FALSE;
 				}
 				else {
 					gwsquare_carefully (gwdata, y);
-					will_try_larger_fft = TRUE;
-					if (index == lasterr_point)
-						maxerr_recovery_mode[2] = FALSE;
+					care = TRUE;
 				}
 				if (debug && (index < 30))
 					writeresidue (gwdata, y, N, tmp, buf, str, index, ITER);
@@ -10364,38 +10313,33 @@ restart:
 			}
 			else {
 				gwsetaddin (gwdata, -v1);
-				if (!care && ((index != lasterr_point) || (!maxerr_recovery_mode[3] && !maxerr_recovery_mode[4]))) {
+				if ((index != lasterr_point) || !maxerr_recovery_mode[3]) {
 					gwsafemul (gwdata, x, y);
-					will_try_larger_fft = FALSE;
+					care = FALSE;
 				}
 				else {
 					gwmul_carefully (gwdata, x, y);
-					will_try_larger_fft = TRUE;
-					if (index == lasterr_point)
-						maxerr_recovery_mode[3] = FALSE;
+					care = TRUE;
 				}
 				if (debug && (index < 30))
 					writeresidue (gwdata, y, N, tmp, buf, str, index, ITER);
 				CHECK_IF_ANY_ERROR(y, (index), klen, 3)
 				gwsetaddin (gwdata, -2);
-				if (!care && ((index != lasterr_point) || !maxerr_recovery_mode[4])) {
+				if ((index != lasterr_point) || !maxerr_recovery_mode[4]) {
 					gwsquare (gwdata, x);
-					will_try_larger_fft = FALSE;
+					care = FALSE;
 				}
 				else {
 					gwsquare_carefully (gwdata, x);
-					will_try_larger_fft = TRUE;
-					if (index == lasterr_point)
-						maxerr_recovery_mode[4] = FALSE;
+					care = TRUE;
 				}
 				if (debug && (index < 30))
 					writeresidue (gwdata, x, N, tmp, buf, str, index, ITER);
 				CHECK_IF_ANY_ERROR(x, (index), klen, 4)
 			}
 
-			if (will_try_larger_fft && (index == lasterr_point))
+			if (index == lasterr_point)
 				saving = 1;					// Be sure to restart after this recovery iteration!
-			will_try_larger_fft = FALSE;
 
 /* Print a message every so often */ 
  
@@ -10451,6 +10395,7 @@ restart:
  
 			if (saving || stopping) { 
 				write_time = DISK_WRITE_TIME * 60; 
+				saving = FALSE;
 				if (! writeToFile (gwdata, gdata, filename, j, x, y)) { 
 					sprintf (buf, WRITEFILEERR, filename); 
 					OutputBoth (buf); 
@@ -10474,18 +10419,17 @@ restart:
 	    }
 
 		gwsetaddin (gwdata, -v1);
-		if (!care && ((klen != lasterr_point) || !maxerr_recovery_mode[5]))
+		if ((klen != lasterr_point) || !maxerr_recovery_mode[5]) {
 			gwmul (gwdata, y, x);
+			care = FALSE;
+		}
 		else {
 			gwmul_carefully (gwdata, y, x);
-			will_try_larger_fft = TRUE;
-			if (klen == lasterr_point)
-				maxerr_recovery_mode[5] = FALSE;
+			care = TRUE;
 		}
 		if (debug)
 			writeresidue (gwdata, x, N, tmp, buf, str, klen, ITER);
 		CHECK_IF_ANY_ERROR(x, klen, klen, 5)
-		will_try_larger_fft = FALSE;
 
 		ReplaceableLine (2);	/* Replace line */ 
 #ifdef WIN32
@@ -10494,28 +10438,25 @@ restart:
 		sprintf (buf, "V1 = %d ; Computing U0...done.", v1);
 #endif
 		OutputStr(buf);
-		if (verbose) {
+		if (verbose || restarting) {
 			sprintf (buf, "V1 = %d ; Computing U0...done.\n", v1);
 			writeResults (buf); 
 		}
 							/* End of x = u0 computing */
 		_unlink (filename);	/* Remove the save file */
 	    filename[0] = 'z';	/* restore filename which was modified... */
+		lasterr_point = 0;	// Reset last error point.
 
 MERSENNE:
 	    sprintf (buf, "Starting Lucas-Lehmer loop..."); 
 	    OutputStr (buf); 
 		LineFeed();
 		j = 1;
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	} 
 
 
 /* Do the Lucas Lehmer Riesel Prime test */ 
 
-	will_try_larger_fft = FALSE;
 	ReplaceableLine (1);	/* Remember where replacable line is */  
 	iters = 0; 
 	gwsetaddin (gwdata, -2);
@@ -10543,21 +10484,19 @@ MERSENNE:
 			!(interimResidues && ((j+1) % interimResidues < 2)) && 
 			(j >= 30) && (j < last - 31) && !maxerr_recovery_mode[6]); 
 
-		if (!care && (nocare || (j > 30)) && (nocare || (j < last - 30)) && ((j != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if ((j > 30) && (j < last - 30) && ((j != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
 		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (j == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 		if (debug && (j < 30))
 			writeresidue (gwdata, x, N, tmp, buf, str, j, ITER);
 		CHECK_IF_ANY_ERROR(x, j, last, 6)
-		if (will_try_larger_fft && (j == lasterr_point))
+		if (j == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		j++; 
 		iters++; 
  
@@ -10616,7 +10555,7 @@ MERSENNE:
  
 		if (saving || stopping) { 
 			write_time = DISK_WRITE_TIME * 60; 
-
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, j, x, NULL)) { 
 				sprintf (buf, WRITEFILEERR, filename); 
 				OutputBoth (buf); 
@@ -10686,17 +10625,20 @@ MERSENNE:
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -10721,18 +10663,18 @@ MERSENNE:
 	free (gwdata);
 	return (TRUE); 
  
-/* An error occured, sleep, then try restarting at last save point. */ 
+/* An error occured, sleep if required, then try restarting at last save point. */ 
 
 error:
 	pushg (gdata, 1); 
 	gwfree (gwdata, x); 
 	gwfree (gwdata, y); 
-	gwdone (gwdata); 
 	*res = FALSE;
 
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
 		free(gk);
@@ -10743,21 +10685,26 @@ error:
 		_unlink (filename); 
 		if (IniGetInt(INI_FILE, "PRPdone", 0))
 			IniWriteString(INI_FILE, "PRPdone", NULL);
-		will_try_larger_fft = FALSE;
+		gwdone (gwdata); 
 		free (gwdata);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
+
+	gwdone (gwdata);
 
 /* Output a message saying we are restarting */ 
  
 	if (sleep5) OutputBoth (ERRMSG2); 
-	if (!care)
-		OutputBoth (ERRMSG3); 
+	OutputBoth (ERRMSG3); 
  
 /* Sleep five minutes before restarting */ 
  
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		free (gwdata);
 		return (FALSE); 
 	}
@@ -10765,15 +10712,10 @@ error:
 /* Restart */ 
  
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	goto restart; 
-
 } 
 
 
@@ -11019,17 +10961,20 @@ int isProthP (
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -11171,7 +11116,8 @@ restart:
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
+		if (verbose || restarting)
+			writeResults (buf);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -11190,12 +11136,11 @@ restart:
 			else
 				sprintf (buf, "Starting Proth prime test of %s\n", str);
 			OutputStr (buf);
+			if (verbose || restarting)
+				writeResults (buf);
 		}
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 	}
 
 	start_timer (0);	// Start loop timer.
@@ -11209,8 +11154,6 @@ restart:
 
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
-		if (!setuponly)
-			LineFeed();
 	}
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	if (setuponly) {
@@ -11228,10 +11171,7 @@ restart:
 		free (gwdata);
 		return (!stopping);
 	}
-	else if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	else if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -11268,14 +11208,13 @@ restart:
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
 		}
-		if (!care && (bit > 30) && (bit < Nlen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
+		if ((bit > 30) && (bit < Nlen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
 		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 		if (debug && (bit < 50))
 			writeresidue (gwdata, x, N, tmp2, buf, str, bit, BIT);
@@ -11283,9 +11222,8 @@ restart:
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -11342,6 +11280,7 @@ restart:
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! writeToFile (gwdata, gdata, filename, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -11422,17 +11361,20 @@ restart:
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -11453,37 +11395,42 @@ restart:
 	free (gwdata);
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg(gdata, 2);
 	gwfree (gwdata, x);
-	gwdone (gwdata);
 	*res = FALSE;
 
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
 		free(gk);
 		free(N);
 		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		gwdone (gwdata);
 		free (gwdata);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
+
+	gwdone (gwdata);
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		free (gwdata);
 		return (FALSE);
 	}
@@ -11491,13 +11438,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	goto restart;
 } 
 
@@ -11682,11 +11625,11 @@ int isGMNP (
 			if (resaprcl1 == 10)
 				sprintf (buf,"%s is not prime. (Trial divisions)\n", str);
 			else if (resaprcl1 == 12)
-				sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)\n", str, nbdg1);
+				sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg1);
 			else if (resaprcl1 == 0)
 				sprintf (buf,"%s is not prime. (APRCL test)\n", str);
 			else if (resaprcl1 == 2)
-				sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)\n", str, nbdg1);
+				sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg1);
 			else if (resaprcl1 == 6)
 				sprintf (buf,"Invalid numerical string in %s\n", str);
 			else if (resaprcl1 == 7)
@@ -11698,12 +11641,19 @@ int isGMNP (
 					sprintf (buf,"Unexpected return value : %d, while APRCL testing %s...\n", resaprcl1, str);
 			}
 			if (res1) {
-#ifndef WIN32
-				OutputStr("\033[7m");
-#endif
+#if !defined(WIN32) || defined(_CONSOLE)
+#ifdef _CONSOLE
+				hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+				SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 				OutputBoth(buf);
-#ifndef WIN32
+				SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+				OutputBoth("\n");
+#else
+				OutputStr("\033[7m");
+				OutputBoth(buf);
 				OutputStr("\033[0m");
+				OutputBoth("\n");
+#endif
 #endif
 			}
 			else {
@@ -11755,17 +11705,20 @@ int isGMNP (
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (res2) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -12217,7 +12170,8 @@ restart:
 			 PRECISION);
 		sprintf (buf, fmt_mask, str, bit, pct);
 		OutputStr (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
+		if (verbose || restarting)
+			writeResults (buf);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -12236,12 +12190,11 @@ restart:
 			else
 				sprintf (buf, "Starting Proth prime test of %s\n", str);
 			OutputStr (buf);
+			if (verbose || restarting)
+				writeResults (buf);
 		}
 
 		bit = 1;
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
 
@@ -12277,8 +12230,6 @@ restart:
 
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
-		if (!setuponly)
-			LineFeed();
 	}
 	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
 	if (setuponly) {
@@ -12303,10 +12254,7 @@ restart:
 		free (gwdata);
 		return (!stopping);
 	}
-	else if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	else if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -12343,13 +12291,13 @@ restart:
 
 
 		gwsetnormroutine (gwdata, 0, echk, 0);
-		if (!care && (bit > (30+loopshift)) && (bit < explen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if ((bit > (30+loopshift)) && (bit < explen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
+		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
 
 		ubx <<= 1;
@@ -12366,9 +12314,8 @@ restart:
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -12425,6 +12372,7 @@ restart:
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! gmwriteToFile (gwdata, gdata, filename, bit, ubx, uby, x, y)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -12579,10 +12527,14 @@ restart:
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 		if (res1) {
+#ifdef _CONSOLE
+			sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
+#else
 			if ((resaprcl2 != 1) && (resaprcl2 != 2))
 				sprintf (buf, "%s is prime! (%lu decimal digits)\n", str, nbdg1);
 			else
 				sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
+#endif
 		}
 		else {
 			if ((resaprcl2 != 1) && (resaprcl2 != 2))
@@ -12601,20 +12553,23 @@ restart:
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		if ((resaprcl2 != 1) && (resaprcl2 != 2))
-			OutputBoth(buf);				// Avoid a double display...
-#else
 		if (res1) {
-			OutputStr("\033[7m");
-			if ((resaprcl2 != 1) && (resaprcl2 != 2))
+			if ((resaprcl2 != 1) && (resaprcl2 != 2)) {
+#ifdef _CONSOLE
+				SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 				OutputBoth(buf);			// Avoid a double display...
-			OutputStr("\033[0m");
+				SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+				OutputBoth("\n");
+#else
+				OutputStr("\033[7m");
+				OutputBoth(buf);			// Avoid a double display...
+				OutputStr("\033[0m");
+#endif
+			}
 		}
 		else
 		if ((resaprcl2 != 1) && (resaprcl2 != 2))
 			OutputBoth(buf);				// Avoid a double display...
-#endif
 
 		if ((resaprcl2 != 1) && (resaprcl2 != 2))
 			sprintf (buf, "  Time : "); 	// Avoid a double display...
@@ -12672,9 +12627,16 @@ restart:
 #else
 
 		if (res2) {
-			OutputStr("\033[7m");
-			OutputBoth (buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth (buf);
@@ -12719,17 +12681,16 @@ restart:
 	free (gwdata);
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg(gdata, 4);
 	gwfree (gwdata, x);
 	gwfree (gwdata, y);
-	gwdone (gwdata);
-
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, str);
 		OutputBoth (buf);
 		*res = res1 = res2 = FALSE;
@@ -12742,35 +12703,35 @@ error:
 		free(testf);
 		free(testx);
 		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		gwdone (gwdata);
 		free (gwdata);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		free (gwdata);
+		*res = res1 = res2 = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	goto restart;
 } 
 
@@ -12874,17 +12835,20 @@ int isWSPRP (
 
 		clearline(100);
 
-#ifdef _CONSOLE
-		OutputBoth(buf);
-#else
 		if (*res) {
-			OutputStr("\033[7m");
-			OutputBoth(buf);
-			OutputStr("\033[0m");
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+		OutputStr("\033[7m");
+		OutputBoth(buf);
+		OutputStr("\033[0m");
+#endif
 		}
 		else
 			OutputBoth(buf);
-#endif
 
 		sprintf (buf, "  Time : "); 
 
@@ -13111,7 +13075,8 @@ restart:
 				 PRECISION);
 		sprintf (buf, fmt_mask, sgk, bit, pct);
 		OutputStr (buf);
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
+		if (verbose || restarting)
+			writeResults (buf);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
@@ -13131,10 +13096,9 @@ restart:
 				sprintf (buf, "Starting SPRP test of %s\n", sgk);
 		}
 		OutputStr (buf);
+		if (verbose || restarting)
+			writeResults (buf);
 		bit = 1;
-//		care = FALSE;
-		care = (IniGetInt(INI_FILE, "Error_Count", 0) > MAX_ERROR_COUNT);
-		IniWriteString(INI_FILE, "Error_Count", NULL);
 
 /* Compute a random shift for the initial value */
 
@@ -13179,11 +13143,7 @@ restart:
 	sprintf (buf, "Using %s\n", fft_desc);
 
 	OutputStr (buf);
-	LineFeed ();
-	if (verbose) {
-#if !defined(WIN32) 
-		strcat (buf, "\n");
-#endif
+	if (verbose || restarting) {
 		writeResults (buf);
 	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
@@ -13232,14 +13192,15 @@ restart:
 			else
 				gwsetaddinatpowerofb (gwdata, -2, ubx);
 
-		if (!care && (bit > 30) && (bit < expx-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6]))
+		if ((bit > 30) && (bit < expx-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
+			care = FALSE;
+		}
 		else {
 			gwsquare_carefully (gwdata, x);
-			will_try_larger_fft = TRUE;
-			if (bit == lasterr_point)
-				maxerr_recovery_mode[6] = FALSE;
+			care = TRUE;
 		}
+
 		if (!dovrbareix && bit == (expx - 1)) {
 			gwcopy (gwdata, x, y);
 			uby = ubx;
@@ -13250,9 +13211,8 @@ restart:
 
 /* That iteration succeeded, bump counters */
 
-		if (will_try_larger_fft && (bit == lasterr_point))
+		if (bit == lasterr_point)
 			saving = 1;					// Be sure to restart after this recovery iteration!
-		will_try_larger_fft = FALSE;
 		bit++;
 		iters++;
 
@@ -13303,6 +13263,7 @@ restart:
 
 		if (saving || stopping) {
 			write_time = DISK_WRITE_TIME * 60;
+			saving = FALSE;
 			if (! gmwriteToFile (gwdata, gdata, filename, bit, ubx, uby, x, y)) {
 				sprintf (buf, WRITEFILEERR, filename);
 				OutputBoth (buf);
@@ -13474,17 +13435,20 @@ restart:
 
 	clearline(100);
 
-#ifdef _CONSOLE
-	OutputBoth(buf);
-#else
 	if (*res) {
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
 		OutputStr("\033[7m");
 		OutputBoth(buf);
 		OutputStr("\033[0m");
+#endif
 	}
 	else
 		OutputBoth(buf);
-#endif
 
 	sprintf (buf, "  Time : "); 
 
@@ -13529,17 +13493,17 @@ restart:
 	free (gwdata);
 	return (TRUE);
 
-/* An error occured, sleep, then try restarting at last save point. */
+/* An error occured, sleep if required, then try restarting at last save point. */
 
 error:
 	pushg(gdata, 2);
 	gwfree (gwdata, x);
 	gwfree (gwdata, y);
-	gwdone (gwdata);
 
 	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
 		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
 		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
+		aborted = TRUE;
 		sprintf (buf, ERRMSG5, checknumber, sgk);
 		OutputBoth (buf);
 		*res = FALSE;
@@ -13551,37 +13515,38 @@ error:
 		if (dovrbareix)
 			free (gx0);
 		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		gwdone (gwdata);
 		free (gwdata);
-		return (TRUE);
+		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
+			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
+			return (FALSE);
+		}
+		else
+			return (TRUE);
 	}
+
+	gwdone (gwdata);
 
 /* Output a message saying we are restarting */
 
 	if (sleep5) OutputBoth (ERRMSG2);
-	if (!care)
-		OutputBoth (ERRMSG3);
+	OutputBoth (ERRMSG3);
 
 /* Sleep five minutes before restarting */
 
 	if (sleep5 && ! SleepFive ()) {
-		will_try_larger_fft = FALSE;
 		free (gwdata);
+		*res = FALSE;
 		return (FALSE);
 	}
 
 /* Restart */
 
 	if (will_try_larger_fft) {
-		OutputBoth (ERRMSG8);
 		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		_unlink (filename);
-		will_try_larger_fft = FALSE;
+		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
-	if (care)
-		_unlink (filename);
 	goto restart;
-
 }
 
 static unsigned __int64 li, smallbase, smallk, lastfactor;
@@ -13719,10 +13684,10 @@ char	gqpstring[] = "ABC (2^$a+2^(($a+1)/2)+1)/5\n";
 char	gqmstring[] = "ABC (2^$a-2^(($a+1)/2)+1)/5\n";
 
 
-void primeContinue ()
+int primeContinue ()
 {
 
-	int	work, nargs, hiline;
+	int	work, nargs, hiline, completed = FALSE;
 	unsigned long format, shift, begline, rising_ns, rising_ks, last_processed_n, m;
 	char *pinput;
 
@@ -13768,7 +13733,6 @@ void primeContinue ()
 		general =  IniGetInt(INI_FILE, "Vgene", 0);
 		eps2 =  IniGetInt(INI_FILE, "Veps2", 0);
 		debug =  IniGetInt(INI_FILE, "Debug", 0);
-		nocare =  IniGetInt(INI_FILE, "Nocare", 0);
 		postfft =  IniGetInt(INI_FILE, "Postfft", 1);
 		generic =  IniGetInt(INI_FILE, "ForceGeneric", 0);
 		vrbareix  = IniGetInt(INI_FILE, "VrbaReixTest", 0);
@@ -13795,18 +13759,11 @@ void primeContinue ()
 
 		throttle = IniGetInt (INI_FILE, "Throttle", 0);
 
-		// Set termination on error conditions
-
-		abonillsum = IniGetInt(INI_FILE, "Abortonillsum", 0);
-		abonmismatch = IniGetInt(INI_FILE, "Abortonmismatch", 0);
-		abonroundoff = IniGetInt(INI_FILE, "Abortonroundoff", 0);
-		if (IniGetInt(INI_FILE, "Abortonerror", 0))
-			abonillsum = abonmismatch = abonroundoff = 1;
 
 		if (!strncmp (buff, "TestWieferichcode", 17)) {	// Very particular test code...
 			TestWieferich ();
 			IniWriteInt (INI_FILE, "WorkDone", 1);
-			return;
+			return (TRUE);
 	    }
 
 OPENFILE :
@@ -13814,12 +13771,20 @@ OPENFILE :
 
 	    if (fd == NULL) {
 			IniWriteInt (INI_FILE, "WorkDone", 1);
-			return;
+			return (FALSE);
 	    }
 
 // Process each line in the output file
 
 		for (line=0; ; line++) {
+
+// Set termination on error conditions
+
+			abonillsum = IniGetInt(INI_FILE, "Abortonillsum", 0);
+			abonmismatch = IniGetInt(INI_FILE, "Abortonmismatch", 0);
+			abonroundoff = IniGetInt(INI_FILE, "Abortonroundoff", 0);
+			if (IniGetInt(INI_FILE, "Abortonerror", 0))
+				abonillsum = abonmismatch = abonroundoff = 1;
 
 // Blank the input line
 
@@ -13910,30 +13875,30 @@ OPENFILE :
 				}
 				else if (!strncmp (pinput, diffnumstring, strlen (diffnumstring)))
 					format = ABCDNG;
-				else if (sscanf(pinput, fkpstring, smallk, &incr) == 2) {
+				else if (sscanf(pinput, fkpstring, &smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
 
 				}
-				else if (sscanf(pinput, fkmstring, smallk, &incr) == 2) {
+				else if (sscanf(pinput, fkmstring, &smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
 					incr = - incr;
 				}
-				else if (sscanf(pinput, fkpstring, smallk) == 1) { 
+				else if (sscanf(pinput, fkpstring, &smallk) == 1) { 
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKAS;
 				}
-				else if (sscanf(pinput, fbpstring, smallbase, &incr) == 2) {
+				else if (sscanf(pinput, fbpstring, &smallbase, &incr) == 2) {
 					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
 					format = ABCFBGS;
 				}
-				else if (sscanf(pinput, fbmstring, smallbase, &incr) == 2) {
+				else if (sscanf(pinput, fbmstring, &smallbase, &incr) == 2) {
 					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
 					format = ABCFBGS;
 					incr = - incr;
 				}
-				else if (sscanf(pinput, fbpstring, smallbase) == 1) { 
+				else if (sscanf(pinput, fbastring, &smallbase) == 1) { 
 					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
 					format = ABCFBAS;
 				}
@@ -15107,6 +15072,7 @@ OPENFILE :
 			if ((rising_ns && !rising_ks) || (!rising_ns && rising_ks))
 				goto OPENFILE;
 		}					// End of loop on input lines
+		completed = TRUE;
 done:
 		if(IniGetInt(INI_FILE, "StopOnSuccess", 0) && res) {
 			if ((!rising_ns && !rising_ks) || (rising_ns && rising_ks))
@@ -15116,9 +15082,8 @@ done:
 			if (rising_ks && !rising_ns)
 				IniWriteString (INI_FILE, "Last_Processed_k", sgk); // Point on the next k
 		}
-		else if ((!rising_ns && !rising_ks) || (rising_ns && rising_ks))
+		else if (!aborted && ((!rising_ns && !rising_ks) || (rising_ns && rising_ks)))
 			IniWriteInt (INI_FILE, "PgenLine", line);		// Point again on the current line...
-	    IniWriteString (INI_FILE, "MaxRoundOff", NULL);
 		if (facto) {
 			sprintf (outbuf, "%lu candidates factored, %lu factors found, %lu remaining\n"
 				, factored, eliminated, factored - eliminated);
@@ -15134,5 +15099,7 @@ done:
 		OutputStr ("Expression testing not yet implemented.\n");
 		IniWriteInt (INI_FILE, "WorkDone", 1);
 	}
+	aborted = FALSE;
+	return (completed);
 }
 
