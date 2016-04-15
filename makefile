@@ -10,11 +10,14 @@ CPPFLAGS = -I. -I./gwnum -O2 -march=i486 -malign-double
 
 COMPOBJS = lprime.o lmenu.o
 
-compil: $(COMPOBJS)
+compile: $(COMPOBJS)
 	mv $(COMPOBJS) $(D)
 
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+lprime.o: lprime.c
+	$(CC) $(CFLAGS) -c lprime.c
+
+lmenu.o: lmenu.c
+	$(CC) $(CFLAGS) -c lmenu.c
 
 .cpp.o:
 	$(CPP) $(CPPFLAGS) -c $<

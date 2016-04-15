@@ -7,7 +7,7 @@
 #define MAXULONG 0xFFFFFF00
 
 void trace(int);
-EXTERNC int kronecker (uint32_t, uint32_t);
+
 EXTERNC ULONG gcd (ULONG, ULONG);
 extern unsigned long globalb;
 extern double globalk;
@@ -19,10 +19,15 @@ extern double globalk;
 char pbuf[256];
 
 int gmodi (	/* Returns g%i as an integer */ 
-	uint32_t i, giant g) { 
-	uint32_t wordweight, j, k, size, value;
+	uint32_t den, giant g) { 
+//	uint32_t wordweight, j, k, size, value;
+	uint32_t size, value;
+	uint32_t denval = den;
+	giant gmod;
+	giantstruct gdenstruct = {1, &denval};
+	giant gden = &gdenstruct;
 	int sign;
-	if (i==1 || g->sign==0) return 0;
+	if (den==1 || g->sign==0) return 0;
 	if (g->sign < 0) {
 	    sign = -1;
 	    size = -g->sign;
@@ -31,17 +36,22 @@ int gmodi (	/* Returns g%i as an integer */
 	    sign = 1;
 	    size = g->sign;
 	}
-	wordweight = 1;
+	gmod = newgiant (size*sizeof(uint32_t)+8);
+	gtog (g, gmod);
+	modg (gden, gmod);
+	value = gmod->n[0];
+/*	wordweight = 1;
 	value = 0;
 	for (j=0; j<size; j++) {
-	    value += ((__int64)(g->n[j]%i)*wordweight)%i;
+	    value += (uint32_t)((__int64)(g->n[j]%i)*wordweight)%i;
 	    if (value >= i) value -= i;
 	    for (k=1; k<=BITSINULONG; k++) {
 			wordweight <<=1;
 			if (wordweight >= i) wordweight -= i;
 	    }
-	}
-	return sign*value;
+	} */
+	free (gmod);
+	return (sign*value);
 }
 
 void uldivg (uint32_t den, giant num) {
@@ -144,7 +154,7 @@ uint32_t twopownmodm (uint32_t n, uint32_t m, uint32_t *order, uint32_t *nmodord
 			tp <<= 1;
 			if (tp >= m) tp -= m;
 	    } */
-	    tpnmodm = ltp;			// 2^n modulo m == 2^(n%order) modulo m
+	    tpnmodm = (uint32_t)ltp;	// 2^n modulo m == 2^(n%order) modulo m
 	}
 	return tpnmodm;
 }
@@ -239,7 +249,7 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			}
 			if ((jNd = jacobi(Nmodd,dred)) > 1) {
 				if (debug) {
-					sprintf (pbuf, "%d divides d = %d and N !\n", jNd, d);
+					sprintf (pbuf, "%d divides d = %lu and N !\n", jNd, d);
 					OutputBoth (pbuf);
 				}
 				return (-jNd);				// Return the divisor with minus sign.
@@ -248,21 +258,21 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {					// OK, we have found the fundamental unit. 
 				if (v&1 || b&1) {			// Display this unit if required.
 					if (b != 1) {
-						sprintf (pbuf, "epsilon = [%d+%d*sqrt(%d)]/2\n", v, b, d);
+						sprintf (pbuf, "epsilon = [%d+%lu*sqrt(%lu)]/2\n", v, b, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%d+sqrt(%d)]/2\n", v, d);
+						sprintf (pbuf, "epsilon = [%d+sqrt(%lu)]/2\n", v, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (b/2 != 1) {
-						sprintf (pbuf, "epsilon = %d+%d*sqrt(%d)\n", v/2, b/2, d);
+						sprintf (pbuf, "epsilon = %d+%lu*sqrt(%lu)\n", v/2, b/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %d+sqrt(%d)\n", v/2, d);
+						sprintf (pbuf, "epsilon = %d+sqrt(%lu)\n", v/2, d);
 						OutputBoth (pbuf);
 					}
 				}
@@ -274,11 +284,11 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			rplus = 4*aplus;
 			rminus = 4*aminus;
 			if (debug) {				// Display the result if required.
-				sprintf (pbuf, "k = %d (mod %d), n = %d (mod %d)\n", kmodd, dred, nmodorderd, orderd);
+				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, +1,eps2\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1,eps2\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, -1,eps2\n", v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1,eps2\n", v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;
@@ -311,7 +321,7 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 		}
 		if ((jNd = jacobi(Nmodd,dred)) > 1) {
 			if (debug) {
-				sprintf (pbuf, "%d divides d = %d and N !\n", jNd, d);
+				sprintf (pbuf, "%d divides d = %lu and N !\n", jNd, d);
 				OutputBoth (pbuf);
 			}
 			return (-jNd);				// Return the divisor with minus sign.
@@ -329,29 +339,29 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {				// And then, the candidate is already valid,
 				if (X&1 || Y&1) {		// because Jacobi(v-2,N) is +1 and sign is -1
 					if (Y != 1) {
-						sprintf (pbuf, "epsilon = [%d+%d*sqrt(%d)]/2\n", X, Y, d);
+						sprintf (pbuf, "epsilon = [%lu+%lu*sqrt(%lu)]/2\n", X, Y, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%d+sqrt(%d)]/2\n", X, d);
+						sprintf (pbuf, "epsilon = [%lu+sqrt(%lu)]/2\n", X, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (Y/2 != 1) {
-						sprintf (pbuf, "epsilon = %d+%d*sqrt(%d)\n", X/2, Y/2, d);
+						sprintf (pbuf, "epsilon = %lu+%lu*sqrt(%d)\n", X/2, Y/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %d+sqrt(%d)\n", X/2, d);
+						sprintf (pbuf, "epsilon = %lu+sqrt(%lu)\n", X/2, d);
 						OutputBoth (pbuf);
 					}
 				}
-				sprintf (pbuf, "k = %d (mod %d), n = %d (mod %d)\n", kmodd, dred, nmodorderd, orderd);
+				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, +1,eps2\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1,eps2\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, -1,eps2\n", v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1,eps2\n", v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;
@@ -369,9 +379,9 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (!Nmoda && (ared != 1)) {		// ared divides N!
 				if (debug) {
 					if (aminus != ared)
-						sprintf (pbuf, "a/%d = %d divides N !\n", aminus/ared, ared);
+						sprintf (pbuf, "a/%lu = %lu divides N !\n", aminus/ared, ared);
 					else
-						sprintf (pbuf, "a = %d divides N !\n", ared);
+						sprintf (pbuf, "a = %lu divides N !\n", ared);
 					OutputBoth (pbuf);
 				}
 				return (-(int)ared);		// Return the divisor with minus sign.
@@ -387,29 +397,29 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {					// OK, display the result if required.
 				if (v&1 || b&1) {
 					if (b != 1) {
-						sprintf (pbuf, "epsilon = [%d+%d*sqrt(%d)]/2\n", v, b, d);
+						sprintf (pbuf, "epsilon = [%d+%lu*sqrt(%lu)]/2\n", v, b, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%d+sqrt(%d)]/2\n", v, d);
+						sprintf (pbuf, "epsilon = [%d+sqrt(%lu)]/2\n", v, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (b/2 != 1) {
-						sprintf (pbuf, "epsilon = %d+%d*sqrt(%d)\n", v/2, b/2, d);
+						sprintf (pbuf, "epsilon = %d+%lu*sqrt(%lu)\n", v/2, b/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %d+sqrt(%d)\n", v/2, d);
+						sprintf (pbuf, "epsilon = %d+sqrt(%lu)\n", v/2, d);
 						OutputBoth (pbuf);
 					}
 				}
-				sprintf (pbuf, "k = %d (mod %d), n = %d (mod %d) and n = %d (mod %d)\n", kmodd, dred, nmodorderd, orderd, nmodordera, ordera);
+				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu) and n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd, nmodordera, ordera);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, +1\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %d, a = %d, b = %d, r = %d, -1\n",v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1\n",v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;

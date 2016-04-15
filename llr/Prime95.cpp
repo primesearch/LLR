@@ -83,7 +83,7 @@ BOOL CPrime95App::InitInstance()
 	int	orig_cmdShow;
 	int	i, named_ini_files = -1, opcnt = 0;
 	char	*p, *p2, *p3;
-	char	keywords[10][80], values[10][80];
+	char	keywords[10][260], values[10][260];
 
 	// Standard initialization
 	// If you are not using these features and wish to reduce the size

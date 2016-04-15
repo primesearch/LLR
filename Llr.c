@@ -165,6 +165,20 @@ char abcastring[] = "$a*$b^$c$d";
 
 char abcadstring[] = "($a*$b^$c$d)/$e";
 
+// Test the primality of a number given as a string
+
+char numberstring[] = "$a";
+
+// Test if $a is a base $b Wieferich prime
+
+char wftstring[] = "$a$b";
+
+// Search for base $c Wieferich primes in the range $a to $b
+
+char wfsstring[] = "$a$b$c";
+
+
+
 /* Process a number from newpgen output file */
 /* NEWPGEN output files use the mask as defined below: */
 
@@ -195,8 +209,11 @@ char abcadstring[] = "($a*$b^$c$d)/$e";
 #define	CREATE_FILE_ACCESS	0666
 #endif
 
+#define IBSIZE 300
+
 char	greatbuf[10001] = {0};
 char	INI_FILE[80] = {0};
+char	SVINI_FILE[80] = {0};
 char	RESFILE[80] = {0};
 char	LOGFILE[80] = {0};
 char	EXTENSION[8] = {0};
@@ -261,6 +278,10 @@ giant testn, testnp, testf, testx;
 unsigned long facn = 0, facnp = 0;
 int resn = 0, resnp = 0;
 char facnstr[80], facnpstr[80];
+char m_pgen_input[IBSIZE], m_pgen_output[IBSIZE], oldm_pgen_input[IBSIZE];
+char keywords[10][IBSIZE], values[10][IBSIZE];
+char multiplier[IBSIZE], base[IBSIZE], exponent[IBSIZE], exponent2[IBSIZE], addin[IBSIZE];
+char inifilebuf[IBSIZE];
 char sgd[sgkbufsize];
 char sgb[sgkbufsize];
 char bpfstring[sgkbufsize];
@@ -307,8 +328,10 @@ unsigned int debug = FALSE;
 unsigned int restarting = FALSE;				// Actually set by Roundoff error condition ; reset by the macro.
 unsigned int care = FALSE;						// Set after a careful iteration ; reset after a normal one.
 unsigned int postfft = TRUE;
-unsigned int generic = FALSE;
+unsigned int nbfftinc = 0;						// Number of required FFT increments.
+unsigned int maxfftinc = 5;						// Maximum accepted FFT increments.
 unsigned int aborted = FALSE;
+unsigned int generic = FALSE;
 unsigned int abonroundoff = FALSE;				// Abort the test in a Roundoff error occurs.
 unsigned int will_try_larger_fft = FALSE;		// Set if unrecoverable error or too much errors ; reset by the macro.
 unsigned int checknumber = 0;					// N° of currently checked gwnum operation ; only displayed in abort message
@@ -323,12 +346,31 @@ unsigned long interimFiles, interimResidues, throttle, facfrom, facto;
 unsigned long factored = 0, eliminated = 0;
 unsigned long pdivisor = 1000000, pquotient = 1;
 unsigned long bpf[30], bpc[30], vpf[30];		// Base prime factors, cofactors, power of p.f.
+unsigned long *t = NULL,*ta = NULL;				// Precrible arrays, dynamically allocated.
+unsigned long smallprime[168] =					// Small primes < 1000
+{2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,
+73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,
+179,    181,    191,    193,    197,    199,    211,    223,    227,    229,
+233,    239,    241,    251,    257,    263,    269,    271,    277,    281,
+283,    293,    307,    311,    313,    317,    331,    337,    347,    349,
+353,    359,    367,    373,    379,    383,    389,    397,    401,    409,
+419,    421,    431,    433,    439,    443,    449,    457,    461,    463,
+467,    479,    487,    491,    499,    503,    509,    521,    523,    541,
+547,    557,    563,    569,    571,    577,    587,    593,    599,    601,
+607,    613,    617,    619,    631,    641,    643,    647,    653,    659,
+661,    673,    677,    683,    691,    701,    709,    719,    727,    733,
+739,    743,    751,    757,    761,    769,    773,    787,    797,    809,
+811,    821,    823,    827,    829,    839,    853,    857,    859,    863,
+877,    881,    883,    887,    907,    911,    919,    929,    937,    941,
+947,    953,    967,    971,    977,    983,    991,    997};
+unsigned long smallphi[10] = {1,2,4,6,10,12,16,18,22,28};
 giantstruct*		gbpf[30] = {NULL};			// Large integer prime factors
 giantstruct*		gbpc[30] = {NULL};			// Large integer cofactors
 unsigned long nrestarts = 0;					// Nb. of restarts for an N+1 or N-1 prime test
 unsigned long nbdg = 0, globalb = 2;			// number of digits ; base of the candidate in a global
 double	globalk = 1.0;							// k value of the candidate in a global
 double	pcfftlim = 0.5;							// limit for gwnear_fft_limit function to return TRUE.
+int readlg, writelg;							// Values returned by low level I/O
 
 
 double timers[10] = {0.0};			/* Up to five separate timers */
@@ -586,6 +628,20 @@ void OutputTimeStamp ()
 //	}
 }
 
+void OutputBTimeStamp ()
+{
+	time_t	this_time;
+	char	tbuf[40], buf[40];
+
+//	if (TIMESTAMPING) {
+		time (&this_time);
+		strcpy (tbuf, ctime (&this_time)+4);
+		tbuf[12] = 0;
+		sprintf (buf, "[%s]\n", tbuf);
+		OutputBoth (buf);
+//	}
+}
+
 /* Determine the CPU speed either empirically or by user overrides. */ 
 /* getCpuType must be called prior to calling this routine. */ 
  
@@ -709,9 +765,9 @@ int isPrime (
 	unsigned long p)
 {
 	unsigned long i;
-	if (p < 2)				// JP
+	if (p < 2)													// 1 is not prime.
 		return (FALSE);
-	for (i = 2; i * i <= p; i = (i + 1) | 1)
+	for (i = 2; (i < (1<<16)) && (i*i <= p); i = (i + 1) | 1)	// i >= 2^16 is forbidden
 		if (p % i == 0) return (FALSE);
 	return (TRUE);
 }
@@ -722,6 +778,7 @@ void nameIniFiles (
 	int	named_ini_files)
 {
 	char	buf[120];
+	int		lchd;
 
 	if (named_ini_files < 0) {
 		strcpy (INI_FILE, "llr.ini");
@@ -742,7 +799,7 @@ void nameIniFiles (
 	IniGetString (INI_FILE, "prime.log", LOGFILE, 80, LOGFILE);
 	IniGetString (INI_FILE, "prime.ini", INI_FILE, 80, INI_FILE);
 	if (buf[0]) {
-		_chdir (buf);
+		lchd = _chdir (buf);
 		IniFileOpen (INI_FILE, 0);
 	}
 }
@@ -829,7 +886,7 @@ static	struct IniCache *cache[10] = {0};
 	struct IniCache *p;
 	FILE	*fd;
 	unsigned int i;
-	char	line[80];
+	char	line[IBSIZE];
 	char	*val;
 
 /* See if file is cached */
@@ -872,7 +929,7 @@ static	struct IniCache *cache[10] = {0};
 	fd = fopen (filename, "r");
 	if (fd == NULL) return (p);
 
-	while (fgets (line, 80, fd)) {
+	while (fgets (line, IBSIZE, fd)) {
 		if (line[strlen(line)-1] == '\n') line[strlen(line)-1] = 0;
 		if (line[0] == 0) continue;
 		if (line[strlen(line)-1] == '\r') line[strlen(line)-1] = 0;
@@ -880,7 +937,7 @@ static	struct IniCache *cache[10] = {0};
 
 		val = strchr (line, '=');
 		if (val == NULL) {
-			char	buf[130];
+			char	buf[IBSIZE];
 			sprintf (buf, "Illegal line in INI file: %s\n", line);
 			OutputSomewhere (buf);
 			continue;
@@ -909,7 +966,7 @@ void writeIniFile (
 {
 	int	fd;
 	unsigned int j;
-	char	buf[100];
+//	char	buf[IBSIZE];
 
 /* Delay writing the file unless this INI file is written */
 /* to immediately */
@@ -924,14 +981,22 @@ void writeIniFile (
 	fd = _open (p->filename, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_TEXT, 0666);
 	if (fd < 0) return;
 	for (j = 0; j < p->num_lines; j++) {
-		strcpy (buf, p->lines[j]->keyword);
-		strcat (buf, "=");
-		strcat (buf, p->lines[j]->value);
-		strcat (buf, "\n");
-		_write (fd, buf, strlen (buf));
+		strcpy (inifilebuf, p->lines[j]->keyword);
+		strcat (inifilebuf, "=");
+		strcat (inifilebuf, p->lines[j]->value);
+		strcat (inifilebuf, "\n");
+		writelg = _write (fd, inifilebuf, strlen (inifilebuf));
 	}
 	p->dirty = 0;
 	_close (fd);
+}
+
+void save_IniFile (char *filename, char *savedfilename) {
+	struct IniCache *p;	
+	p = openIniFile (filename, 1);		// open and read the source IniFile.
+	p->filename = savedfilename;		// put the target filename in the structure.
+	writeIniFile (p);					// Write the target.
+	p->filename = filename;				// Restore the structure in memory.
 }
 
 void truncated_strcpy (
@@ -1089,7 +1154,7 @@ int IniFileWritable (
 	struct IniCache *p;
 	int	fd;
 	unsigned int j;
-	char	buf[100];
+	char	buf[IBSIZE];
 
 /* Create and write out the INI file */
 
@@ -1278,30 +1343,6 @@ void IniDeleteLine (
 	writeIniFile (p);
 }
 
-void IniDeleteAllLines (
-	char	*filename)
-{
-	struct IniCache *p;
-	unsigned int i;
-
-/* Open ini file! */
-
-	p = openIniFile (filename, 0);
-
-/* Free the data associated with the given line */
-
-	for (i = 0; i < p->num_lines; i++) {
-		free (p->lines[i]->keyword);
-		free (p->lines[i]->value);
-		free (p->lines[i]);
-	}
-	p->num_lines = 0;
-
-/* Write the INI file back to disk */
-
-	writeIniFile (p);
-}
-
 /* Output string to screen or results file */
 
 void OutputSomewhere (
@@ -1357,12 +1398,12 @@ static	time_t	last_time = 0;
 			buf[0] = '[';
 			strcpy (buf+1, ctime (&this_time));
 			sprintf (buf+25, " - ver %s]\n", LLR_VERSION);
-			_write (fd, buf, strlen (buf));
+			writelg = _write (fd, buf, strlen (buf));
 		}
 
 /* Output the message */
 
-		_write (fd, str, strlen (str));
+		writelg = _write (fd, str, strlen (str));
 	}
 
 /* Display message about full log file */
@@ -1371,7 +1412,7 @@ static	time_t	last_time = 0;
 		char	*fullmsg = "Prime.log file full.  Please delete it.\n";
 		OutputStr (fullmsg);
 		if (filelen < 251000)
-			_write (fd, fullmsg, strlen (fullmsg));
+			writelg = _write (fd, fullmsg, strlen (fullmsg));
 	}
 	_close (fd);
 }
@@ -1388,7 +1429,7 @@ void tempFileName (
 	int remainder;
  
 	remainder = gmodi(19999981, NN);
-	sprintf (buf, "%01c%07li", c, remainder % 10000000); 
+	sprintf (buf, "%c%07i", c, remainder % 10000000); 
 } 
 
 /* See if the given file exists */
@@ -1433,7 +1474,7 @@ static	time_t	last_time = 0;
 		buf[25] = ']';
 		buf[26] = '\n';
 		if (verbose || restarting)
-			_write (fd, buf, 27);
+			writelg = _write (fd, buf, 27);
 	}
 
 /* Output the message */
@@ -2405,7 +2446,7 @@ gwprint(
 		err_code = get_fft_value (gwdata, gg, j, &val);
 		if (err_code) return (err_code);
 		if (val) {
-			sprintf (buf, "%d ", val);
+			sprintf (buf, "%ld ", val);
 			OutputBoth (buf);
 		}
 	}
@@ -2981,22 +3022,22 @@ int primeFactor (
 					_close (fd);
 					fd = _open (filename, _O_BINARY | _O_RDWR);
 					shortdummy = 2;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					longdummy = 0;
-					_write (fd, &longdummy, sizeof (long));
+					writelg = _write (fd, &longdummy, sizeof (long));
 					shortdummy = 999;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = *result;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = old_style;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = bits;
-					_write (fd, &shortdummy, sizeof (short));
-					_write (fd, &pass, sizeof (short));
-					_write (fd, &FACHSW, sizeof (long));
-					_write (fd, &FACMSW, sizeof (long));
-					_write (fd, &endpthi, sizeof (long));
-					_write (fd, &endptlo, sizeof (long));
+					writelg = _write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &pass, sizeof (short));
+					writelg = _write (fd, &FACHSW, sizeof (long));
+					writelg = _write (fd, &FACMSW, sizeof (long));
+					writelg = _write (fd, &endpthi, sizeof (long));
+					writelg = _write (fd, &endptlo, sizeof (long));
 					_commit (fd);
 					_close (fd);
 					if (stopping) {
@@ -3112,15 +3153,15 @@ int primeSieve (
 
 	if (fd) {
 		short type;
-		_read (fd, &type, sizeof (short));
-		_read (fd, &p, sizeof (long));			// dummy
-		_read (fd, &p, sizeof (long));
-		_read (fd, &pass, sizeof (short));
-		_read (fd, &bits, sizeof (short));
-		_read (fd, &FACHSW, sizeof (long));
-		_read (fd, &FACMSW, sizeof (long));
-		_read (fd, &factored, sizeof (long));
-		_read (fd, &eliminated, sizeof (long));
+		readlg = _read (fd, &type, sizeof (short));
+		readlg = _read (fd, &p, sizeof (long));			// dummy
+		readlg = _read (fd, &p, sizeof (long));
+		readlg = _read (fd, &pass, sizeof (short));
+		readlg = _read (fd, &bits, sizeof (short));
+		readlg = _read (fd, &FACHSW, sizeof (long));
+		readlg = _read (fd, &FACMSW, sizeof (long));
+		readlg = _read (fd, &factored, sizeof (long));
+		readlg = _read (fd, &eliminated, sizeof (long));
 		_close (fd);
 		continuation = TRUE;
 	} else
@@ -3261,15 +3302,15 @@ int primeSieve (
 					if (stopping || saving) {
 						short	four = 4;
 						fd = _open (filename, _O_BINARY | _O_WRONLY | _O_TRUNC | _O_CREAT, CREATE_FILE_ACCESS);
-						_write (fd, &four, sizeof (short));
-						_write (fd, &p, sizeof (long)); /* dummy */
-						_write (fd, &p, sizeof (long));
-						_write (fd, &pass, sizeof (short));
-						_write (fd, &bits, sizeof (short));
-						_write (fd, &FACHSW, sizeof (long));
-						_write (fd, &FACMSW, sizeof (long));
-						_write (fd, &factored, sizeof (long));
-						_write (fd, &eliminated, sizeof (long));
+						writelg = _write (fd, &four, sizeof (short));
+						writelg = _write (fd, &p, sizeof (long)); /* dummy */
+						writelg = _write (fd, &p, sizeof (long));
+						writelg = _write (fd, &pass, sizeof (short));
+						writelg = _write (fd, &bits, sizeof (short));
+						writelg = _write (fd, &FACHSW, sizeof (long));
+						writelg = _write (fd, &FACMSW, sizeof (long));
+						writelg = _write (fd, &factored, sizeof (long));
+						writelg = _write (fd, &eliminated, sizeof (long));
 						_commit (fd);
 						_close (fd);
 						if (stopping) {
@@ -3764,22 +3805,22 @@ int pprimeFactor (
 					_close (fd);
 					fd = _open (filename, _O_BINARY | _O_RDWR);
 					shortdummy = 2;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					longdummy = 0;
-					_write (fd, &longdummy, sizeof (long));
+					writelg = _write (fd, &longdummy, sizeof (long));
 					shortdummy = 999;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = *result;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = old_style;
-					_write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &shortdummy, sizeof (short));
 					shortdummy = bits;
-					_write (fd, &shortdummy, sizeof (short));
-					_write (fd, &pass, sizeof (short));
-					_write (fd, &FACHSW, sizeof (long));
-					_write (fd, &FACMSW, sizeof (long));
-					_write (fd, &endpthi, sizeof (long));
-					_write (fd, &endptlo, sizeof (long));
+					writelg = _write (fd, &shortdummy, sizeof (short));
+					writelg = _write (fd, &pass, sizeof (short));
+					writelg = _write (fd, &FACHSW, sizeof (long));
+					writelg = _write (fd, &FACMSW, sizeof (long));
+					writelg = _write (fd, &endpthi, sizeof (long));
+					writelg = _write (fd, &endptlo, sizeof (long));
 					_commit (fd);
 					_close (fd);
 					if (stopping) {
@@ -3892,15 +3933,15 @@ int pprimeSieve (
 
 	if (fd) {
 		short type;
-		_read (fd, &type, sizeof (short));
-		_read (fd, &p, sizeof (long));			// dummy
-		_read (fd, &p, sizeof (long));
-		_read (fd, &pass, sizeof (short));
-		_read (fd, &bits, sizeof (short));
-		_read (fd, &FACHSW, sizeof (long));
-		_read (fd, &FACMSW, sizeof (long));
-		_read (fd, &factored, sizeof (long));
-		_read (fd, &eliminated, sizeof (long));
+		readlg = _read (fd, &type, sizeof (short));
+		readlg = _read (fd, &p, sizeof (long));			// dummy
+		readlg = _read (fd, &p, sizeof (long));
+		readlg = _read (fd, &pass, sizeof (short));
+		readlg = _read (fd, &bits, sizeof (short));
+		readlg = _read (fd, &FACHSW, sizeof (long));
+		readlg = _read (fd, &FACMSW, sizeof (long));
+		readlg = _read (fd, &factored, sizeof (long));
+		readlg = _read (fd, &eliminated, sizeof (long));
 		_close (fd);
 		continuation = TRUE;
 	} else
@@ -4041,15 +4082,15 @@ int pprimeSieve (
 					if (stopping || saving) {
 						short	four = 4;
 						fd = _open (filename, _O_BINARY | _O_WRONLY | _O_TRUNC | _O_CREAT, CREATE_FILE_ACCESS);
-						_write (fd, &four, sizeof (short));
-						_write (fd, &p, sizeof (long)); /* dummy */
-						_write (fd, &p, sizeof (long));
-						_write (fd, &pass, sizeof (short));
-						_write (fd, &bits, sizeof (short));
-						_write (fd, &FACHSW, sizeof (long));
-						_write (fd, &FACMSW, sizeof (long));
-						_write (fd, &factored, sizeof (long));
-						_write (fd, &eliminated, sizeof (long));
+						writelg = _write (fd, &four, sizeof (short));
+						writelg = _write (fd, &p, sizeof (long)); /* dummy */
+						writelg = _write (fd, &p, sizeof (long));
+						writelg = _write (fd, &pass, sizeof (short));
+						writelg = _write (fd, &bits, sizeof (short));
+						writelg = _write (fd, &FACHSW, sizeof (long));
+						writelg = _write (fd, &FACMSW, sizeof (long));
+						writelg = _write (fd, &factored, sizeof (long));
+						writelg = _write (fd, &eliminated, sizeof (long));
 						_commit (fd);
 						_close (fd);
 						if (stopping) {
@@ -4124,12 +4165,12 @@ void writeresidue (
 	gwtogiant (gwdata, s, t);	// The modulo reduction is done here
 	modg (m, t);				// External modulus and gwnum's one may be different...
 	if (abs(t->sign) < 1)		// make a 32 bit residue correct !!
-		sprintf (restr, "%08lX%08lX", 0, 0);
+		sprintf (restr, "%08lX%08lX", (unsigned long)0, (unsigned long)0);
 	else if (abs(t->sign) < 2)
-		sprintf (restr, "%08lX%08lX", 0, t->n[0]);
+		sprintf (restr, "%08lX%08lX", (unsigned long)0, (unsigned long)t->n[0]);
 	else
-		sprintf (restr, "%08lX%08lX", t->n[1], t->n[0]);
-	sprintf (b, "%s interim residue %s at %s %ld\n", str, restr, kind? "bit" : "iteration", bit);
+		sprintf (restr, "%08lX%08lX", (unsigned long)t->n[1], (unsigned long)t->n[0]);
+	sprintf (b, "%s interim residue %s at %s %d\n", str, restr, kind? "bit" : "iteration", bit);
 	if (verbose)
 		OutputBoth (b);
 	else
@@ -4157,58 +4198,415 @@ unsigned long gnbdg (giant nb, unsigned long digitbase) {
 	}
 }
 
-int aprcltest (int prptest, int verbose)		// Primality test using external APRCL program
+int readFilew (
+	char *data, char	*filename)
+{
+	int	fd;
+	fd = _open (filename, _O_RDONLY | _O_BINARY);
+	if (fd < 0) return (FALSE);
+	if (!_read (fd, data, 1000))
+		return (FALSE);
+	_close (fd);
+	return (TRUE);
+}
+
+int writeFilew (
+	char	*msg, char *filename)
+{
+	int	fd;
+
+/* Open file, position to end */
+
+	fd = _open (filename, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
+	if (fd < 0) {
+		OutputStr ("Error opening the file.\n");
+		return (FALSE);
+	}
+
+/* Output the message */
+
+	if (_write (fd, msg, strlen (msg)) < 0) goto fail;
+	_close (fd);
+	return (TRUE);
+
+/* On a write error, close file and return error flag */
+
+fail:	_close (fd);
+	return (FALSE);
+}
+
+void	presieve (unsigned long ndp, unsigned long *t, unsigned long *ta, unsigned long *pm, unsigned long *pphi)
+{
+	unsigned long n, i, j, ind, m, mm, phi, p, div;
+	m = phi = 1;
+	t[0] = 2;
+	for (n=0; n<ndp; n++) {
+		for (i=0; i<phi; i++)
+			ta[i] = t[n+i];
+		ind = n;
+		mm = 0;
+		p = t[n];
+		for (i=0; i<p; i++) {
+			for (j=0; j<phi; j++) {
+				div = ta[j] + mm;
+				if (!(div>p) || (div%p))
+					t[ind++] = div;
+			}
+			mm += m;
+		}
+		m *= p;
+		phi *= (p-1);
+	}
+	*pm = m;
+	*pphi = phi;
+}
+
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+
+int aprcltest (int prptest, int verbose)		// Primality test using compiled APRCL code
+{
+	int retcode;
+	mpz_t n1;
+	mpz_init (n1);
+	if (mpz_set_str (n1, greatbuf, 10) != 0)
+		return (6);								// Invalid numeric string...
+	if (prptest)
+		retcode = mpz_strongbpsw_prp (n1);		// Strong BPSW PRP test
+	else
+		retcode = mpz_aprtcle (n1, verbose);	// Prime test possibly with print out.
+	return ((retcode == -1)? 7 : retcode);		// Result code returned (-1 if in error...)
+}
+
+int gmpwftest (char *nstr, char *bstr)			// Wieferich test using APRCL subroutines and gmp library.
+{
+	int retcode = 0, retcode2 = 0;
+	mpz_t n;
+	mpz_t pwn;
+	mpz_t res;
+	mpz_t nm1;
+	mpz_t a;
+
+	if (nstr == NULL)
+		return (10);				// No string argument...
+	if (mpz_init_set_str (n, nstr, 10) != 0) {
+		mpz_clear (n);
+		return (11);				// Invalid numeric string...
+	}
+	if (bstr == NULL) {				// No more parameters
+		mpz_init_set_ui (a, 2);
+	}
+	else if (mpz_init_set_str (a, bstr, 10) != 0) {
+		mpz_clear (n);
+		mpz_clear (a);
+		return (12);				// Invalid numeric string...
+	}
+	mpz_init_set_ui(res, 1);		// Init. res to 1
+	mpz_init_set(nm1, n);
+	mpz_init_set(pwn, n);			// init pwn to n^1 = n
+	mpz_sub_ui(nm1, nm1, 1);		// compute n-1
+	while (mpz_cmp_ui(res, 1) == 0) {
+		mpz_powm(res, a, nm1, pwn);	// Compute a^(n-1) modulo pwn
+		if (mpz_cmp_ui(res, 1) == 0)	// May be positive...
+			retcode2++;
+		mpz_mul (pwn, pwn, n);		// Set pwn to the next power of n.
+	}
+	retcode = retcode2;				// Default return...
+	if (retcode2 >= 2) {			// May be positive...
+		retcode = mpz_aprcl (n);	// Prime test, without any message
+		if (retcode == 0)
+			retcode = -retcode2;	// W-positive, but composite...
+		else if (retcode != -1)		// No APRCL error...
+			retcode = retcode2;		// Wieferich prime found if code >= 2
+	}
+	mpz_clear (n);
+	mpz_clear (a);
+	mpz_clear (res);
+	mpz_clear (nm1);
+	mpz_clear (pwn);
+	return (retcode);
+}
+
+/* Generate temporary file name */
+ 
+void tempFilenamew ( 
+	char	*buf, char* c, mpz_t NN) 
+{ 
+	unsigned long remainder;
+ 
+	remainder = mpz_fdiv_ui (NN, 19999981);
+	sprintf (buf, "%s%07lu.txt", c, remainder % 10000000); 
+} 
+
+int gmpwfsearch (char *sstart, char *sstop, char *sbase) {
+	int retcode = 0, first, outfd;
+	unsigned long b;
+	unsigned int sverbose = verbose;
+	int resaprcl, stopping;
+	unsigned long m = 0, phi = 1, prevphi = 0, i = 0, j = 0, ndp=9, np, startmod;
+	char lbuf [1000] = {0}, lbuf2 [1000] = {0}, sresume[1000] = {0};
+	char TEMP_FILE[80] = {0};
+	char outputfile[80];
+	mpz_t start;
+	mpz_t stop;
+	mpz_t n;
+	mpz_t sqn;
+	mpz_t res;
+	mpz_t nm1;
+	mpz_t a;
+	unsigned long *t = NULL,*ta = NULL;	// Precrible arrays, dynamically allocated.
+
+	if (mpz_init_set_str (start, sstart, 10) != 0) {
+		sprintf (lbuf, "%s : Invalid numeric string for start...\n", sstart);
+		if (verbose)
+			OutputBoth (lbuf);
+		else
+			OutputStr (lbuf);
+		return (4);			// Invalid numeric string...
+	}
+	if (mpz_init_set_str (stop, sstop, 10) != 0) {
+		sprintf (lbuf, "%s : Invalid numeric string for stop...\n", sstop);
+		if (verbose)
+			OutputBoth (lbuf);
+		else
+			OutputStr (lbuf);
+		return (4);			// Invalid numeric string...
+	}
+	if (mpz_init_set_str (a, sbase, 10) != 0) {
+		sprintf (lbuf, "%s : Invalid numeric string for the base...\n", sbase);
+		if (verbose)
+			OutputBoth (lbuf);
+		else
+			OutputStr (lbuf);
+		return (5);			// Invalid numeric string...
+	}
+	mpz_get_str (lbuf2, 10, a);
+	sprintf (TEMP_FILE, "wf%s_%s.txt", lbuf2, sstart);
+	if (fileExists (TEMP_FILE)) {
+		readFilew (sresume, TEMP_FILE);
+		sprintf (lbuf, "Resuming at n = %s\n", sresume);
+		if (verbose)
+			OutputBoth (lbuf);
+		else
+			OutputStr (lbuf);
+		mpz_set_str (start, sresume, 10);
+	}
+	else {
+		sprintf (lbuf, "Starting Wieferich prime search base %s from n = %s to %s\n", sbase, sstart, sstop);
+		verbose = TRUE;				// To force a time stamp
+		OutputBoth (lbuf);
+		verbose = sverbose;			// Restore the verbose option
+		first = TRUE;
+	}
+	for (np=ndp;np>=3;np--) {
+		for (i=0;i<np;i++) {
+			prevphi = phi;
+			phi *= smallphi[i];
+		}
+		t = (unsigned long*)aligned_malloc((phi+10)*sizeof(unsigned long), 8);
+		ta = (unsigned long*)aligned_malloc((prevphi+10)*sizeof(unsigned long), 8);
+		if ((t==NULL)||(ta==NULL)) {
+			phi = 1;
+			prevphi = 0;
+		}
+		else {
+			break;
+		}
+	}
+	mpz_init (n);
+	mpz_init (sqn);
+	mpz_init (nm1);
+	mpz_init (res);
+	b = mpz_get_ui (a);
+	IniGetString (INI_FILE, "PgenOutputFile", outputfile, 80, NULL);
+	if (mpz_cmp_ui (start, smallprime[np-1]) <= 0) {
+		for (i=0;i<np;i++) {
+			mpz_set_ui (n, smallprime[i]);
+			if (mpz_cmp(n, stop) <= 0) {
+				mpz_set(nm1, n);
+				mpz_set(sqn, n);
+				mpz_mul (sqn, n, n);			// Set sqn to the square of n.
+				mpz_sub_ui(nm1, nm1, 1);
+				mpz_powm(res, a, nm1, sqn);
+				if (mpz_cmp_ui(res, 1) == 0) {	// Positive result!
+					mpz_get_str (lbuf2, 10, n);
+					sprintf (lbuf,"%s is a base %lu Wieferich prime!!\n", lbuf2, b);
+					verbose = TRUE;				// To force a time stamp
+					OutputStr("\033[7m");
+					OutputBoth(lbuf);
+					OutputStr("\033[0m");
+					verbose = sverbose;			// Restore the verbose option
+					outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+					if (outfd) {
+						if (first && (IniGetInt (INI_FILE, "PgenLine", 1) == 1)) {	// write the relevant header
+							writelg = _write (outfd, "ABC$a$b\n", 8);
+							first = FALSE;
+						}
+						sprintf (lbuf, "%s %s\n", lbuf2, sbase); 
+						writelg = _write (outfd, lbuf, strlen (lbuf));
+						_close (outfd);
+					}
+				}
+			}
+			else {
+				sprintf (lbuf, "Range %s to %s completed for Wieferich base %s.\n", sstart, sstop, sbase);
+				verbose = TRUE;				// To force a time stamp
+				OutputBoth (lbuf);
+				verbose = sverbose;			// Restore the verbose option
+				return (0);
+			}
+		}
+	}
+	presieve (np, t, ta, &m, &phi);
+	startmod = mpz_fdiv_ui (start, m);
+	mpz_sub_ui (start, start, startmod);
+	for (i = np; i<(np+phi); i++) {
+		if (t[i] >= startmod)
+			break;
+	}
+	mpz_get_str (lbuf2, 10, start);
+	for (i; ; i++) {
+		if (i>=(np+phi)) {
+			mpz_get_str (lbuf2, 10, n);
+			writeFilew (lbuf2, TEMP_FILE);		// Make a checkpoint
+			resaprcl = mpz_aprcl (n);			// Prime test, without any message
+			if (resaprcl == 2)
+				sprintf (lbuf, "Tested up to %s which is prime!\n", lbuf2);
+			else
+				sprintf (lbuf, "Tested up to %s\n", lbuf2);
+			if (verbose)
+				OutputBoth (lbuf);
+			else
+				OutputStr (lbuf);
+			i = np;
+			mpz_add_ui (start, start, m);
+		}
+		mpz_set (n, start);
+		mpz_add_ui (n, n, t[i]);
+		if (mpz_cmp(n, stop) <= 0) {
+			for (j=np; j<45;j++) {
+				if (!mpz_fdiv_ui (n, smallprime[j]))
+					break;
+			}
+			if (j<45)
+				continue;
+			stopping = escapeCheck ();
+			if (stopping) {
+				mpz_get_str (lbuf2, 10, n);
+				writeFilew (lbuf2, TEMP_FILE);
+				sprintf (lbuf, "stopping at n = %s\n", lbuf2);
+				if (verbose)
+					OutputBoth (lbuf);
+				else
+					OutputStr (lbuf);
+				return (7);
+			}
+			mpz_set(nm1, n);
+			mpz_sub_ui(nm1, nm1, 1);
+			mpz_powm(res, a, nm1, n);		// res = a^nm1 (mod. n)
+			if (mpz_cmp_ui(res, 1) != 0)
+				continue;					// n is composite...
+			else {							// n may be prime, test further
+				mpz_set(sqn, n);
+				mpz_mul (sqn, n, n);		// Set sqn to the square of n.
+				mpz_powm(res, a, nm1, sqn);	// res = a^nm1 (mod. sqn)
+			}
+			if (mpz_cmp_ui(res, 1) == 0) {	// May be positive...
+				retcode = mpz_aprcl (n);	// Prime test, without any message
+				mpz_get_str (lbuf2, 10, n);
+				if (retcode == -1) {
+					sprintf (lbuf, "An error occurred in the APRCL prime test of %s...\n", lbuf2);
+					if (verbose)
+						OutputBoth (lbuf);
+					else
+						OutputStr (lbuf);
+					retcode = 6;			// The test is in error...
+				}
+				else if (retcode == 0) {
+					retcode = 1;			// W-positive, but composite...
+					sprintf (lbuf, "%s is W-positive, but composite...\n", lbuf2);
+					if (verbose)
+						OutputBoth (lbuf);
+					else
+						OutputStr (lbuf);
+				}
+				else if (retcode == 2) {
+					sprintf (lbuf,"%s is a base %lu Wieferich prime!!\n", lbuf2, b);
+					verbose = TRUE;				// To force a time stamp
+					OutputStr("\033[7m");
+					OutputBoth(lbuf);
+					OutputStr("\033[0m");
+					verbose = sverbose;			// Restore the verbose option
+					outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+					if (outfd) {
+						if (first) {		// write the relevant header
+							writelg = _write (outfd, "ABC $a$b\n", 9);
+							first = FALSE;
+						}
+						sprintf (lbuf, "%s %s\n", lbuf2, sgb); 
+						writelg = _write (outfd, lbuf, strlen (lbuf));
+						_close (outfd);
+					}
+				}
+				else {
+					sprintf (lbuf, "Unexpected result while APRCL testing %s...\n", lbuf2);
+					if (verbose)
+						OutputBoth (lbuf);
+					else
+						OutputStr (lbuf);
+				}
+			}
+			else
+				continue;
+		}
+		else
+			break;
+	}
+	_unlink (TEMP_FILE);
+	sprintf (lbuf, "Range %s to %s completed for Wieferich base %s.\n", sstart, sstop, sbase);
+	verbose = TRUE;				// To force a time stamp
+	OutputBoth (lbuf);
+	verbose = sverbose;			// Restore the verbose option
+	return (retcode);
+}
+
+int gmpSearchWieferich (char *sstart, char *sstop, char *sbase)
+{
+	int retcode;
+	if (sbase == NULL)
+		sbase = "2";
+	retcode = gmpwfsearch (sstart, sstop, sbase);
+	if ((retcode == 7)||(retcode == 11)||(retcode == 3)||(retcode == 4)||(retcode == 5)||(retcode == 10))
+		return (FALSE);
+	return (TRUE);
+}
+
+#else
+
+	STARTUPINFO aprstinfo;
+	PROCESS_INFORMATION aprprinfo;
+
+int aprcltest (int prptest, int verbose)		// Primality test using external APRCL program as a child process
 {
 	int ofd;
-#ifdef WIN32
-	unsigned long exitcode;
+	unsigned long exitcode, errcode;
+	char errbuf[100];
 	char titre[] = "APRT-CLE Primality Test";
-	char line[40] = {0};
-	STARTUPINFO stinfo;
-	PROCESS_INFORMATION prinfo;
-#else
-	int  exitcode;
-	int idfils;
-#endif
+	char line[100] = {0};
 	ofd = _open ("__pc__", _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 	if (ofd) {
-		_write (ofd, greatbuf, strlen (greatbuf));
+		writelg = _write (ofd, greatbuf, strlen (greatbuf));
 		_close (ofd);
 	}
 	else
 		return (8);				// Could not create the file...
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
-	if ((idfils = fork ()) == -1) {
-		_unlink ("__pc__");
-		return (9);				// Echec de la création du processus fils
-	}
-	if (idfils) {
-		while (!waitpid (idfils, &exitcode, WNOHANG)) {
-		}
-		exitcode >>= 8;
-	}
-	else {
-		if (prptest)
-			execl ("aprcl", "aprcl", "__pc__", "prp", 0);
-		else if (verbose == 1)
-			execl ("aprcl", "aprcl", "__pc__", "prime", "progress", 0);
-		else if (verbose == 2)
-			execl ("aprcl", "aprcl", "__pc__", "prime", "details", 0);
-		else
-			execl ("aprcl", "aprcl", "__pc__", 0);
-		perror ("aprcl");	// Si on revient, c'est l'échec de execl!
-		_unlink ("__pc__");
-		exit (9);
-	}
-#else
 
-//	Initialisation de la structure stinfo avec les seules données requises
+//	Initialisation de la structure wfstinfo avec les seules données requises
 
-	stinfo.cb = sizeof (STARTUPINFO);
-	stinfo.lpDesktop = NULL;
-	stinfo.lpTitle = titre;
-	stinfo.dwFlags = STARTF_USESHOWWINDOW;
-	stinfo.lpReserved2 = NULL;
+	aprstinfo.cb = sizeof (STARTUPINFO);
+	aprstinfo.lpDesktop = NULL;
+	aprstinfo.lpTitle = titre;
+	aprstinfo.dwFlags = STARTF_USESHOWWINDOW;
+	aprstinfo.lpReserved2 = NULL;
 
 	exitcode = STILL_ACTIVE;
 
@@ -4234,22 +4632,251 @@ int aprcltest (int prptest, int verbose)		// Primality test using external APRCL
 		0L,
 		NULL,
 		NULL,
-		&stinfo,
-		&prinfo))
+		&aprstinfo,
+		&aprprinfo))
 
-	{									// Echec...
+	{
+		errcode = GetLastError ();		// Echec...
+		sprintf (errbuf, "Error %lu while trying to create new process\n", errcode);
+		OutputStr (errbuf);
 		_unlink ("__pc__");
 		return (9);
 	}
 
 	while (exitcode == STILL_ACTIVE) {
-		GetExitCodeProcess(prinfo.hProcess, &exitcode);
+		GetExitCodeProcess(aprprinfo.hProcess, &exitcode);
 	}
-
-#endif
 	_unlink ("__pc__");
 	return (exitcode);
 }
+
+	STARTUPINFO wftstinfo;
+	PROCESS_INFORMATION wftprinfo;
+
+int gmpwftest (char *nstr, char *bstr)				// Wieferich test using external WF program as a child process
+{
+	unsigned long exitcode, errcode;
+	char errbuf[100];
+	char titre[] = "GMP-APRCL Wieferich Test";
+	char line[100] = {0};
+//	Initialisation de la structure wfstinfo avec les seules données requises
+
+	wftstinfo.cb = sizeof (STARTUPINFO);
+	wftstinfo.lpDesktop = NULL;
+	wftstinfo.lpTitle = titre;
+	wftstinfo.dwFlags = STARTF_USESHOWWINDOW;
+	wftstinfo.lpReserved2 = NULL;
+
+	exitcode = STILL_ACTIVE;
+
+// Construire la ligne de commande
+
+	if (bstr != NULL)
+		sprintf (line, "tw %s %s", nstr, bstr);
+	else
+		sprintf (line, "tw %s", nstr);
+
+// Creer le processus fils
+
+	if (!CreateProcess (				// Tentative de creation du processus fils
+		"tw.exe",
+		line,
+		NULL,
+		NULL,
+		FALSE,
+		0L,
+		NULL,
+		NULL,
+		&wftstinfo,
+		&wftprinfo))
+
+	{	
+		errcode = GetLastError ();		// Echec...
+		sprintf (errbuf, "Error %lu while trying to create new process\n", errcode);
+		OutputStr (errbuf);
+		return (-1000000000);
+	}
+
+	while (exitcode == STILL_ACTIVE) {
+		GetExitCodeProcess(wftprinfo.hProcess, &exitcode);
+	}
+	return (exitcode);
+}
+
+#ifdef _CONSOLE
+	STARTUPINFO wfstinfo;
+	PROCESS_INFORMATION wfprinfo;
+#else
+	extern	STARTUPINFO wfstinfo;
+	extern	PROCESS_INFORMATION wfprinfo;
+#endif
+
+int gmpwfsearch (char *sstart, char *sstop, char *sbase) {
+
+	unsigned long exitcode, errcode;
+	char errbuf[100];
+	char titre[] = "GMP-APRCL Wieferich Search";
+	char line[100] = {0};
+
+//	Initialisation de la structure wfstinfo avec les seules données requises
+
+	wfstinfo.cb = sizeof (STARTUPINFO);
+	wfstinfo.lpDesktop = NULL;
+	wfstinfo.lpTitle = titre;
+	wfstinfo.dwFlags = STARTF_USESHOWWINDOW;
+	wfstinfo.lpReserved2 = NULL;
+
+	exitcode = STILL_ACTIVE;
+
+// Construire la ligne de commande
+
+	if (sbase != NULL)
+		sprintf (line, "llrwfsrch %s %s %s", sstart, sstop, sbase);
+	else
+		sprintf (line, "llrwfsrch %s %s", sstart, sstop);
+
+// Creer le processus fils
+
+	if (!CreateProcess (				// Tentative de creation du processus fils
+		"llrwfsrch.exe",
+		line,
+		NULL,
+		NULL,
+		FALSE,
+		0L,
+		NULL,
+		NULL,
+		&wfstinfo,
+		&wfprinfo))
+
+	{
+		errcode = GetLastError ();		// Echec...
+		sprintf (errbuf, "Error %lu while trying to create new process\n", errcode);
+		OutputStr (errbuf);
+		return (10);
+	}
+
+	while (exitcode == STILL_ACTIVE) {
+		GetExitCodeProcess(wfprinfo.hProcess, &exitcode);
+	}
+	return (exitcode);
+}
+
+
+int gmpSearchWieferich (char *sstart, char *sstop, char *sbase)
+{
+	int retcode, i = 0, first, outfd;
+	unsigned int sverbose = verbose;
+	char lbuf [1000] = {0}, lbuf2 [1000] = {0};
+	char TEMP_FILE[80] = {0}, RESULT_FILE[80] = {0};
+	char outputfile[80];
+	IniGetString (INI_FILE, "PgenOutputFile", outputfile, 80, NULL);
+	if (sbase == NULL)
+		sbase = "2";
+	sprintf (TEMP_FILE, "wf%s_%s.txt", sbase, sstart);
+	sprintf (RESULT_FILE,"wf%s_results.txt", sbase);
+	if (fileExists (TEMP_FILE)) {
+		readFilew (lbuf2, TEMP_FILE);
+		sprintf (lbuf, "Resuming at n = %s\n", lbuf2);
+		if (verbose)
+			OutputBoth (lbuf);
+		else
+			OutputStr (lbuf);
+	}
+	else {
+		sprintf (lbuf, "Starting Wieferich prime search base %s from n = %s to %s\n", sbase, sstart, sstop);
+		verbose = TRUE;				// To force a time stamp
+		OutputBoth (lbuf);
+		verbose = sverbose;			// Restore the verbose option
+		first = TRUE;
+	}
+	title ("Wieferich prime search in progress.");
+	while (TRUE) {
+		retcode = gmpwfsearch (sstart, sstop, sbase);
+		clearline(100);
+		if (fileExists (TEMP_FILE))
+			readFilew (lbuf2, TEMP_FILE);
+		if (retcode == 8) {
+			sprintf (lbuf, "Tested up to %s\n", lbuf2);
+		}
+		else if (retcode == 9) {
+			sprintf (lbuf, "Tested up to %s which is prime!\n", lbuf2);
+		}
+		else if ((retcode == 7)||(retcode == 11)) {
+			sprintf (lbuf, "Stopping at n = %s\n", lbuf2);
+		}
+		else if (retcode == 2) {
+			readFilew (lbuf2, RESULT_FILE);
+			_unlink (RESULT_FILE);
+			sprintf (lbuf, "%s is a base %s Wieferich prime!!\n", lbuf2, sbase);
+		}
+		else if (retcode == 1) {
+			readFilew (lbuf2, RESULT_FILE);
+			_unlink (RESULT_FILE);
+			sprintf (lbuf, "%s is W-positive, but composite...\n", lbuf2);
+		}
+		else if (retcode == 6) {
+			readFilew (lbuf2, RESULT_FILE);
+			_unlink (RESULT_FILE);
+			sprintf (lbuf, "An error occurred in the APRCL prime test of %s...\n", lbuf2);
+		}
+		else if (retcode == 0) {
+			sprintf (lbuf, "Range %s to %s completed for Wieferich base %s.\n", sstart, sstop, sbase);
+			verbose = TRUE;				// To force a time stamp
+			OutputBoth (lbuf);
+			verbose = sverbose;			// Restore the verbose option
+			_unlink (RESULT_FILE);
+			_unlink (TEMP_FILE);
+			break;
+		}
+		else if ((retcode == 3)||(retcode == 4)||(retcode == 5)) {
+			sprintf (lbuf, "At least one input parameter is invalid or missing...\n");
+		}
+		else if (retcode == 10) {
+			sprintf (lbuf, "Wieferich prime searching not available...\n");
+		}
+		else {
+			readFilew (lbuf2, RESULT_FILE);
+			_unlink (RESULT_FILE);
+			sprintf (lbuf, "Unexpected result while APRCL testing %s...\n", lbuf2);
+		}
+		if (retcode == 2) {
+			clearline(100);
+			verbose = TRUE;				// To force a time stamp
+#ifdef _CONSOLE
+			hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+			SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+			OutputBoth(lbuf);
+			SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+			OutputBoth(lbuf);
+#endif
+			verbose = sverbose;			// Restore the verbose option
+			outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+			if (outfd) {
+				if (first && (IniGetInt (INI_FILE, "PgenLine", 1) == 1)) {	// write the relevant header
+					writelg = _write (outfd, "ABC $a$b\n", 9);
+					first = FALSE;
+				}
+				sprintf (lbuf, "%s %s\n", lbuf2, sgb); 
+				writelg = _write (outfd, lbuf, strlen (lbuf));
+				_close (outfd);
+			}
+			clearline(100);
+		}
+		else {
+			if (verbose)
+				OutputBoth (lbuf);
+			else
+				OutputStr (lbuf);
+		}
+		if ((retcode == 7)||(retcode == 11)||(retcode == 3)||(retcode == 4)||(retcode == 5)||(retcode == 10))
+			return (FALSE);
+	}
+	return (TRUE);
+}
+
+#endif
 
 int saprcltest (char *str, int prptest, int verbose) {
 	int i;
@@ -4264,11 +4891,13 @@ int saprcltest (char *str, int prptest, int verbose) {
 int gaprcltest (giant N, int prptest, int verbose) {
 	if (gnbdg (N,10) > 10000)
 		return (-1);						// Number too large...
-	if (N->sign == 1)						// Trial divisions test is sufficient for this small number...
+	if (N->sign == 1) {						// Trial divisions test is sufficient for this small number...
 		return (isPrime (N->n[0]) ? 12 : 10);
+	}
 	gtoc (N, greatbuf, 10000);
 	return (aprcltest(prptest, verbose));
 }
+
 
 int MakePrimoInput (giant N, char *str) {
 	char buffer[100], primofilename[11];
@@ -4340,19 +4969,19 @@ int isexpdiv (
 			 "Resuming divisibility test of %%d^(N-1)-1 at bit %%ld [%%.%df%%%%]\n",
 			 PRECISION);
 		sprintf (buf, fmt_mask, a, bit, pct);
-		OutputStr (buf);
-		if (verbose || restarting)
-			writeResults (buf);
+//		OutputStr (buf);
+//		if (verbose || restarting)
+//			writeResults (buf);
 	}
 
 /* Otherwise, output a message indicating we are starting test */
 
 	else {
 		clear_timers ();	// Init. timers
-		sprintf (buf, "Starting divisibility test of %d^(N-1)-1\n", a);
-		OutputStr (buf);
-		if (verbose || restarting)
-			writeResults (buf);
+		sprintf (buf, "Starting divisibility test of %lu^(N-1)-1\n", a);
+//		OutputStr (buf);
+//		if (verbose || restarting)
+//			writeResults (buf);
 		bit = 1;
 		dbltogw (gwdata, (double) a, x);
 	}
@@ -4368,10 +4997,10 @@ int isexpdiv (
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s\n", fft_desc);
 
-	OutputStr (buf);
-	if (verbose || restarting) {
-		writeResults (buf);
-	}
+//	OutputStr (buf);
+//	if (verbose || restarting) {
+//		writeResults (buf);
+//	}
 	ReplaceableLine (1);	/* Remember where replaceable line is */
 
 /* Init the title */
@@ -4420,12 +5049,12 @@ int isexpdiv (
 			gwtogiant (gwdata,x, tmp);		// The modulo reduction is done here
 			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
 				sprintf (buf, 
-				 "%d^(N-1)-1 interim residue %08lX%08lX at bit %ld\n",
-				 a, 0, tmp->n[0], bit);
+				 "%lu^(N-1)-1 interim residue %08lX%08lX at bit %lu\n",
+				 a, (unsigned long)0, (unsigned long)tmp->n[0], bit);
 			else
 				sprintf (buf, 
-				 "%d^(N-1)-1 interim residue %08lX%08lX at bit %ld\n",
-				 a, tmp->n[1], tmp->n[0], bit);
+				 "%lu^(N-1)-1 interim residue %08lX%08lX at bit %lu\n",
+				 a, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
 			OutputBoth (buf);
 		}
 		CHECK_IF_ANY_ERROR (x, (bit), Nlen, 6);
@@ -4511,12 +5140,12 @@ int isexpdiv (
 				gwtogiant (gwdata,x, tmp);			// The modulo reduction is done here
 			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
 				sprintf (buf, 
-				 "%d^(N-1)-1 interim residue %08lX%08lX at bit %ld\n",
-				 a, 0, tmp->n[0], bit);
+				 "%lu^(N-1)-1 interim residue %08lX%08lX at bit %lu\n",
+				 a, (unsigned long)0, (unsigned long)tmp->n[0], bit);
 			else
 				sprintf (buf, 
-				 "%d^(N-1)-1 interim residue %08lX%08lX at bit %ld\n",
-				 a, tmp->n[1], tmp->n[0], bit);
+				 "%lu^(N-1)-1 interim residue %08lX%08lX at bit %lu\n",
+				 a, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
 			OutputBoth (buf);
 		}
 
@@ -4524,7 +5153,7 @@ int isexpdiv (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -4546,20 +5175,20 @@ int isexpdiv (
 	if (!isone (tmp)) {
 		*res = FALSE;	/* Residue not one */
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		imulg (a, tmp); specialmodg (gwdata, tmp); ulsubg (a, tmp);
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (oldres64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (oldres64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 	}
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
-	sprintf (buf, "End of divisibility test of %d^(N-1)-1\n", a);
+	sprintf (buf, "End of divisibility test of %lu^(N-1)-1\n", a);
 
 	pushg (gdata, 1);
 	gwfree (gwdata, x);
@@ -4570,10 +5199,10 @@ int isexpdiv (
 	sprintf (buf+strlen(buf)-1, "  Time: ");
 	ReplaceableLine (2);	/* Replace line */
 	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
-	if (verbose)
-		OutputBoth (buf);
-	else
-		OutputStr (buf);
+//	if (verbose)
+//		OutputBoth (buf);
+//	else
+//		OutputStr (buf);
 
 /* Cleanup and return */
 
@@ -4621,8 +5250,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -4754,7 +5384,7 @@ int commonFrobeniusPRP (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, P = %d, Q = %d\n", fft_desc, P, Q);
+	sprintf (buf, "Using %s, P = %ld, Q = %ld\n", fft_desc, P, Q);
 
 	OutputStr (buf);
 	if (verbose || restarting) {
@@ -4943,7 +5573,7 @@ int commonFrobeniusPRP (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -4967,20 +5597,20 @@ int commonFrobeniusPRP (
 	if (!isZero (tmp)) {
 		*res = FALSE;				// N is composite.
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 
 		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
 			if (bpsw)
-				sprintf (buf, "%s is not prime(P = %d, Q = %d), BPSW RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is not prime(P = %ld, Q = %ld), BPSW RES64: %s", str, P, Q, res64);
 			else
-				sprintf (buf, "%s is not prime(P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is not prime(P = %ld, Q = %ld), Lucas RES64: %s", str, P, Q, res64);
 		else
 			if (bpsw)
-				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), BPSW RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %ld, Q = %ld), BPSW RES64: %s", str, P, Q, res64);
 			else
-				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %d, Q = %d), Lucas RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %ld, Q = %ld), Lucas RES64: %s", str, P, Q, res64);
 	}
 
 	if (*res) {						// N may be prime ; do now the Frobenius PRP test
@@ -5022,7 +5652,7 @@ Frobeniusresume:
 /* Output a message about the FFT length */
 
 		gwfft_description (gwdata, fft_desc);
-		sprintf (buf, "Using %s, Q = %d\n", fft_desc, Q);
+		sprintf (buf, "Using %s, Q = %ld\n", fft_desc, Q);
 
 		OutputStr (buf);
 		if (verbose || restarting) {
@@ -5172,7 +5802,7 @@ Frobeniusresume:
 
 			if (interimFiles && bit % interimFiles == 0) {
 				char	interimfile[20];
-				sprintf (interimfile, "%.8s.%03d",
+				sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 				if (! writeToFile (gwdata, gdata, interimfile, bit, x, y)) {
 					sprintf (buf, WRITEFILEERR, interimfile);
@@ -5191,20 +5821,20 @@ Frobeniusresume:
 		if (!isZero (tmp)) {
 			*res = FALSE;				// N is Lucas PSP, but composite!!
 			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
-				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 
 			if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
 				if (bpsw)
-					sprintf (buf, "%s is BPSW PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is BPSW PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 				else
-					sprintf (buf, "%s is Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is Lucas PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 			else
 				if (bpsw)
-					sprintf (buf, "%s is strong-Fermat and BPSW PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is strong-Fermat and BPSW PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 				else
-					sprintf (buf, "%s is strong-Fermat and Lucas PSP (P = %d, Q = %d), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is strong-Fermat and Lucas PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 		}
 	}
 
@@ -5215,14 +5845,14 @@ Frobeniusresume:
 	if (*res)
 		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
 			if (bpsw)
-				sprintf (buf, "%s is BPSW and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+				sprintf (buf, "%s is BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 			else
-				sprintf (buf, "%s is Lucas and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+				sprintf (buf, "%s is Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 		else
 			if (bpsw)
-				sprintf (buf, "%s is strong-Fermat, BPSW and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+				sprintf (buf, "%s is strong-Fermat, BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 			else
-				sprintf (buf, "%s is strong-Fermat, Lucas and Frobenius PRP! (P = %d, Q = %d, D = %d)", str, P, Q, D);
+				sprintf (buf, "%s is strong-Fermat, Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 
 	pushg (gdata, 4);
 	gwfree (gwdata, x);				// Clean up
@@ -5325,8 +5955,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -5420,7 +6051,7 @@ int commonPRP (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
 	OutputStr (buf);
 	if (verbose || restarting) {
@@ -5560,7 +6191,7 @@ int commonPRP (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -5599,7 +6230,7 @@ int commonPRP (
 
 	clearline (100);
 	if (strong && bitpos) {
-		sprintf (buf, "%s is base %d-Strong Fermat PRP! (%lu decimal digits)", str, a, nbdg);
+		sprintf (buf, "%s is base %lu-Strong Fermat PRP! (%lu decimal digits)", str, a, nbdg);
 	}
 	else {
 		gwtogiant (gwdata, x, tmp);
@@ -5607,14 +6238,14 @@ int commonPRP (
 		if (!isone (tmp)) {
 			*res = FALSE;	/* Not a prime */
 			if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
-				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 			imulg (a, tmp); modg (N, tmp); ulsubg (a, tmp);
 			if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-				sprintf (oldres64, "%08lX%08lX", 0, tmp->n[0]);
+				sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
-				sprintf (oldres64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+				sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 			if (IniGetInt (INI_FILE, "OldRes64", 1))
 				sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 			else
@@ -5623,10 +6254,10 @@ int commonPRP (
 		else {
 			if (strong) {
 				*res = FALSE;	/* Not a prime */
-				sprintf (buf, "%s is not prime, although base %d-Fermat PSP!!", str, a);
+				sprintf (buf, "%s is not prime, although base %lu-Fermat PSP!!", str, a);
 			}
 			else
-				sprintf (buf, "%s is base %d-Fermat PRP! (%lu decimal digits)", str, a, nbdg);
+				sprintf (buf, "%s is base %lu-Fermat PRP! (%lu decimal digits)", str, a, nbdg);
 		}
 	}
 
@@ -5729,8 +6360,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -5761,7 +6393,7 @@ int commonCC1P (
 	else
 		gcdn = gcd (a*a-1, nreduced);
 	if (gcdn != 1) {
-		sprintf (buf, "%s has a small factor : %d!!\n", str, gcdn);
+		sprintf (buf, "%s has a small factor : %lu!!\n", str, gcdn);
 		OutputBoth (buf);
 		*res = FALSE;
 		return (TRUE);
@@ -5840,7 +6472,7 @@ int commonCC1P (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
 	OutputStr (buf);
 	if (verbose || restarting) {
@@ -5983,7 +6615,7 @@ int commonCC1P (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -6005,14 +6637,14 @@ int commonCC1P (
 	if (!isone (tmp)) {
 		*res = FALSE;	/* Not a prime */
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		imulg (3, tmp); specialmodg (gwdata, tmp); ulsubg (3, tmp);
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (oldres64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (oldres64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 	}
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
@@ -6104,8 +6736,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -6138,7 +6771,7 @@ int commonCC2P (
 	else
 		gcdn = gcd (P, nreduced);
 	if (gcdn != 1) {
-		sprintf (buf, "%s has a small factor : %d!!\n", str, gcdn);
+		sprintf (buf, "%s has a small factor : %lu!!\n", str, gcdn);
 		OutputBoth (buf);
 		*res = FALSE;
 		return (TRUE);
@@ -6410,7 +7043,7 @@ int commonCC2P (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -6442,9 +7075,9 @@ int commonCC2P (
 	if (!isZero (tmp)) {
 		*res = FALSE;				// Not a prime.
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		sprintf (buf, "%s is not prime. Lucas RES64: %s", str, res64);
 	}
 	else
@@ -6538,8 +7171,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -6597,7 +7231,7 @@ restart:
 
 /* Clean up and return */
 
-//	if (retval == TRUE)
+//	if (retval == TRUE)		// If not stopped by user...
 //		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -6652,7 +7286,7 @@ restart:
 
 /* Clean up and return */
 
-	if (retval == TRUE)
+	if (retval == TRUE)		// If not stopped by user...
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -6718,7 +7352,7 @@ restart:
 
 /* Clean up and return */
 
-	if (retval == TRUE)
+	if (retval == TRUE)		// If not stopped by user...
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -6820,7 +7454,7 @@ restart:
 
 /* Clean up and return */
 	
-//	if (retval == TRUE)
+//	if (retval == TRUE)		// If not stopped by user...
 //		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -6918,24 +7552,24 @@ restart:
 
 /* Clean up and return */
 
-//	if (retval == TRUE)
+//	if (retval == TRUE)		// If not stopped by user...
 //		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
 }
 
-/* Test if N is a Wieferich prime.  The number N can be of ANY form. */
+/* Test if N is a Wieferich prime.  The number N can be of ANY form. 
+	Memory for N and M = N^2 must be previously allocated */
 
-int slowIsWieferich (
+int gwslowIsWieferich (
 	char	*str,		/* string representation of N */
-	int	*res)
+	int	*res, int shownegs)
 {
-	int	a,retval;
+	int	a, retval, resaprcl;
 	char	buf[sgkbufsize+256]; 
 	gwhandle *gwdata;
 	ghandle *gdata;
-
-	M = newgiant ((bitlen (N) >> 3) + 8);
+//	M = newgiant ((bitlen (N) >> 3) + 8);
 	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	gtog (N, M);
@@ -6975,40 +7609,93 @@ restart:
 	} while (retval == -1);
 
 	if (retval) {
-		if (*res)
-			sprintf (buf, "%s is a Base %d Wieferich prime!! (%lu decimal digits)\n", str, a, nbdg);
-		else
+		if (*res) {
+			if (nbdg <= 1000) {
+				resaprcl = gaprcltest (N,0,0);
+				if ((resaprcl == 12) || (resaprcl == 2))
+					sprintf (buf, "%s is a Base %d Wieferich prime!! (%lu decimal digits)\n", str, a, nbdg);
+				else
+					sprintf (buf, "%s is not a Base %d Wieferich prime, because not prime! (%lu decimal digits)\n", str, a, nbdg);
+			}
+			else {
+				sprintf (buf, "%s may be a Base %d Wieferich prime,if prime! (%lu decimal digits)\n", str, a, nbdg);
+			}
+		}
+		else {
 			sprintf (buf, "%s is not a Base %d Wieferich prime. RES64: %s\n", str, a, res64);
-		OutputBoth (buf);
+		}
+
+		if (shownegs || *res)
+			OutputBoth (buf);
 	}
 
 
 
 /* Clean up and return */
 
-	free (M);
-	if (retval == TRUE)
+//	free (M);
+	if (retval == TRUE)		// If not stopped by user...
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
 }
 
-void TestWieferich ()
+int	gmpisWieferich (
+	char	*str,	// string representation of N
+	char	*base,	// string representation of the base
+	int	*res)
 {
-	char str[10];
-	int n, res;
-
-	N = newgiant (2);
-
-	for (n=3; n<10000; n+=2) {
-		if (!isPrime (n))
-			continue;
-		itog (n, N);
-		sprintf (str, "%d", n);
-		slowIsWieferich (str, &res);
+	char buf [100];
+	int retval = TRUE, retcode;
+	retcode = gmpwftest (str, base);
+	if (base == NULL)
+		base = "2";
+	if (retcode >= 2) {
+		*res = TRUE;
+		sprintf (buf, "%s is a base %s Wieferich prime!! (exp. = %d)\n", str, base, retcode);
 	}
-
-	free (N);
+	else {
+		*res = FALSE;
+		if (retcode == 0)
+			sprintf (buf, "%s is composite.\n", str);
+		else if (retcode == 1)
+			sprintf (buf, "%s is a base %s W-negative...\n", str, base);
+		else if (retcode == -1000000000) {
+			retval = FALSE;
+			sprintf (buf, "Wieferich prime test not available for %s\n", str);
+		}
+		else if (retcode <= -2)
+			sprintf (buf, "%s is a base %s W-positive, but composite... (exp. = %d)\n", str, base, -retcode);
+		else if (retcode == -1) {
+			retval = FALSE;
+			sprintf (buf, "The gmpw test of %s got an error...\n", str);
+		}
+	}
+	if (*res) {
+		clearline (100);
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+		OutputStr("\033[7m");
+		OutputBoth (buf);
+		OutputStr("\033[0m");
+#else
+#ifdef _CONSOLE
+		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+		OutputBoth(buf);
+		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+		clearline (100);
+#else
+		OutputBoth(buf);
+#endif
+#endif
+		clearline (100);
+	}
+	else
+		if (verbose)
+			OutputBoth (buf);
+		else
+			OutputStr (buf);
+	return (retval);
 }
 
 /* Test if N is a probable prime.  The number N can be of ANY form. */
@@ -7059,7 +7746,7 @@ restart:
 
 /* Clean up and return */
 
-//	if (retval == TRUE)
+//	if (retval == TRUE)		// If not stopped by user...
 //		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -7109,7 +7796,7 @@ restart:
 
 /* Clean up and return */
 
-	if (retval == TRUE)
+	if (retval == TRUE)		// If not stopped by user...
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -7171,7 +7858,7 @@ restart:
 
 /* Clean up and return */
 
-	if (retval == TRUE)
+	if (retval == TRUE)		// If not stopped by user...
 		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
@@ -7226,7 +7913,7 @@ int isPRPinternal (
 			retval = fastIsPRP (dk, smallbase, n, incr, str, res);
 			if (retval && *res && !Fermat_only && !IniGetInt(INI_FILE, "FermatPRPtest", 0))
 				retval = fastIsFrobeniusPRP (dk, smallbase, n, incr, str, res);
-			else if (retval == TRUE)
+			else if (retval == TRUE)		// If not stopped by user...
 				IniWriteString(INI_FILE, "FFT_Increment", NULL);
 		}
 	}
@@ -7259,7 +7946,7 @@ int isPRPinternal (
 			retval = slowIsPRP (str, res);
 			if (retval && *res && !Fermat_only && !IniGetInt(INI_FILE, "FermatPRPtest", 0))
 				retval = slowIsFrobeniusPRP (str, res);
-			else if (retval == TRUE)
+			else if (retval == TRUE)		// If not stopped by user...
 				IniWriteString(INI_FILE, "FFT_Increment", NULL);
 		}
 	}
@@ -7295,6 +7982,9 @@ int isPRPinternal (
 #define ABCGF		22				// ABC format for generalized Fermat numbers
 #define ABCDN		23				// b^n-b^m+c format, m < n <= 2*m
 #define ABCDNG		24				// General b^n-b^m+c format, m < n <= 2*m
+#define ABCWFT		25				// Format used for Wieferich test
+#define ABCWFS		26				// Format used for Wieferich search
+#define ABCGPT		27				// Format used for General prime test (APRCL)
 
 int IsPRP (							// General PRP test
 	unsigned long format, 
@@ -7360,11 +8050,11 @@ int IsPRP (							// General PRP test
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
 			uladdg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%d+1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n, '-', n-1);
 		}
 		else {
 			ulsubg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%d-1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n, '-', n-1);
 		}
 	}
 
@@ -7761,8 +8451,6 @@ void findbpf (unsigned long base) {		// find all prime factors of the base
 		}
 		bpc[i++] = base/2;
 		if (isPrime (b)) {		// b may be the last prime factor!
-			if (b == 1)			// Warning, isPrime (1) returns TRUE !!
-				return;
 			bpf[i] = b;
 			vpf[i] = 1;
 			bpc[i] = base/b;
@@ -7778,8 +8466,6 @@ void findbpf (unsigned long base) {		// find all prime factors of the base
 		}
 		bpc[i++] = base/3;
 		if (isPrime (b)) {		// b may be the last prime factor!
-			if (b == 1)			// Warning, isPrime (1) returns TRUE !!
-				return;
 			bpf[i] = b;
 			vpf[i] = 1;
 			bpc[i] = base/b;
@@ -7798,8 +8484,6 @@ void findbpf (unsigned long base) {		// find all prime factors of the base
 			}
 			bpc[i++] = base/p;
 			if (isPrime (b)) {	// b may be the last prime factor!
-				if (b == 1)		// Warning, isPrime (1) returns TRUE !!
-					return;
 				bpf[i] = b;
 				vpf[i] = 1;
 				bpc[i] = base/b;
@@ -7815,8 +8499,6 @@ void findbpf (unsigned long base) {		// find all prime factors of the base
 			}
 			bpc[i++] = base/p;
 			if (isPrime (b)) {	// b may be the last prime factor!
-				if (b == 1)		// Warning, isPrime (1) returns TRUE !!
-					return;
 				bpf[i] = b;
 				vpf[i] = 1;
 				bpc[i] = base/b;
@@ -7869,10 +8551,6 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 		gshiftright (1, gbpc[i]);
 		i++;
 		if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
-			if (isone (b))	{						// Warning, isPrime (1) returns TRUE !!
-				free (b);
-				return TRUE;
-			}
 			bpf[i] = b->n[0];
 			vpf[i] = 1;
 			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
@@ -7893,10 +8571,6 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 		uldivg (3, gbpc[i]);
 		i++;
 		if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
-			if (isone (b))	{						// Warning, isPrime (1) returns TRUE !!
-				free (b);
-				return TRUE;
-			}
 			bpf[i] = b->n[0];
 			vpf[i] = 1;
 			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
@@ -7932,10 +8606,6 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			uldivg (p, gbpc[i]);
 			i++;
 			if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
-				if (isone (b))	{						// Warning, isPrime (1) returns TRUE !!
-					free (b);
-					return TRUE;
-				}
 				bpf[i] = b->n[0];
 				vpf[i] = 1;
 				gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
@@ -7957,10 +8627,6 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			uldivg (p, gbpc[i]);
 			i++;
 			if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
-				if (isone (b))	{						// Warning, isPrime (1) returns TRUE !!
-					free (b);
-					return TRUE;
-				}
 				bpf[i] = b->n[0];
 				vpf[i] = 1;
 				gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
@@ -8048,7 +8714,7 @@ int Lucasequence (
 	double	reallymaxerr = 0.0;
 
 
-	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 10);
+	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 100);
 
 	if (!IniGetInt(INI_FILE, "Testdiff", 0))	// Unless test of MAXDIFF explicitly required
 		gwdata->MAXDIFF = 1.0E80;				// Diregard MAXDIFF...
@@ -8144,7 +8810,7 @@ int Lucasequence (
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, P = %lu\n", fft_desc, (int)P);
+	sprintf (buf, "Using %s, P = %lu\n", fft_desc, P);
 
 	OutputStr (buf);
 	if (verbose || restarting) {
@@ -8353,7 +9019,7 @@ int Lucasequence (
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFileB (gwdata, gdata, interimfile, bit, P, nrestarts, bpf, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -8507,9 +9173,9 @@ int Lucasequence (
 	if (!isZero (tmp)) {
 		*res = FALSE;						/* Not a prime */
 		if (abs(tmp->sign) < 2)				// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		if (IniGetInt(INI_FILE, "Verify", 0))
 			sprintf (buf, "%s is not prime. P = %lu, Lucas RES64: %s", str, P, res64);
 		else
@@ -8602,7 +9268,7 @@ int Lucasequence (
 					sprintf (buf, "%s may be prime, but N divides U((N+1)/%s), P = %lu\n", str, bpfstring, P);
 				}
 				else
-					sprintf (buf, "%s may be prime, but N divides U((N+1)/%d), P = %lu\n", str, bpf[j], P);
+					sprintf (buf, "%s may be prime, but N divides U((N+1)/%lu), P = %lu\n", str, bpf[j], P);
 				OutputStr (buf);
 				if (verbose)
 					writeResults (buf);	
@@ -8619,7 +9285,7 @@ int Lucasequence (
 						sprintf (buf, "U((N+1)/%s) is coprime to N!\n", bpfstring);
 					}
 					else
-						sprintf (buf, "U((N+1)/%d) is coprime to N!\n", bpf[j]);
+						sprintf (buf, "U((N+1)/%lu) is coprime to N!\n", bpf[j]);
 					OutputStr (buf);
 					if (verbose)
 						writeResults (buf);	
@@ -8727,8 +9393,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	return (-1);
 }
@@ -8942,9 +9609,9 @@ PLMCONTINUE:
 					gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
 				}
 				else
-					sprintf (buf+strlen(buf), "%d", bpf[j]);
+					sprintf (buf+strlen(buf), "%lu", bpf[j]);
 				if (vpf[j]>1)
-					sprintf (buf+strlen(buf), "^%d*", vpf[j]);
+					sprintf (buf+strlen(buf), "^%lu*", vpf[j]);
 				else
 					sprintf (buf+strlen(buf), "*");
 			}
@@ -8953,9 +9620,9 @@ PLMCONTINUE:
 					gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
 				}
 				else
-					sprintf (buf+strlen(buf), "%d", bpf[j]);
+					sprintf (buf+strlen(buf), "%lu", bpf[j]);
 				if (vpf[j]>1)
-					sprintf (buf+strlen(buf), "^%d\n", vpf[j]);
+					sprintf (buf+strlen(buf), "^%lu\n", vpf[j]);
 				else
 					sprintf (buf+strlen(buf), "\n");
 			}
@@ -8980,7 +9647,7 @@ PLMCONTINUE:
 				sprintf (buf+strlen(buf), ", ");
 			}
 			else
-				sprintf (buf+strlen(buf), "%d, ", bpf[j]);
+				sprintf (buf+strlen(buf), "%lu, ", bpf[j]);
 		else
 			if (bpf[j] == 1) {
 				gtoc(gbpf[j], buf+strlen(buf), strlen(sgb));
@@ -8990,7 +9657,7 @@ PLMCONTINUE:
 					sprintf (buf+strlen(buf), " (Must be proven prime or factorized externally)\n");
 			}
 			else
-				sprintf (buf+strlen(buf), "%d\n", bpf[j]);
+				sprintf (buf+strlen(buf), "%lu\n", bpf[j]);
 	}
 
 	if (!setuponly)
@@ -8999,7 +9666,7 @@ PLMCONTINUE:
 		else
 			OutputStr(buf);
 
-	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 10);
+	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 100);
 	nrestarts = IniGetInt (INI_FILE, "NRestarts", 0);
 	if (!(a = IniGetInt (INI_FILE, "FermatBase", 0)))
 		a = IniGetInt (INI_FILE, "FBase", 3);// The base for the PRP and Pocklington tests
@@ -9189,7 +9856,7 @@ PLMCONTINUE:
 /* Output a message about the FFT length */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %d\n", fft_desc,a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc,a);
 
 	if (setuponly) {
 		if ((gwdata->FFTLEN != OLDFFTLEN)||debug) {
@@ -9365,7 +10032,7 @@ PLMCONTINUE:
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFileB (gwdata, gdata, interimfile, bit, a, nrestarts, bpf, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -9411,14 +10078,14 @@ PLMCONTINUE:
 	if (!isone (tmp)) {
 		*res = FALSE;	/* Not a prime */
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		imulg (a, tmp); specialmodg (gwdata, tmp); ulsubg (a, tmp);
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
-			sprintf (oldres64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (oldres64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		if (IniGetInt (INI_FILE, "OldRes64", 1))
 			sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 		else
@@ -9446,7 +10113,7 @@ DoLucas:
 				if (retval == -2) {			// Restart required using next base
 					nrestarts++;
 					if (nrestarts > maxrestarts) {
-						sprintf (buf, "Giving up after %d restarts...\n", nrestarts);
+						sprintf (buf, "Giving up after %lu restarts...\n", nrestarts);
 						frestart = FALSE;
 						*res = FALSE;		// Not proven prime...
 						retval = TRUE;
@@ -9545,20 +10212,20 @@ DoLucas:
 					if (nrestarts > maxrestarts) {
 						if (bpf[j] == 1) {
 							gtoc(gbpf[j], bpfstring, strlen(sgb));
-							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%s))-1, giving up after %d restarts...", str, a, bpfstring, maxrestarts);
+							sprintf (buf, "%s may be prime, but N divides %lu^((N-1)/%s))-1, giving up after %lu restarts...", str, a, bpfstring, maxrestarts);
 						}
 						else
-							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%d))-1, giving up after %d restarts...", str, a, bpf[j], maxrestarts);
+							sprintf (buf, "%s may be prime, but N divides %lu^((N-1)/%lu))-1, giving up after %lu restarts...", str, a, bpf[j], maxrestarts);
 						frestart = FALSE;
 						*res = FALSE;		// Not proven prime...
 					}
 					else {
 						if (bpf[j] == 1) {
 							gtoc(gbpf[j], bpfstring, strlen(sgb));
-							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%s))-1, restarting with a=%d", str, a, bpfstring, newa);
+							sprintf (buf, "%s may be prime, but N divides %lu^((N-1)/%s))-1, restarting with a=%lu", str, a, bpfstring, newa);
 						}
 						else
-							sprintf (buf, "%s may be prime, but N divides %d^((N-1)/%d))-1, restarting with a=%d", str, a, bpf[j], newa);
+							sprintf (buf, "%s may be prime, but N divides %lu^((N-1)/%lu))-1, restarting with a=%lu", str, a, bpf[j], newa);
 						a = newa;
 						IniWriteInt (INI_FILE, "NRestarts", nrestarts);
 						IniWriteInt (INI_FILE, "FermatBase", a);
@@ -9571,10 +10238,10 @@ DoLucas:
 					if (isone (tmp)) {
 						if (bpf[j] == 1) {
 							gtoc(gbpf[j], bpfstring, strlen(sgb));
-							sprintf (buf, "%d^((N-1)/%s)-1 is coprime to N!\n", a, bpfstring);
+							sprintf (buf, "%lu^((N-1)/%s)-1 is coprime to N!\n", a, bpfstring);
 						}
 						else
-							sprintf (buf, "%d^((N-1)/%d)-1 is coprime to N!\n", a, bpf[j]);
+							sprintf (buf, "%lu^((N-1)/%lu)-1 is coprime to N!\n", a, bpf[j]);
 						OutputStr (buf);
 						if (verbose)
 							writeResults (buf);
@@ -9582,7 +10249,7 @@ DoLucas:
 					}
 					else {
 						*res = FALSE;		/* Not a prime */
-						sprintf (buf, "%s is not prime, although %d Fermat PSP!!.", str, a);
+						sprintf (buf, "%s is not prime, although %lu Fermat PSP!!.", str, a);
 						break;				// No need to continue...
 					}
 				}
@@ -9721,8 +10388,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	goto restart;
 
@@ -9779,7 +10447,7 @@ int isLLRP (
 			idk = 0;
 // Lei end
 		if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
-			gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
+			gksize = ndiff*(unsigned long)ceil(log ((double)binput)/log (2.0))+idk;// initial gksize
 			gk = newgiant ((gksize >> 4) + 8);		// Allocate space for gk
 			ultog (binput, gk);
 			power (gk, ndiff);
@@ -9846,11 +10514,11 @@ int isLLRP (
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
 			uladdg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%d+1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n, '-', n-1);
 		}
 		else {
 			ulsubg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%d-1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n, '-', n-1);
 		}
 	}
 
@@ -9892,7 +10560,6 @@ int isLLRP (
 				OutputBoth(buf);
 			else
 				OutputStr (buf);
-			OutputBoth(buf);
 			goto LLRCONTINUE;					// Continue the LLR test
 		}
 		else {
@@ -10112,7 +10779,7 @@ restart:
 	else { 
 	    if (k==1) {
 			if (!isPrime (n)) {
-				sprintf (buf, "The Mersenne number %s is not prime because %d is not prime.\n", str, n); 
+				sprintf (buf, "The Mersenne number %s is not prime because %lu is not prime.\n", str, n); 
 				OutputBoth (buf); 
 				pushg (gdata, 1); 
 				free(gk);
@@ -10589,7 +11256,7 @@ MERSENNE:
 
 		if (interimFiles && j % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, j / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, j, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -10604,9 +11271,9 @@ MERSENNE:
 	if (!isZero (tmp)) { 
 		*res = FALSE;				/* Not a prime */ 
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]); 
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]); 
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]); 
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]); 
 	} 
  
 /* Print results and cleanup */ 
@@ -10712,8 +11379,9 @@ error:
 /* Restart */ 
  
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	goto restart; 
 } 
@@ -10752,7 +11420,9 @@ int isLLRW (
 	gshiftleft (n, N);
 	mulg (gk, N); 
 	iaddg (-1, N);
-	retval = slowIsWieferich (str, res);
+	M = newgiant ((bitlen (N) >> 3) + 8);
+	retval = gwslowIsWieferich (str, res, TRUE);
+	free (M);
 	free (gk);
 	free (N);
 	return retval;
@@ -10792,9 +11462,11 @@ int isProthW (
 	gshiftleft (n, N);
 	mulg (gk, N); 
 	iaddg (1, N);
+	M = newgiant ((bitlen (N) >> 3) + 8);
 
-	retval =  slowIsWieferich (str, res);
+	retval =  gwslowIsWieferich (str, res, TRUE);
 
+	free (M);
 	free (gk);
 	free (N);
 	return retval;
@@ -10844,7 +11516,7 @@ int isProthP (
 		idk = 0;
 // Lei end
 	if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
-		gksize = ndiff*log ((double)binput)/log (2.0)+idk;// initial gksize
+		gksize = ndiff*(unsigned long)ceil(log ((double)binput)/log (2.0))+idk;// initial gksize
 		gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
 		ultog (binput, gk);
 		power (gk, ndiff);
@@ -11031,7 +11703,7 @@ PRCONTINUE:
  
 /* Compute the base for the Proth algorithm. */
  
-if ((a = genProthBase(gk, n)) < 0) {
+if ((a = genProthBase(gk, (uint32_t)n)) < 0) {
 	if (a == -1)
 		sprintf (buf, "Cannot compute a to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
 	else
@@ -11150,12 +11822,12 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
 	}
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 	if (setuponly) {
 		stopping = stopCheck (); 
 		if (gwdata->FFTLEN != OLDFFTLEN) {
@@ -11313,7 +11985,7 @@ restart:
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! writeToFile (gwdata, gdata, interimfile, bit, x, NULL)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -11332,9 +12004,9 @@ restart:
 	if (gcompg (N, tmp) != 0) {
 		*res = FALSE;				/* Not a prime */
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 
 	}
 
@@ -11438,8 +12110,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	goto restart;
 } 
@@ -11559,7 +12232,7 @@ int isGMNP (
 	double dk;
 
 	if (!facto && !isPrime (n) || n == 2) {
-		sprintf (buf, "Gaussian-Mersenne prime test not done because %d is not an odd prime.\n", n); 
+		sprintf (buf, "Gaussian-Mersenne prime test not done because %lu is not an odd prime.\n", n); 
 		OutputBoth (buf); 
 		*res = FALSE;
 		return(TRUE);
@@ -11818,7 +12491,7 @@ COFCONTINUE:
 
 		fres = resn && resnp;
 
-		if (fres || n <  LOWFACTORLIMIT || primeSieve (n, facfrom, facto, str, strp, &fres, fhandle)) {
+		if (fres || n <  LOWFACTORLIMIT || primeSieve (n, (unsigned short)facfrom, (unsigned short)facto, str, strp, &fres, fhandle)) {
 			*res = !fres;
 			res1 = res2 = FALSE;
 			free(N);
@@ -12073,7 +12746,7 @@ primetest:
 
 /* Compute the base for the Proth algorithm. */
  
-	if ((a = genProthBase(gk, (n+1)/2)) < 0) {
+	if ((a = genProthBase(gk, ((uint32_t)n+1)/2)) < 0) {
 		if (a == -1)
 			sprintf (buf, "Cannot compute a to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
 		else
@@ -12226,12 +12899,12 @@ restart:
 /* Output a message about the FFT length and the Proth base. */
 
 	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
 	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
 		OutputStr (buf);
 	}
-	sprintf (buf, "Using %s, a = %d\n", fft_desc, a);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 	if (setuponly) {
 		stopping = stopCheck (); 
 		if (gwdata->FFTLEN != OLDFFTLEN) {
@@ -12448,12 +13121,12 @@ restart:
 			}
 			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
 				sprintf (buf, 
-				 "GM%ld interim residue %08lX%08lX at iteration %ld\n",
-				 n, 0, tmp->n[0], bit);
+				 "GM%lu interim residue %08lX%08lX at iteration %lu\n",
+				 n, (unsigned long)0, (unsigned long)tmp->n[0], bit);
 			else
 				sprintf (buf, 
-				 "GM%ld interim residue %08lX%08lX at iteration %ld\n",
-				 n, tmp->n[1], tmp->n[0], bit);
+				 "GM%lu interim residue %08lX%08lX at iteration %lu\n",
+				 n, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
 			OutputBoth (buf);
 		}
 
@@ -12461,7 +13134,7 @@ restart:
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! gmwriteToFile (gwdata, gdata, interimfile, bit, ubx, uby, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -12517,9 +13190,9 @@ restart:
 		if (gcompg (N, tmp) != 0) {
 			res1 = FALSE;				/* Not a prime */
 			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
-				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		}
 
 
@@ -12603,9 +13276,9 @@ restart:
 			subg (tmp2, tmp);
 			res2 = FALSE;				/* Not a prime */
 			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-				sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
-				sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		}
 
 
@@ -12616,7 +13289,7 @@ restart:
 
 
 		if (res2)
-			sprintf (buf, "%s is %d-PRP! (%lu decimal digits)", strp, a, nbdg2);
+			sprintf (buf, "%s is %lu-PRP! (%lu decimal digits)", strp, a, nbdg2);
 		else
 			sprintf (buf, "%s is not prime.  RES64: %s", strp, res64);
 
@@ -12729,8 +13402,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	goto restart;
 } 
@@ -12763,7 +13437,7 @@ int isWSPRP (
 	double	reallymaxerr = 0.0; 
 
 	if (!facto && !isPrime (n) || n == 2) {
-		sprintf (buf, "(2^%d+1)/3 SPRP test not done because %d is not an odd prime.\n", n, n); 
+		sprintf (buf, "(2^%lu+1)/3 SPRP test not done because %lu is not an odd prime.\n", n, n); 
 		OutputBoth (buf); 
 		*res = FALSE;
 		return(TRUE);
@@ -12887,7 +13561,7 @@ WSTFCONTINUE:
 
 		fres = 0;
 
-		if (n <  LOWFACTORLIMIT || pprimeSieve (n, facfrom, facto, &fres, fhandle)) {
+		if (n <  LOWFACTORLIMIT || pprimeSieve (n, (unsigned short)facfrom, (unsigned short)facto, &fres, fhandle)) {
 			*res = !fres;
 			free(NP);
 			free(M);
@@ -13316,12 +13990,12 @@ restart:
 				ulsubg (a*a, tmp);			// Compute the (unnormalized) residue modulo NP
 			if (abs(tmp->sign) < 2)			// make a 32 bit residue correct !!
 				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at iteration %ld\n",
-				 sgk, 0, tmp->n[0], bit);
+				 "%s interim residue %08lX%08lX at iteration %lu\n",
+				 sgk, (unsigned long)0, (unsigned long)tmp->n[0], bit);
 			else
 				sprintf (buf, 
-				 "%s interim residue %08lX%08lX at iteration %ld\n",
-				 sgk, tmp->n[1], tmp->n[0], bit);
+				 "%s interim residue %08lX%08lX at iteration %lu\n",
+				 sgk, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
 			OutputBoth (buf);
 		}
 
@@ -13329,7 +14003,7 @@ restart:
 
 		if (interimFiles && bit % interimFiles == 0) {
 			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03d",
+			sprintf (interimfile, "%.8s.%03lu",
 				 filename, bit / interimFiles);
 			if (! gmwriteToFile (gwdata, gdata, interimfile, bit, ubx, uby, x, y)) {
 				sprintf (buf, WRITEFILEERR, interimfile);
@@ -13370,14 +14044,14 @@ restart:
 	if ((!dovrbareix && !isone (tmp)) || (dovrbareix && !isZero (tmp))) {
 		*res = FALSE;				/* Not a prime */
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (res64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		imulg (a*a*a, tmp); modg (NP, tmp); ulsubg (a*a*a, tmp);
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (oldres64, "%08lX%08lX", 0, tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
-			sprintf (oldres64, "%08lX%08lX", tmp->n[1], tmp->n[0]);
+			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		if (vrbareix && !dovrbareix)
 			if (IniGetInt (INI_FILE, "OldRes64", 1))
 				sprintf (buf, "%s is not prime, although Vrba-Reix PSP!!  RES64: %s.  OLD64: %s", sgk, res64, oldres64);
@@ -13543,8 +14217,9 @@ error:
 /* Restart */
 
 	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		abonroundoff = TRUE;	// Don't accept any more Roundoff error.
+		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
+		if (nbfftinc == maxfftinc)
+			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
 	}
 	goto restart;
 }
@@ -13703,17 +14378,19 @@ int primeContinue ()
 
 	if (work == 0) {
 	    char	inputfile[80], outputfile[80], cmaxroundoff[10], cpcfftlim[10], sgk[sgkbufsize], buff[sgkbufsize+256];
-		char	hbuff[sgkbufsize+256], outbuf[sgkbufsize+256], last_processed_k[sgkbufsize+256];
+		char	hbuff[sgkbufsize+256], outbuf[sgkbufsize+256], last_processed_k[sgkbufsize+256], sstart[1000], sstop[1000];
 	    FILE *fd;
 	    unsigned long i, chainlen, n, nfudge, nn;
 	    int	firstline, line, hline, resultline,
 			outfd, outfdp, outfdm, res, incr, sign, argcnt, validheader = FALSE;
 	    char c;
 
-	    IniGetString (INI_FILE, "PgenInputFile", inputfile, 80, NULL);
-	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, 80, NULL);
+	    IniGetString (INI_FILE, "PgenInputFile", inputfile, IBSIZE, NULL);
+	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, IBSIZE, NULL);
 	    IniGetString (INI_FILE, "MaxRoundOff", cmaxroundoff, 5, "0.40");
 	    IniGetString (INI_FILE, "PercentFFTLimit", cpcfftlim, 5, "0.50");
+	    IniGetString (INI_FILE, "SpecialCommand", buff, IBSIZE, NULL);
+//		IniWriteString(INI_FILE, "SpecialCommand", NULL);
 		maxroundoff = atof (cmaxroundoff);
 		pcfftlim = atof (cpcfftlim);
 	    firstline = IniGetInt (INI_FILE, "PgenLine", 1);
@@ -13745,6 +14422,7 @@ int primeContinue ()
 		maxaprcl = IniGetInt(INI_FILE, "MaxAprcl", 200);
 		primolimit = IniGetInt(INI_FILE, "PrimoLimit", 30000);
 		nextifnear = IniGetInt(INI_FILE, "NextFFTifNearLimit", 0);
+		maxfftinc = IniGetInt(INI_FILE, "MaxFFTinc", 5);
 
 /* A new option to create interim save files every N iterations. */
 /* This allows two machines to simultanously work on the same exponent */
@@ -13759,13 +14437,6 @@ int primeContinue ()
 
 		throttle = IniGetInt (INI_FILE, "Throttle", 0);
 
-
-		if (!strncmp (buff, "TestWieferichcode", 17)) {	// Very particular test code...
-			TestWieferich ();
-			IniWriteInt (INI_FILE, "WorkDone", 1);
-			return (TRUE);
-	    }
-
 OPENFILE :
 	    fd = fopen (inputfile, "r");
 
@@ -13773,6 +14444,8 @@ OPENFILE :
 			IniWriteInt (INI_FILE, "WorkDone", 1);
 			return (FALSE);
 	    }
+
+		sprintf (SVINI_FILE, "save_%s", INI_FILE);		// set the name of the backup Ini File
 
 // Process each line in the output file
 
@@ -13812,42 +14485,57 @@ OPENFILE :
 
 			if (!strncmp (buff, "ABC", 3)) {	// ABC format header found
 
-				strcpy (hbuff, buff);			// Save the header
+				sprintf (hbuff, "%s", buff);	// Save the header
 				IniWriteInt (INI_FILE, "HeaderLine", line);	// Save the header line number
 				hline = line;
 				validheader = TRUE;				// Assume it is valid...
 
 				for (pinput=buff+3; *pinput && isspace(*pinput); pinput++);
 
-				if (!strncmp (pinput, cwstring, strlen (cwstring))) {
-					format = ABCCW;
-				}
-				else if (!strncmp (pinput, ffstring, strlen (ffstring))) {
-					format = ABCFF;
-				}
-				else if (!strncmp (pinput, gmstring, strlen (gmstring))) {
-					format = ABCGM;
-				}
-				else if (!strncmp (pinput, spstring, strlen (spstring))) {
-					format = ABCSP;
-				}
-				else if (!strncmp (pinput, abcastring, strlen (abcastring))) {
-					format = ABCVARAS;
-				}
-				else if (!strncmp (pinput, repustring, strlen (repustring))) {
-					format = ABCRU;
-				}
-				else if (!strncmp (pinput, grepustring, strlen (grepustring))) {
+				for (i=0;i<strlen(pinput);i++)
+					if (isspace(pinput[i]))
+						pinput[i] = '\0';		// Suppress the EOL characters if necessary.
+
+				if (!strcmp (pinput, grepustring)) {
 					format = ABCGRU;
 				}
-				else if (!strncmp (pinput, abcadstring, strlen (abcadstring))) {
+				else if (!strcmp (pinput, abcadstring)) {
 					format = ABCVARAQS;
 				}
-				else if (!strncmp (pinput, ckstring, strlen (ckstring))) {
+				else if (!strcmp (pinput, diffnumstring))
+					format = ABCDNG;
+				else if (!strcmp (pinput, ckstring)) {
 					format = ABCK;
 				}
-				else if (!strncmp (pinput, gfstring, strlen (gfstring))) {
+				else if (!strcmp (pinput, repustring)) {
+					format = ABCRU;
+				}
+				else if (!strcmp (pinput, cwstring)) {
+					format = ABCCW;
+				}
+				else if (!strcmp (pinput, abcastring)) {
+					format = ABCVARAS;
+				}
+				else if (!strcmp (pinput, ffstring)) {
+					format = ABCFF;
+				}
+				else if (!strcmp (pinput, gmstring)) {
+					format = ABCGM;
+				}
+				else if (!strcmp (pinput, spstring)) {
+					format = ABCSP;
+				}
+				else if (!strcmp (pinput, gfstring)) {
 					format = ABCGF;
+				}
+				else if (!strcmp (pinput, wfsstring)) {
+					format = ABCWFS;
+				}
+				else if (!strcmp (pinput, wftstring)) {
+					format = ABCWFT;
+				}
+				else if (!strcmp (pinput, numberstring)) {
+					format = ABCGPT;
 				}
 				else if (sscanf(pinput, fnpstring, &n, &incr) == 2) {
 					format = ABCFNGS;
@@ -13873,8 +14561,6 @@ OPENFILE :
 					format = ABCDN;
 					incr = - incr;
 				}
-				else if (!strncmp (pinput, diffnumstring, strlen (diffnumstring)))
-					format = ABCDNG;
 				else if (sscanf(pinput, fkpstring, &smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
@@ -13914,14 +14600,14 @@ OPENFILE :
 					if (!facto && !fileExists (outpf)) {
 						outfdp = _open (outpf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
 						if (outfdp) {
-							_write (outfdp, gqpstring, strlen (gqpstring));
+							writelg = _write (outfdp, gqpstring, strlen (gqpstring));
 							_close (outfdp);
 						}	
 					}
 					if (!facto && !fileExists (outmf)) {
 						outfdm = _open (outmf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
 						if (outfdm) {
-							_write (outfdm, gqmstring, strlen (gqmstring));
+							writelg = _write (outfdm, gqmstring, strlen (gqmstring));
 							_close (outfdm);
 						}
 					}
@@ -13939,7 +14625,7 @@ OPENFILE :
 					validheader = TRUE;
 					if (argcnt == 4)
 						mask = 0;
-					strcpy (hbuff, buff);				// Save the header
+					strcpy (hbuff, buff);			// Save the header
 					IniWriteInt (INI_FILE, "HeaderLine", line);	// Save the header line number
 					hline = line;
 					format = NPG;
@@ -13953,7 +14639,6 @@ OPENFILE :
 			}							// End NewPGen header found
 
 			else {						// Processing a data line
-
 				if (((!rising_ns && !rising_ks) || (rising_ns && rising_ks)) && (line < firstline))
 					continue;			// Skip this line if requested (we processed it on an earlier run)
 
@@ -14382,17 +15067,129 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgk, n);	// write the result
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}			// End of NewPGen format processing
 
-				else if (format == ABCCW) {			// Cullen/Woodall
+				else if (format == ABCWFT) {			// Wieferich test
+					if ((nargs = sscanf (buff+begline, "%s %s", sgk, sgb)) < 1)
+						continue;						// Skip invalid line
+					if (!isDigitString (sgk))
+						continue;						// Skip invalid line
+					if (nargs == 2) {
+						if (!isDigitString (sgb))
+							continue;					// Skip invalid line
+						if (!gmpisWieferich (sgk, sgb, &res))
+							goto done;
+					}
+					else if (!gmpisWieferich (sgk, NULL, &res))
+							goto done;
+					if (res) {
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								writelg = _write (outfd, hbuff, strlen (hbuff));
+							}
+							if (nargs == 2)
+								sprintf (outbuf, "%s %s\n", sgk, sgb); 
+							else
+								sprintf (outbuf, "%s\n", sgk); 
+							writelg = _write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+				}
+				else if (format == ABCWFS) {			// Wieferich search
+					if ((nargs = sscanf (buff+begline, "%s %s %s", sstart, sstop, sgb)) < 2)
+						continue;						// Skip invalid line
+					if (!isDigitString (sstart))
+						continue;						// Skip invalid line
+					if (!isDigitString (sstop))
+						continue;						// Skip invalid line
+					if (nargs == 3) {
+						if (!isDigitString (sgb))
+							continue;					// Skip invalid line
+						if (!gmpSearchWieferich (sstart, sstop, sgb))
+							goto done;
+					}
+					else {
+						sprintf (sgb,"2");
+						if (!gmpSearchWieferich (sstart, sstop, NULL))
+							goto done;
+					}
+				}
+				else if (format == ABCGPT) {			// General prime test
+					if (sscanf (buff+begline, "%s", sgk) != 1)
+						continue;						// Skip invalid line
+					if (!isDigitString (sgk))
+						continue;						// Skip invalid line
+					res = saprcltest (sgk, FALSE, FALSE);
+					if (res == 2) {
+						sprintf (buff, "%s is prime!(APRCL test)\n", sgk);
+						clearline (100);
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+						OutputStr("\033[7m");
+						OutputBoth (buff);
+						OutputStr("\033[0m");
+#else
+#if defined _CONSOLE
+						hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+						SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+						OutputBoth(buff);
+						SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+						OutputBoth (buff);
+#endif
+#endif
+						clearline (100);
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								writelg = _write (outfd, hbuff, strlen (hbuff));
+							}
+							sprintf (outbuf, "%s\n", sgk); 
+							writelg = _write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+					else if (res == 0){
+						sprintf (buff, "%s is not prime.(APRCL test)\n", sgk);
+						OutputBoth (buff);
+					}
+					else if (res == 9) {
+						sprintf (buff, "APRCL primality test not available for %s\n", sgk);
+						if (verbose)
+							OutputBoth(buff);
+						else
+							OutputStr (buff);
+						continue;
+					}
+					else if (res == 7) {
+						sprintf (buff,"APRCL error while testing %s...\n", sgk);
+						if (verbose)
+							OutputBoth(buff);
+						else
+							OutputStr (buff);
+					}
+					else {
+						sprintf (buff,"Unexpected return value : %d, while APRCL testing %s...\n", res, sgk);
+						if (verbose)
+							OutputBoth(buff);
+						else
+							OutputStr (buff);
+					}
+				}
+				else if (format == ABCCW) {		// Cullen/Woodall
 					if (sscanf (buff+begline, "%lu %s %d", &n, sgb, &incr) != 3)
 						continue;				// Skip invalid line
 					if (!isDigitString (sgb))
@@ -14411,10 +15208,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s %d\n", sgk, sgb, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14440,10 +15237,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgk, n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14469,10 +15266,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgk, n);
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14494,10 +15291,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgb, n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14521,10 +15318,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu %d\n", sgb, n, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14548,10 +15345,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgk, n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14575,10 +15372,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu %d\n", sgk, n, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14602,10 +15399,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s\n", sgk, sgb); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14629,10 +15426,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s %d\n", sgk, sgb, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14658,10 +15455,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s %lu\n", sgk, sgb, n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14687,10 +15484,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s %lu %d\n", sgk, sgb, n, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14712,10 +15509,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%lu\n", n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14738,10 +15535,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgb, n); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14764,10 +15561,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu\n", sgb, n);	// write the result
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14789,10 +15586,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu %lu\n", sgb, n, m);	// write the result
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14814,10 +15611,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %lu %lu %d\n", sgb, n, m, incr);	// write the result
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14845,10 +15642,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%s %s %lu %d %s\n", sgk, sgb, n, incr, sgd); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -14902,20 +15699,20 @@ OPENFILE :
 							if (res1 && res2)
 #endif
 								if (a)
-									sprintf (outbuf, "%lu (GM(%lu) is Prime in Z+iZ and the norm of GQ(%lu) is %d-PRP.)\n", n, n, n, a); 
+									sprintf (outbuf, "%lu (GM(%lu) is Prime in Z+iZ and the norm of GQ(%lu) is %ld-PRP.)\n", n, n, n, a); 
 								else
 									sprintf (outbuf, "%lu (GM(%lu) and GQ(%lu) are Prime in Z+iZ.)\n", n, n, n); 
 							else if (res1)
 								sprintf (outbuf, "%lu (GM(%lu) is Prime in Z+iZ.)\n", n, n); 
 							else
 								if (a)
-									sprintf (outbuf, "%lu (The norm of GQ(%lu) is %d-PRP.)\n", n, n, a); 
+									sprintf (outbuf, "%lu (The norm of GQ(%lu) is %ld-PRP.)\n", n, n, a); 
 								else
 									sprintf (outbuf, "%lu (GQ(%lu) is Prime in Z+iZ.)\n", n, n); 
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						if (res2) {
@@ -14923,7 +15720,7 @@ OPENFILE :
 								outfdm = _open (outmf, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 								if (outfdm) {
 									sprintf (outbuf, "%lu\n", n); 
-									_write (outfdm, outbuf, strlen (outbuf));
+									writelg = _write (outfdm, outbuf, strlen (outbuf));
 									_close (outfdm);
 								}
 							}
@@ -14931,7 +15728,7 @@ OPENFILE :
 								outfdp = _open (outpf, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 								if (outfdp) {
 									sprintf (outbuf, "%lu\n", n); 
-									_write (outfdp, outbuf, strlen (outbuf));
+									writelg = _write (outfdp, outbuf, strlen (outbuf));
 									_close (outfdp);
 								}
 							}
@@ -14987,9 +15784,9 @@ OPENFILE :
 #endif
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -15020,10 +15817,10 @@ OPENFILE :
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
 							if (hline >= resultline) {	// write the relevant header
-								_write (outfd, hbuff, strlen (hbuff));
+								writelg = _write (outfd, hbuff, strlen (hbuff));
 							}
 							sprintf (outbuf, "%lu %d\n", n, incr); 
-							_write (outfd, outbuf, strlen (outbuf));
+							writelg = _write (outfd, outbuf, strlen (outbuf));
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
@@ -15057,21 +15854,26 @@ OPENFILE :
 					sprintf (outbuf, "ks%s", sgk);
 					IniWriteInt (INI_FILE, outbuf, 1+IniGetInt(INI_FILE, outbuf, 0));
 							// Increment this k success count
+					save_IniFile (INI_FILE, SVINI_FILE);	// make a backup of INI_FILE
 				}
 				else if(IniGetInt(INI_FILE, "StopOnPrimedN", 0)) {
 					sprintf (outbuf, "ns%lu", n);
 					IniWriteInt (INI_FILE, outbuf, 1+IniGetInt(INI_FILE, outbuf, 0));
 							// Increment this n success count
+					save_IniFile (INI_FILE, SVINI_FILE);	// make a backup of INI_FILE
 				}
 				else if(IniGetInt(INI_FILE, "StopOnPrimedB", 0)) {
 					sprintf (outbuf, "bs%s", sgb);
 					IniWriteInt (INI_FILE, outbuf, 1+IniGetInt(INI_FILE, outbuf, 0));
 							// Increment this base success count
+					save_IniFile (INI_FILE, SVINI_FILE);	// make a backup of INI_FILE
 				}
 			}
 			if ((rising_ns && !rising_ks) || (!rising_ns && rising_ks))
 				goto OPENFILE;
 		}					// End of loop on input lines
+		IniWriteString (INI_FILE, "ResultLine", NULL);		// delete the result line
+		_unlink (SVINI_FILE);								// delete the backup of INI_FILE
 		completed = TRUE;
 done:
 		if(IniGetInt(INI_FILE, "StopOnSuccess", 0) && res) {

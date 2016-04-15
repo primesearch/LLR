@@ -6,14 +6,14 @@
 --------------------Configuration: cllrd - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP302.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP40B.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllrd___Win32_Release/cllrd.pch" /YX /Fo"cllrd___Win32_Release/" /Fd"cllrd___Win32_Release/" /FD /c 
-"I:\D\Jean\LLRTEMP\llr38gsrc\lmenu.c"
-"I:\D\Jean\LLRTEMP\llr38gsrc\lprime.c"
+"I:\D\Jean\LLR\llr38hsrc\lmenu.c"
+"I:\D\Jean\LLR\llr38hsrc\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP302.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP303.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP40B.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP40C.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllrd___Win32_Release/cllrd.pdb" /machine:I386 /out:"cllrd___Win32_Release/cllrd.exe" 
 .\cllrd___Win32_Release\lmenu.obj
@@ -22,29 +22,17 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP303.tmp" with con
 .\factor32lp.obj
 ..\gwnum\gwnumd.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP303.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP40C.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c
 lprime.c
-I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(37) : warning C4244: '+=' : conversion from '__int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(147) : warning C4244: '=' : conversion from 'unsigned __int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(9782) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(10847) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
 Linking...
 
 
 
 <h3>Results</h3>
-cllrd.exe - 0 error(s), 12 warning(s)
+cllrd.exe - 0 error(s), 0 warning(s)
 </pre>
 </body>
 </html>

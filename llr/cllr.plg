@@ -6,14 +6,14 @@
 --------------------Configuration: cllr - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2FF.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP408.tmp" with contents
 [
 /nologo /MT /W3 /GX /Zi /O2 /I "..\..\gwnum" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllr___Win32_Release/cllr.pch" /YX /Fo"cllr___Win32_Release/" /Fd"cllr___Win32_Release/" /FD /c 
-"I:\D\Jean\LLRTEMP\llr38gsrc\lmenu.c"
-"I:\D\Jean\LLRTEMP\llr38gsrc\lprime.c"
+"I:\D\Jean\LLR\llr38hsrc\lmenu.c"
+"I:\D\Jean\LLR\llr38hsrc\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2FF.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP300.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP408.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP409.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllr___Win32_Release/cllr.pdb" /machine:I386 /nodefaultlib:"LIBC" /out:"cllr___Win32_Release/cllr.exe" 
 .\cllr___Win32_Release\lmenu.obj
@@ -22,29 +22,17 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP300.tmp" with con
 .\factor32lp.obj
 ..\gwnum\gwnum.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP300.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP409.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c
 lprime.c
-I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(37) : warning C4244: '+=' : conversion from '__int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Qfields.c(147) : warning C4244: '=' : conversion from 'unsigned __int64 ' to 'unsigned __int32 ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(9782) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(10847) : warning C4244: '=' : conversion from 'double ' to 'unsigned long ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4244: 'function' : conversion from 'unsigned long ' to 'unsigned short ', possible loss of data
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(11821) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
-I:\D\Jean\LLRTEMP\llr38gsrc\Llr.c(12890) : warning C4761: integral size mismatch in argument; conversion supplied
 Linking...
 
 
 
 <h3>Results</h3>
-cllr.exe - 0 error(s), 12 warning(s)
+cllr.exe - 0 error(s), 0 warning(s)
 </pre>
 </body>
 </html>

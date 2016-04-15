@@ -2,10 +2,10 @@
 
 CC = gcc
 
-LFLAGS = -Wl
+LFLAGS =
 LIBELF = ../gwnum/gwnum.a
-LIBS   = $(LIBELF) ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
-LIBS2  = $(LIBELF) ../gwnum/gwnum.ld -lm  -lpthread -lstdc++ -static
+LIBS   = $(LIBELF) ./libgmp.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
+LIBS2  = $(LIBELF) ./libgmp.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++ -static
 
 FACTOROBJ = factor64p.o factor64lp.o
 COMPOBJS = lprime.o lmenu.o

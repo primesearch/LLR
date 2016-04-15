@@ -1,12 +1,12 @@
 # Makefile for MacIntel OS X llr
 
-ENVP= MACOSX_DEPLOYMENT_TARGET=10.4
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 
 CC = gcc
-LFLAGS = -Wl,-syslibroot,/Developer/SDKs/MacOSX10.4u.sdk -m4 -mmacosx-version-min=10.4 -arch i386
+LFLAGS = -Wl,-syslibroot,/Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5 -arch i386
 LIBMAC = ../gwnum/release/gwnum.a
-LIBS   = $(LIBMAC) -lm -lstdc++
-LIBS2  = $(LIBMAC) -lm -lstdc++ -static
+LIBS   = $(LIBMAC) ./libgmp.a -lm -lstdc++
+LIBS2  = $(LIBMAC) ./libgmp.a -lm -lstdc++ -static
 
 FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o

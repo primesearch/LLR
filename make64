@@ -13,8 +13,11 @@ COMPOBJS = lprime.o lmenu.o
 compile: $(COMPOBJS)
 	mv $(COMPOBJS) $(D)
 
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+lprime.o: lprime.c
+	$(CC) $(CFLAGS) -c lprime.c
+
+lmenu.o: lmenu.c
+	$(CC) $(CFLAGS) -c lmenu.c
 
 .cpp.o:
 	$(CPP) $(CPPFLAGS) -c $<

@@ -678,7 +678,7 @@ void gfact (
 		cnt = psi_rand(); /* cnt = 8020345; */
 		choose12(xr, zr, cnt, An, Ad, N);
 		if (display) {
-			sprintf(prline, "Choosing curve %d, with s = %d, B = %d, C = %d:\n", pass,cnt, B, C);
+			sprintf(prline, "Choosing curve %d, with s = %d, B = %ld, C = %d:\n", pass, cnt, B, C);
 			OutputStr(prline);
 		}
 		cnt = 0;

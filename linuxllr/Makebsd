@@ -2,10 +2,10 @@
 # N.B. : factor32p.o and MASM outputs must have been previously build on a Linux system
 
 CC = gcc
-LFLAGS = -Wl
+LFLAGS =
 LIBELF = gwnum.a
-LIBS   = $(LIBELF) -lm -lstdc++ -lpthread -lcompat
-LIBS2  = $(LIBELF) -lm -lstdc++ -lpthread -lcompat -static
+LIBS   = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread -lcompat
+LIBS2  = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread -lcompat -static
 
 FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o

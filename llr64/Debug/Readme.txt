@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.14 !
+		Welcome to LLR program Version 3.8.17 !
 
 
 1) Main features :
@@ -20,8 +20,13 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (28.5) of George Woltman's Gwnum
+  This version uses the last release version (28.8) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
+  A bug has been fixed in 28.6 version, and a related new issue in 28.7 : 
+  They affected only tests on a CPU which supports AVX code, and, indeed, 
+  if this feature was activated. This bug existed in gwnum versions 27.1
+  and higher, and so, in LLR from version 3.8.9. The AVX bug seems to be really
+  fixed in this version;
 
   The main advantage of this gwnum version is better performances on 64bit
   machines ; also, several internal bugs in V26 have been corrected.
@@ -33,19 +38,47 @@
   LLR can run on all machines where gwnum code can run, so, on all Intel x86
   compatible machines.
 
-  - The option -oNoSaveFile=1 has been added at the request of an user.
-    Indeed, if it is set, any test is restarted at beginning if stopped...
+  11/02/16 : Three new features has been added in the small primes ranges
+  (< 1000 digits), all of them using the GNU-MP library and the APR-CL codes :
 
-  - 02/04/11 : Roundoff errors recovery has been improved ; continuing with
-  careful squarings or multiplications when more than 5 have been found...
-  Moreover, in this case, the save file is removed, in order to force a restart
-  at the first iteration.
+  - The search for Wieferich primes in the range and with the base stated
+  by the user.
+  - The test of Wieferich prime candidates with the base stated by user.
+  - The APR-CL primality test of general digit strings.
+  Please, see below for the ABC formats required for these features.
+  
+  - The option -oNoSaveFile=1 has been added at the request of an user.
+  Indeed, if it is set, any test is restarted at beginning if stopped...
+
+  - 05/05/15 : The Roundoff error recovery code has been completely rewritten.
+  The logic is now very similar to Prime95 / Mprime's one, to avoid intensive
+  usage of slow careful iterations. Continuing the test using the next FFT
+  length is forced if the error is not reproducible, if it occured in a careful
+  iteration, or if too much errors were encountered (MAX_ERROR_COUNT=5).
+
+  - 11/02/16 : To avoid endless retries, AbortOnRoundoff option is forced when
+  testing with the next FFT length has been done more than MaxFFTinc times
+  (5 by default). Then, the default is continuing the test with the next term
+  in the input file. But the user can override this behavior by setting
+  -oStopOnAbort=1, and then, manually deciding to continue.
+
+  - To improve reliability, error checking may now be forced, if the program
+  is working near the current FFT limit. This feature may be adjusted by using
+  the option -oPercentFFTLimit=dd.d, the default value beeing 0.5 ; note that
+  setting echk to one is generally not much time consuming : typically 5% more.
+  Also, this feature may be wiped out by setting PercentFFTLimit to 0.0!
+
+  - For those wo do not like to force error checking, I implemented a new
+  option : -oNextFFTifNearLimit=1 (default is zero). If activated, and if the
+  default FFT length at setting is too near the limit, then, FFT_Increment is
+  incremented by one, a message is displayed and the test is immediatly 
+  restarted ; indeed, in this case, echk can no more be forced...
 
   - In all versions of LLR, a simple trial division test was done for candidates
   not larger than 32 bits ; now, an APR-CL test as been added as a new feature
   in all primality or PRP tests, for all candidates not larger than 100 decimal
-  digits. This code is implemented in a binary application called as a child
-  process.
+  digits. On Windows platforms, this code is implemented in a binary application
+  called as a child process.
 
   - The new option -oBPSW=1 allows to replace the standard Lucas PRP test by
   the Baillie-PSW one (see http://www.trnicely.net/misc/bpsw.html for details)
@@ -228,6 +261,10 @@
 	- ABC($a^$b-1)/($a-1) : Generalized Repunits PRP candidates
 	- ABC$a*$b^$a$c : (Generalized) Cullen/Woodall candidates
 	- ABC(2^$a$b)^2-2 : near-square (ex-Carol/Kynea) candidates
+	- ABC$a$b$c : Used to launch a Wieferich prime search, 
+	  the range beeing $b to $b and the base $c (new feature!)
+	- ABC$a$b : Used to test a Wieferich prime candidate $a, base $b
+	- ABC$a : General APR-CL primality test of number $a
 
 9) Basic Algorithms :
 
@@ -272,7 +309,7 @@
     - After an excessive (> 0.40) and reproducible round off error,
     the iteration is redone using a slower and more reliable method.
     - If this error was not reproducible, or if the iteration fails again,
-    the test is restarted from the beginning, using the next larger
+    the test is restarted from the last save file, using the next larger
     FFT length...
 
 Appendix :

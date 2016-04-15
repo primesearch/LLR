@@ -1,0 +1,16 @@
+# Compile the WFSEARCH source files for Windows 64 bits architecture (cygwin)
+# Please, adjust options for 64 bits!
+
+D = ../
+
+CC = gcc
+CFLAGS = -I../ -O2
+sources = $(D)/llrwfsrch.c $(D)/mpz_aprcl.c
+LIBS = libgmp.a
+EXE = llrwfsrch.exe
+
+$(EXE): $(sources)
+	$(CC) $(CFLAGS) -o $(EXE) $(sources) $(LIBS)
+
+clean:
+	rm $(EXE)

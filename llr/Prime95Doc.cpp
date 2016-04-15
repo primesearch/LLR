@@ -25,12 +25,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timeb.h>
+#include <signal.h>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
 static char THIS_FILE[] = __FILE__;
 #endif
+
+STARTUPINFO wfstinfo;
+PROCESS_INFORMATION wfprinfo = {NULL, NULL, 0, 0};
 
 #define OP_CONTINUE	1
 struct thread_info {
@@ -232,6 +236,13 @@ void CPrime95Doc::OnUpdateStop(CCmdUI* pCmdUI)
 
 void CPrime95Doc::OnStop() 
 {
+	HANDLE wfhandle = NULL;
+	DWORD wfid = 0, wfexit = 0;
+	if ((wfhandle = wfprinfo.hProcess) != NULL) {
+		GetExitCodeProcess(wfprinfo.hProcess, &wfexit);
+		if (wfexit == STILL_ACTIVE)
+			TerminateProcess (wfhandle, 11);
+	}
 	THREAD_STOP = 1;
 	SetPriorityClass (GetCurrentProcess (), NORMAL_PRIORITY_CLASS);
 	SetThreadPriority (WORKER_THREAD, THREAD_PRIORITY_ABOVE_NORMAL);
@@ -517,6 +528,7 @@ void CPrime95Doc::ReplaceableLine (
 #include "llr.h"
 #include "gwcommon.h"
 #include "jacobi.c"
+#include "kronecker.c"
 #include "Qfields.c"
 #include "factor.c"
 #include "llr.c"

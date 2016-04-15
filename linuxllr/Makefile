@@ -1,10 +1,10 @@
 # Makefile for Linux llr or sllr
 
 CC = gcc
-LFLAGS = -Wl
+LFLAGS =
 LIBELF = ../gwnum/gwnum.a
-LIBS   = $(LIBELF) -lm -lstdc++ -lpthread
-LIBS2  = $(LIBELF) -lm -lstdc++ -lpthread -static
+LIBS   = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread
+LIBS2  = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread -static
 
 FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o

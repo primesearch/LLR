@@ -1,4 +1,5 @@
-# Compile the APRCL source files for Windows 32 bits architecture (cygwin)
+# Compile the APRCL source files for Windows 64 bits architecture (cygwin)
+# Please, adjust options for 64 bits!
 
 D = ../
 

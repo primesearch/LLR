@@ -37,7 +37,6 @@
 #include <process.h>
 #include <windows.h>
 #define $LLF "%I64d"
-
 #endif
 #include <sys/timeb.h>
 
@@ -80,6 +79,9 @@ int SINGLETEST = 0;
 #include "kronecker.c"
 #include "Qfields.c"
 #include "factor.c"
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#include "mpz_aprcl.c"
+#endif
 #include "Llr.c"
 
 /* Signal handlers */
@@ -95,6 +97,7 @@ void sigterm_handler(int signo)
 #ifdef MPRIME_LOADAVG
 
 /* Routine to get the current load average */
+
 double get_load_average ()
 {
 #if defined (__linux__) || defined (__APPLE__)
@@ -183,27 +186,24 @@ int main (
 	int	argc,
 	char	*argv[])
 {
-	char	buf[256];
+	char	buf[IBSIZE];
 	int	named_ini_files = -1;
 	int	background = 0;
 	int	contact_server = 0;
-	int	i, opcnt = 0;
+	int	i, lchd, opcnt = 0;
 	char	*p;
 	char	*p2;
 	char	dnflag = ' ';
-	char	m_pgen_input[80], m_pgen_output[80], oldm_pgen_input[80];
-	char	keywords[10][80], values[10][80];
-	char	multiplier[80], base[80], exponent[80], exponent2[80], addin[80];
 	FILE	*in;
+
+/* No buffering of output */
+
+	setvbuf (stdout, NULL, _IONBF, 0);
 
 /* catch termination signals */
 
 	(void)signal(SIGTERM, sigterm_handler);
 	(void)signal(SIGINT, sigterm_handler);
-
-/* No buffering of output */
-
-	setvbuf (stdout, NULL, _IONBF, 0);
 
 /* Change to the executable's directory*/
 
@@ -211,7 +211,7 @@ int main (
 	p = strrchr (buf, '/');
 	if (p != NULL) {
 		*p = 0;
-		_chdir (buf);
+		lchd = _chdir (buf);
 	}
 
 /* Process command line switches */
@@ -404,7 +404,7 @@ DIGITSONLY:
 
 		case 'W':
 		case 'w':
-			_chdir (p);
+			lchd = _chdir (p);
 			break; 
 
 /* Otherwise unknown switch */

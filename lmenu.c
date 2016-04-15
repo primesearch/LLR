@@ -31,7 +31,7 @@ void get_line (
 	for (i = 0; ; i++) {
 		if (_read (0, &c, 1) != 1) break;
 		if (c == '\n' || c == 0) break;
-		if (i < 80) *buf++ = c;
+		if (i < 260) *buf++ = c;
 	}
 	*buf++ = 0;
 }
@@ -115,7 +115,7 @@ void askStr (
 	char	*val,
 	unsigned long maxlen)
 {
-	char	buf[80];
+	char	buf[260];
 	if (val[0])
 		printf ("%s (%s): ", str, val);
 	else
@@ -191,15 +191,15 @@ void outputLongLine (
 
 void test_inputdata ()
 {
-	char	m_pgen_input[80], m_pgen_output[80];
+	char	m_pgen_input[260], m_pgen_output[260];
 	unsigned long m_pgen_line;
 
-	IniGetString (INI_FILE, "PgenInputFile", m_pgen_input, 80, NULL);
-	IniGetString (INI_FILE, "PgenOutputFile", m_pgen_output, 80, NULL);
+	IniGetString (INI_FILE, "PgenInputFile", m_pgen_input, 260, NULL);
+	IniGetString (INI_FILE, "PgenOutputFile", m_pgen_output, 260, NULL);
 	m_pgen_line = IniGetInt (INI_FILE, "PgenLine", 1);
 
-	askStr ("Input file (from NewPgen): ", m_pgen_input, 76);
-	askStr ("Output file (Results): ", m_pgen_output, 76);
+	askStr ("Input file (from NewPgen): ", m_pgen_input, 256);
+	askStr ("Output file (Results): ", m_pgen_output, 256);
 	askNum ("Line number", &m_pgen_line, 1, 999999999);
 
 	if (askOkCancel ()) {
