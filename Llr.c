@@ -308,7 +308,8 @@ static double fpart = 0.0;
 static unsigned long mask;
 
 unsigned int Fermat_only = FALSE;
-unsigned int strong = TRUE;
+
+unsigned int strong = FALSE;
 unsigned int quotient = FALSE;
 unsigned int vrbareix = FALSE;
 unsigned int dualtest = FALSE;
@@ -1452,6 +1453,9 @@ int writeResults (
 static	time_t	last_time = 0;
 	time_t	this_time;
 	int	fd;
+
+	if (IniGetInt (INI_FILE, "NoLresultFile", 0))
+		return (TRUE);
 
 /* Open file, position to end */
 
@@ -4445,6 +4449,9 @@ int gmpwfsearch (char *sstart, char *sstop, char *sbase) {
 						writelg = _write (outfd, lbuf, strlen (lbuf));
 						_close (outfd);
 					}
+					if(IniGetInt(INI_FILE, "StopOnSuccess", 0)) {
+						return (2);
+					}
 				}
 			}
 			else {
@@ -4546,6 +4553,10 @@ int gmpwfsearch (char *sstart, char *sstop, char *sbase) {
 						writelg = _write (outfd, lbuf, strlen (lbuf));
 						_close (outfd);
 					}
+					if(IniGetInt(INI_FILE, "StopOnSuccess", 0)) {
+						return (retcode);
+					}
+
 				}
 				else {
 					sprintf (lbuf, "Unexpected result while APRCL testing %s...\n", lbuf2);
@@ -4577,6 +4588,9 @@ int gmpSearchWieferich (char *sstart, char *sstop, char *sbase)
 	retcode = gmpwfsearch (sstart, sstop, sbase);
 	if ((retcode == 7)||(retcode == 11)||(retcode == 3)||(retcode == 4)||(retcode == 5)||(retcode == 10))
 		return (FALSE);
+	if((retcode==2) && IniGetInt(INI_FILE, "StopOnSuccess", 0)) {
+		return (FALSE);
+	}
 	return (TRUE);
 }
 
@@ -4863,6 +4877,9 @@ int gmpSearchWieferich (char *sstart, char *sstop, char *sbase)
 				_close (outfd);
 			}
 			clearline(100);
+			if(IniGetInt(INI_FILE, "StopOnSuccess", 0)) {
+				return (FALSE);
+			}
 		}
 		else {
 			if (verbose)
@@ -5608,9 +5625,9 @@ int commonFrobeniusPRP (
 				sprintf (buf, "%s is not prime(P = %ld, Q = %ld), Lucas RES64: %s", str, P, Q, res64);
 		else
 			if (bpsw)
-				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %ld, Q = %ld), BPSW RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is Fermat PSP, but composite!! (P = %ld, Q = %ld), BPSW RES64: %s", str, P, Q, res64);
 			else
-				sprintf (buf, "%s is strong-Fermat PSP, but composite!! (P = %ld, Q = %ld), Lucas RES64: %s", str, P, Q, res64);
+				sprintf (buf, "%s is Fermat PSP, but composite!! (P = %ld, Q = %ld), Lucas RES64: %s", str, P, Q, res64);
 	}
 
 	if (*res) {						// N may be prime ; do now the Frobenius PRP test
@@ -5625,9 +5642,9 @@ int commonFrobeniusPRP (
 				sprintf (buf, "%s is Lucas PRP, Starting Frobenius test sequence\n", str);
 		else
 			if (bpsw)
-				sprintf (buf, "%s is strong-Fermat and BPSW PRP, Starting Frobenius test sequence\n", str);
+				sprintf (buf, "%s is Fermat and BPSW PRP, Starting Frobenius test sequence\n", str);
 			else
-				sprintf (buf, "%s is strong-Fermat and Lucas PRP, Starting Frobenius test sequence\n", str);
+				sprintf (buf, "%s is Fermat and Lucas PRP, Starting Frobenius test sequence\n", str);
 		if (! writeToFile (gwdata, gdata, filename, bit, x, y)) {
 			sprintf (buf, WRITEFILEERR, filename);
 			OutputBoth (buf);
@@ -5832,9 +5849,9 @@ Frobeniusresume:
 					sprintf (buf, "%s is Lucas PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 			else
 				if (bpsw)
-					sprintf (buf, "%s is strong-Fermat and BPSW PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is Fermat and BPSW PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 				else
-					sprintf (buf, "%s is strong-Fermat and Lucas PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
+					sprintf (buf, "%s is Fermat and Lucas PSP (P = %ld, Q = %ld), but composite!!. Frobenius RES64: %s", str, P, Q, res64);
 		}
 	}
 
@@ -5850,9 +5867,9 @@ Frobeniusresume:
 				sprintf (buf, "%s is Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 		else
 			if (bpsw)
-				sprintf (buf, "%s is strong-Fermat, BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
+				sprintf (buf, "%s is Fermat, BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 			else
-				sprintf (buf, "%s is strong-Fermat, Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
+				sprintf (buf, "%s is Fermat, Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 
 	pushg (gdata, 4);
 	gwfree (gwdata, x);				// Clean up
@@ -5962,7 +5979,7 @@ error:
 	return (-1);
 }
 
-/* Test for a strong Fermat probable prime -- gwsetup has already been called. */
+/* Test for a (strong) Fermat probable prime -- gwsetup has already been called. */
 
 int commonPRP (
 	gwhandle *gwdata,
@@ -6060,8 +6077,10 @@ int commonPRP (
 	ReplaceableLine (1);	/* Remember where replaceable line is */
 
 /* Init the title */
-
-	title ("Strong Fermat PRP test in progress...");
+        if (strong)
+            title ("Strong Fermat PRP test in progress...");
+        else
+            title ("Fermat PRP test in progress...");
 
 /* Do the PRP test */
 
@@ -7207,6 +7226,7 @@ int fastIsPRP (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
@@ -7262,6 +7282,7 @@ int fastIsCC1P (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
@@ -7328,6 +7349,7 @@ int fastIsCC2P (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
@@ -7428,6 +7450,7 @@ int fastIsFrobeniusPRP (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
 			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
@@ -7525,6 +7548,7 @@ int slowIsFrobeniusPRP (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
 			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
@@ -7585,6 +7609,7 @@ int gwslowIsWieferich (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, M))) {
@@ -7722,6 +7747,7 @@ int slowIsPRP (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
@@ -7772,6 +7798,7 @@ int slowIsCC1P (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
@@ -7834,6 +7861,7 @@ int slowIsCC2P (
 restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
@@ -8002,6 +8030,7 @@ int IsPRP (							// General PRP test
 	double dk;
 	giant gd, gr;
 
+	strong = IniGetInt (INI_FILE, (char*)"StrongFermat", 0);
 	fpart = 0.0;							// clear this value
 	if (abs(gb->sign) == 1)					// Test if the base is a small integer
 		smallbase = gb->n[0];
@@ -8235,8 +8264,8 @@ PRPCONTINUE:
 
 	}
 
-	strong = TRUE;							// Restore Strong Fermat PRP test
-	quotient = FALSE;						// Reset quotient flag
+//	strong = TRUE;			// Restore Strong Fermat PRP test
+	quotient = FALSE;		// Reset quotient flag
 
 	if (format == ABCVARAQS) {
 		free (gr);
@@ -9566,9 +9595,9 @@ PLMCONTINUE:
 
 	if (klen > Nlen) {
 		if ((gformat == ABCDN) || (gformat == ABCDNG))
-		    sprintf(buf, "%s^%lu-1 > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgb, ndiff, sgb, n, str);
+		    sprintf(buf, "%s^%lu-1 > %s^%lu, so, only a PRP test is done for %s.\n", sgb, ndiff, sgb, n, str);
 		else
-		    sprintf(buf, "%s > %s^%lu, so, only a Strong PRP test is done for %s.\n", sgk, sgb, n, str);
+		    sprintf(buf, "%s > %s^%lu, so, only a PRP test is done for %s.\n", sgk, sgb, n, str);
 	    OutputBoth(buf);
 		Nlen = bitlen (N);					// Bit length of N
 		fpart = (1.0-(double)klen/Nlen)*100.0;
@@ -9696,6 +9725,7 @@ PLMCONTINUE:
 
 	gwinit (gwdata);
 	gdata = &gwdata->gdata;
+ 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
 	*res = TRUE;
 
@@ -10129,6 +10159,7 @@ DoLucas:
 								// Setup again the gwnum code.
 					gwinit (gwdata);
 					gdata = &gwdata->gdata;
+ 					gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 					gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
 					gwsetmaxmulbyconst (gwdata, max(a, P));
 					if (dk >= 1.0) {
@@ -10696,6 +10727,7 @@ restart:
 
 	gwinit (gwdata);
 	gdata = &gwdata->gdata;
+ 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
 	vindex = 1;					// First attempt
 
@@ -11080,6 +11112,7 @@ restart:
 					gwfree (gwdata, y);
 					gwdone(gwdata);
 					free (gwdata);
+					*res = FALSE;	// JP 09/08/16
 					return (FALSE); 
 				}
 			} 
@@ -11241,6 +11274,7 @@ MERSENNE:
 				gwfree (gwdata, y);
 				gwdone(gwdata);
 				free (gwdata);
+				*res = FALSE;	// JP 09/08/16
 				return (FALSE); 
 			}
 		} 
@@ -11722,6 +11756,7 @@ restart:
 	nbdg = gnbdg (N, 10);	// Compute the number of decimal digits of the tested number.
 	gwinit (gwdata);
 	gdata = &gwdata->gdata;
+ 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
 	gwsetmaxmulbyconst (gwdata, a);
 
@@ -12773,6 +12808,7 @@ restart:
 
 	gwinit (gwdata);
 	gdata = &gwdata->gdata;
+ 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
 	gwsetmaxmulbyconst (gwdata, a);
 
@@ -13673,6 +13709,7 @@ restart:
 
 	gwinit (gwdata);
 	gdata = &gwdata->gdata;
+ 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
 	globalk = 1.0;
 
@@ -13860,7 +13897,7 @@ restart:
 		ubx <<= 1;
 		if (ubx >= bits) ubx -= bits;				// Compute the doubled shift modulo n
 
-		if (dovrbareix)								// Fix-up the addin constant
+		if (dovrbareix)						// Fix-up the addin constant
 			if (ubx&1)								// See if a change of sign is needed
 				gwsetaddinatpowerofb (gwdata, 2, ubx);
 			else
@@ -14336,7 +14373,9 @@ int process_num (
 		(format != ABCRU) && (format != ABCGRU))
 			retval = plusminustest (sgk, sgb, gb, n, incr, shift, res);
 		else  {
+//			Fermat_only = TRUE;     // JP 30/01/17
 			retval = IsPRP (format, sgk, sgb, gb, n, incr, shift, res);
+//			Fermat_only = FALSE;    // JP 30/01/17
 		}
 		free (gb);
 		return (retval);
@@ -14348,8 +14387,10 @@ int process_num (
 	(format != ABCRU) && (format != ABCGRU))
 		retval = plusminustest (sgk, sgb, gb, n, incr, shift, res);
 	else  {
+//		Fermat_only = TRUE;     // JP 30/01/17
 		retval = IsPRP (format, sgk, sgb, gb, n, incr, shift, res);
-	}
+//		Fermat_only = FALSE;    // JP 30/01/17
+        }
 	free (gb);
 	return (retval);
 }
@@ -15837,6 +15878,9 @@ OPENFILE :
 				IniWriteString (INI_FILE, "Last_Processed_k", sgk); // Point on the next k
 				strcpy (last_processed_k, sgk);
 			}
+			if(n>=(unsigned long)IniGetInt(INI_FILE, "MaxN", 2147483647)) {
+				break;
+			}
 			if (res) {
 				if(IniGetInt(INI_FILE, "BeepOnSuccess", 0)) {
 					do {	// If stopping on this success, beep infinitely!
@@ -15848,7 +15892,7 @@ OPENFILE :
 					} while (!stopCheck () && IniGetInt(INI_FILE, "StopOnSuccess", 0));
 				}
 				if(IniGetInt(INI_FILE, "StopOnSuccess", 0)) {
-					break;
+					goto done;
 				}
 				else if(IniGetInt(INI_FILE, "StopOnPrimedK", 0)) {
 					sprintf (outbuf, "ks%s", sgk);

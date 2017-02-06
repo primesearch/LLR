@@ -6,18 +6,26 @@
 
 /* Include files */
 
-#include "lprime.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #if !defined (__linux__) && !defined (__FreeBSD__) && !defined (__APPLE__)
 
 #include <io.h>
-#include <stdlib.h>
+
+#else
+
+#include <dirent.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #endif
+#include "lprime.h"
 
 /* Routine definitions */
+
 
 void options_cpu ();
 

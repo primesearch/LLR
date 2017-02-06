@@ -6,7 +6,6 @@
 
 /* Include files */
 
-#include "lprime.h"
 #ifdef __FreeBSD__
 /* FreeBSD needs to process sys/types.h before it can understand either
 /* sys/time.h or sys/resource.h */
@@ -39,6 +38,7 @@
 #define $LLF "%I64d"
 #endif
 #include <sys/timeb.h>
+#include "lprime.h"
 
 /* Globals */
 
@@ -289,6 +289,23 @@ int main (
 			*p2 = '\0';
 			opcnt++;
 			break;
+
+/* -T - ThreadsPerTest */					// Set a ThreadsPerTest=<number> option
+
+		case 'T':
+		case 't':
+			if (opcnt >= 10)				// Maximum 10 options...
+				break;
+			strcpy (keywords[opcnt], "ThreadsPerTest");
+			while (isspace (*p))
+				p++;
+			p2 = values[opcnt];
+			while (isdigit (*p))
+				*p2++ = *p++;
+			*p2 = '\0';
+			opcnt++;
+			break;
+
 
 /* -Q - Test a single k*b^n+c or b^n-b^m+c number */
 

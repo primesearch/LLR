@@ -249,7 +249,7 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			}
 			if ((jNd = jacobi(Nmodd,dred)) > 1) {
 				if (debug) {
-					sprintf (pbuf, "%d divides d = %lu and N !\n", jNd, d);
+					sprintf (pbuf, "%ld divides d = %u and N !\n", jNd, d);
 					OutputBoth (pbuf);
 				}
 				return (-jNd);				// Return the divisor with minus sign.
@@ -258,21 +258,21 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {					// OK, we have found the fundamental unit. 
 				if (v&1 || b&1) {			// Display this unit if required.
 					if (b != 1) {
-						sprintf (pbuf, "epsilon = [%d+%lu*sqrt(%lu)]/2\n", v, b, d);
+						sprintf (pbuf, "epsilon = [%ld+%u*sqrt(%u)]/2\n", v, b, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%d+sqrt(%lu)]/2\n", v, d);
+						sprintf (pbuf, "epsilon = [%ld+sqrt(%u)]/2\n", v, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (b/2 != 1) {
-						sprintf (pbuf, "epsilon = %d+%lu*sqrt(%lu)\n", v/2, b/2, d);
+						sprintf (pbuf, "epsilon = %ld+%u*sqrt(%u)\n", v/2, b/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %d+sqrt(%lu)\n", v/2, d);
+						sprintf (pbuf, "epsilon = %ld+sqrt(%u)\n", v/2, d);
 						OutputBoth (pbuf);
 					}
 				}
@@ -284,11 +284,11 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			rplus = 4*aplus;
 			rminus = 4*aminus;
 			if (debug) {				// Display the result if required.
-				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd);
+				sprintf (pbuf, "k = %u (mod %u), n = %u (mod %u)\n", kmodd, dred, nmodorderd, orderd);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1,eps2\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, +1,eps2\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1,eps2\n", v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, -1,eps2\n", v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;
@@ -321,7 +321,7 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 		}
 		if ((jNd = jacobi(Nmodd,dred)) > 1) {
 			if (debug) {
-				sprintf (pbuf, "%d divides d = %lu and N !\n", jNd, d);
+				sprintf (pbuf, "%ld divides d = %u and N !\n", jNd, d);
 				OutputBoth (pbuf);
 			}
 			return (-jNd);				// Return the divisor with minus sign.
@@ -339,29 +339,29 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {				// And then, the candidate is already valid,
 				if (X&1 || Y&1) {		// because Jacobi(v-2,N) is +1 and sign is -1
 					if (Y != 1) {
-						sprintf (pbuf, "epsilon = [%lu+%lu*sqrt(%lu)]/2\n", X, Y, d);
+						sprintf (pbuf, "epsilon = [%u+%u*sqrt(%u)]/2\n", X, Y, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%lu+sqrt(%lu)]/2\n", X, d);
+						sprintf (pbuf, "epsilon = [%u+sqrt(%u)]/2\n", X, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (Y/2 != 1) {
-						sprintf (pbuf, "epsilon = %lu+%lu*sqrt(%d)\n", X/2, Y/2, d);
+						sprintf (pbuf, "epsilon = %u+%u*sqrt(%d)\n", X/2, Y/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %lu+sqrt(%lu)\n", X/2, d);
+						sprintf (pbuf, "epsilon = %u+sqrt(%u)\n", X/2, d);
 						OutputBoth (pbuf);
 					}
 				}
-				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd);
+				sprintf (pbuf, "k = %u (mod %u), n = %u (mod %u)\n", kmodd, dred, nmodorderd, orderd);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1,eps2\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, +1,eps2\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1,eps2\n", v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, -1,eps2\n", v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;
@@ -379,16 +379,16 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (!Nmoda && (ared != 1)) {		// ared divides N!
 				if (debug) {
 					if (aminus != ared)
-						sprintf (pbuf, "a/%lu = %lu divides N !\n", aminus/ared, ared);
+						sprintf (pbuf, "a/%u = %u divides N !\n", aminus/ared, ared);
 					else
-						sprintf (pbuf, "a = %lu divides N !\n", ared);
+						sprintf (pbuf, "a = %u divides N !\n", ared);
 					OutputBoth (pbuf);
 				}
 				return (-(int)ared);		// Return the divisor with minus sign.
 			}
 			if ((jNa = jacobi(Nmoda,ared)) > 1) {
 				if (debug) {
-					sprintf (pbuf, "%d divides a = %d and N !\n", jNa, aminus);
+					sprintf (pbuf, "%ld divides a = %d and N !\n", jNa, aminus);
 					OutputBoth (pbuf);
 				}
 				return (-jNa);				// Return the divisor with minus sign.
@@ -397,29 +397,29 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 			if (debug) {					// OK, display the result if required.
 				if (v&1 || b&1) {
 					if (b != 1) {
-						sprintf (pbuf, "epsilon = [%d+%lu*sqrt(%lu)]/2\n", v, b, d);
+						sprintf (pbuf, "epsilon = [%ld+%u*sqrt(%u)]/2\n", v, b, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = [%d+sqrt(%lu)]/2\n", v, d);
+						sprintf (pbuf, "epsilon = [%ld+sqrt(%u)]/2\n", v, d);
 						OutputBoth (pbuf);
 					}
 				}
 				else {
 					if (b/2 != 1) {
-						sprintf (pbuf, "epsilon = %d+%lu*sqrt(%lu)\n", v/2, b/2, d);
+						sprintf (pbuf, "epsilon = %ld+%u*sqrt(%u)\n", v/2, b/2, d);
 						OutputBoth (pbuf);
 					}
 					else {
-						sprintf (pbuf, "epsilon = %d+sqrt(%lu)\n", v/2, d);
+						sprintf (pbuf, "epsilon = %ld+sqrt(%u)\n", v/2, d);
 						OutputBoth (pbuf);
 					}
 				}
-				sprintf (pbuf, "k = %lu (mod %lu), n = %lu (mod %lu) and n = %lu (mod %lu)\n", kmodd, dred, nmodorderd, orderd, nmodordera, ordera);
+				sprintf (pbuf, "k = %u (mod %u), n = %u (mod %u) and n = %u (mod %u)\n", kmodd, dred, nmodorderd, orderd, nmodordera, ordera);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, +1\n", v, d, aplus, b, rplus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, +1\n", v, d, aplus, b, rplus);
 				OutputBoth (pbuf);
-				sprintf (pbuf, "v1 = %d, d = %lu, a = %lu, b = %lu, r = %lu, -1\n",v, d, aminus, b, rminus);
+				sprintf (pbuf, "v1 = %ld, d = %u, a = %u, b = %u, r = %u, -1\n",v, d, aminus, b, rminus);
 				OutputBoth (pbuf);
 			}
 			return v;

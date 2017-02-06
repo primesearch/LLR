@@ -180,6 +180,24 @@ BOOL CPrime95App::InitInstance()
 			while (!isspace (*p)) p++;	// Skip the value in command line
 			break;
 
+/* -T - ThreadsPerTest */				// Set a ThreadsPerTest=<number> option
+
+		case 'T':
+		case 't':
+			if (opcnt >= 10)			// Maximum 10 options...
+				break;
+			strcpy (keywords[opcnt], "ThreadsPerTest");
+			p3 = p;						// Don't modify p...
+			while (isspace (*p3))
+				p3++;
+			p2 = values[opcnt];
+			while (isdigit (*p3))
+				*p2++ = *p3++;
+			*p2 = '\0';
+			opcnt++;
+			while (!isspace (*p)) p++;	// Skip the value in command line
+			break;
+
 // Accept a -W switch indicating an alternate working directory.
 
 		case 'W':

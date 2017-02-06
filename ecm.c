@@ -2377,6 +2377,7 @@ int j, min_test, max_test, test, cnt, NUM_X87_TESTS, NUM_SSE2_TESTS, NUM_AVX_TES
 #define timeit(a,n,w) (((void**)a)[0]=w,((uint32_t*)a)[2]=n,gwtimeit(a))
 
 gwinit (&gwdata);
+gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 gwsetup (&gwdata, 1.0, 2, 10000000, -1);
 workbuf = (void *) aligned_malloc (40000000, 4096);
 memset (workbuf, 0, 40000000);
@@ -2464,6 +2465,7 @@ if (w->n == 606) {
 		}
 
 		gwinit (&gwdata);
+ 		gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 		start_timer (timers, 0);
 		gwsetup (&gwdata, k, b, n, c);
 		end_timer (timers, 0);
@@ -2538,6 +2540,8 @@ for ( ; ; ) {
 /* Setup the gwnum assembly code */
 
 	gwinit (&ecmdata.gwdata);
+//	gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
+	gwset_num_threads (&ecmdata.gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 	gwset_sum_inputs_checking (&ecmdata.gwdata, SUM_INPUTS_ERRCHK);
 	gwset_num_threads (&ecmdata.gwdata, THREADS_PER_TEST[thread_num]);
 	gwset_thread_callback (&ecmdata.gwdata, SetAuxThreadPriority);
@@ -4680,6 +4684,7 @@ restart:
 /* Setup the assembly code */
 
 	gwinit (&pm1data.gwdata);
+ 	gwset_num_threads (&pm1data.gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 	gwset_sum_inputs_checking (&pm1data.gwdata, SUM_INPUTS_ERRCHK);
 	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0))
 		gwset_use_large_pages (&pm1data.gwdata);

@@ -1,0 +1,2 @@
+3*2^1201046-1 is prime! (361552 decimal digits)  Time : 925.018 sec.
+3*2^1201046-1 is prime! (361552 decimal digits)  Time : 552.464 sec.

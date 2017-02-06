@@ -6,27 +6,27 @@
 --------------------Configuration: LLR - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr38hsrc\llr\Prime95.rc"" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP405.tmp" with contents
+Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr38isrc\llr\Prime95.rc"" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP47.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /I "..\\" /I "..\gwnum\\" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
-"I:\D\Jean\LLR\llr38hsrc\llr\AffinityDlg.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\ContentsDlg.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\CpuDlg.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\EditDropFiles.cpp"
-"I:\D\Jean\LLR\llr38hsrc\kronecker.c"
-"I:\D\Jean\LLR\llr38hsrc\llr\MainFrm.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\PreferencesDlg.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\Prime95.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\Prime95Doc.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\Prime95View.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\Priority.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\service.c"
-"I:\D\Jean\LLR\llr38hsrc\llr\StdAfx.cpp"
-"I:\D\Jean\LLR\llr38hsrc\llr\TestDlg.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\AffinityDlg.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\ContentsDlg.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\CpuDlg.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\EditDropFiles.cpp"
+"I:\D\Jean\LLR\llr38isrc\kronecker.c"
+"I:\D\Jean\LLR\llr38isrc\llr\MainFrm.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\PreferencesDlg.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\Prime95.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\Prime95View.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\Priority.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\service.c"
+"I:\D\Jean\LLR\llr38isrc\llr\StdAfx.cpp"
+"I:\D\Jean\LLR\llr38isrc\llr\TestDlg.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP405.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP406.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP47.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP48.tmp" with contents
 [
 gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /out:"Release/LLR.exe" /libpath:"..\gwnum\\" 
 .\Release\AffinityDlg.obj
@@ -47,7 +47,7 @@ gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map
 .\factor32lp.obj
 .\Release\Prime95.res
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP406.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP48.tmp"
 <h3>Output Window</h3>
 Compiling resources...
 Compiling...
