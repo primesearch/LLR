@@ -1000,6 +1000,7 @@ void save_IniFile (char *filename, char *savedfilename) {
 	p->filename = filename;				// Restore the structure in memory.
 }
 
+/*
 void truncated_strcpy (
 	char	*buf,
 	unsigned int bufsize,
@@ -1012,6 +1013,7 @@ void truncated_strcpy (
 		strcpy (buf, val);
 	}
 }
+*/
 
 void IniGetString (
 	char	*filename,
@@ -14418,7 +14420,7 @@ int primeContinue ()
 /* Handle a sieving program output file */
 
 	if (work == 0) {
-	    char	inputfile[80], outputfile[80], cmaxroundoff[10], cpcfftlim[10], sgk[sgkbufsize], buff[sgkbufsize+256];
+	    char	inputfile[80], outputfile[80], oldinputfile[80], cmaxroundoff[10], cpcfftlim[10], sgk[sgkbufsize], buff[sgkbufsize+256];
 		char	hbuff[sgkbufsize+256], outbuf[sgkbufsize+256], last_processed_k[sgkbufsize+256], sstart[1000], sstop[1000];
 	    FILE *fd;
 	    unsigned long i, chainlen, n, nfudge, nn;
@@ -14427,6 +14429,7 @@ int primeContinue ()
 	    char c;
 
 	    IniGetString (INI_FILE, "PgenInputFile", inputfile, IBSIZE, NULL);
+	    IniGetString (INI_FILE, "OldInputFile", oldinputfile, IBSIZE, NULL);
 	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, IBSIZE, NULL);
 	    IniGetString (INI_FILE, "MaxRoundOff", cmaxroundoff, 5, "0.40");
 	    IniGetString (INI_FILE, "PercentFFTLimit", cpcfftlim, 5, "0.50");
@@ -14434,7 +14437,10 @@ int primeContinue ()
 //		IniWriteString(INI_FILE, "SpecialCommand", NULL);
 		maxroundoff = atof (cmaxroundoff);
 		pcfftlim = atof (cpcfftlim);
-	    firstline = IniGetInt (INI_FILE, "PgenLine", 1);
+		if (!strcmp (inputfile, oldinputfile))
+			firstline = IniGetInt (INI_FILE, "PgenLine", 1);		// Continuing on the same file
+		else
+			firstline = 1;											// Processing a new file
 		last_processed_n = (unsigned long)IniGetInt(INI_FILE, "Last_Processed_n", 0);
 		IniGetString(INI_FILE, "Last_Processed_k",last_processed_k, sgkbufsize, NULL);
 	    hline = IniGetInt (INI_FILE, "HeaderLine", 0);
@@ -15937,6 +15943,7 @@ done:
 		}
 		if ((!rising_ns && !rising_ks) || (rising_ns && rising_ks))
 			fclose (fd);
+		IniWriteString(INI_FILE, "OldInputFile", inputfile);		// Save the just processed input file name.
 	}						// End Work == 0
 
 // Handle an expr

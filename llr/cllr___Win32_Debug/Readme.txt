@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.18 !
+		Welcome to LLR program Version 3.8.20 !
 
 
 1) Main features :
@@ -22,8 +22,9 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (28.8) of George Woltman's Gwnum
+  This version uses the last release version (28.13) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
+  A bug that affected tests using multithreading and FMA3 has been fixed.
   A bug has been fixed in 28.6 version, and a related new issue in 28.7 : 
   They affected only tests on a CPU which supports AVX code, and, indeed, 
   if this feature was activated. This bug existed in gwnum versions 27.1
@@ -70,7 +71,7 @@
 
   - To improve reliability, error checking may now be forced, if the program
   is working near the current FFT limit. This feature may be adjusted by using
-  the option -oPercentFFTLimit=dd.d, the default value beeing 0.5 ; note that
+  the option -oPercentFFTLimit=dd.d, the default value being 0.5 ; note that
   setting echk to one is generally not much time consuming : typically 5% more.
   Also, this feature may be wiped out by setting PercentFFTLimit to 0.0!
 
@@ -271,7 +272,7 @@
 	- ABC$a*$b^$a$c : (Generalized) Cullen/Woodall candidates
 	- ABC(2^$a$b)^2-2 : near-square (ex-Carol/Kynea) candidates
 	- ABC$a$b$c : Used to launch a Wieferich prime search, 
-	  the range beeing $b to $b and the base $c (new feature!)
+	  the range being $b to $b and the base $c (new feature!)
 	- ABC$a$b : Used to test a Wieferich prime candidate $a, base $b
 	- ABC$a : General APR-CL primality test of number $a
 

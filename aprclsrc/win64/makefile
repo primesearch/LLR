@@ -4,7 +4,7 @@
 D = ../
 
 CC = gcc
-CFLAGS = -I../ -O2
+CFLAGS = -I../ -O2 -DX86_64
 sources = $(D)/aprcl.c $(D)/mpz_aprcl.c
 LIBS = libgmp.a
 EXE = aprcl.exe

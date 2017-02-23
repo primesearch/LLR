@@ -16,7 +16,7 @@
 | threads IF AND ONLY IF each uses a different gwhandle structure
 | initialized by gwinit.
 | 
-|  Copyright 2002-2015 Mersenne Research, Inc.  All rights reserved.
+|  Copyright 2002-2017 Mersenne Research, Inc.  All rights reserved.
 +---------------------------------------------------------------------*/
 
 #ifndef _GWNUM_H
@@ -53,15 +53,16 @@ typedef double *gwnum;
 +---------------------------------------------------------------------*/
 
 /* This is the version number for the gwnum libraries. It changes whenever */
-/* there is a change to the gwnum code and will match the corresponding */
-/* prime95 version.  Thus, you may see some strange jumps in version */
-/* numbers.  This version number is also embedded in the assembly code and */
+/* there is a change to the gwnum code.  Since Prime95 also uses the same */
+/* version numbering scheme, you will see some strange jumps in gwnum version */
+/* numbers when there are new prime95 versions without any changes in the gwnum code. */
+/* This version number is also embedded in the assembly code and */
 /* gwsetup verifies that the version numbers match.  This prevents bugs */
 /* from accidentally linking in the wrong gwnum library. */
 
-#define GWNUM_VERSION		"28.8"
+#define GWNUM_VERSION		"28.13"
 #define GWNUM_MAJOR_VERSION	28
-#define GWNUM_MINOR_VERSION	8
+#define GWNUM_MINOR_VERSION	13
 
 /* Error codes returned by the three gwsetup routines */
 
@@ -900,7 +901,7 @@ struct gwhandle_struct {
 					/* the gwnum library user set auxiliary thread priority and affinity */
 	void	*thread_callback_data;	/* User-supplied data to pass to the auxiliary thread callback routine */
 	unsigned int num_active_threads; /* Count of the number of active auxiliary threads */
-	gwmutex	thread_lock;		/* This mutex allows limits one thread at a time in critical sections. */
+	gwmutex	thread_lock;		/* This mutex limits one thread at a time in critical sections. */
 	gwevent	thread_work_to_do;	/* This event is set whenever the auxiliary threads have work to do. */
 	gwevent	all_threads_done;	/* This event is set whenever the auxiliary threads are done and the */
 					/* main thread can resume.  That is, it is set if and only if num_active_threads==0 */

@@ -3,7 +3,7 @@
 |
 | This file contains handy #defines that I use in all my projects
 | 
-|  Copyright 2005-2014 Mersenne Research, Inc.
+|  Copyright 2005-2016 Mersenne Research, Inc.
 |  All Rights Reserved.
 +---------------------------------------------------------------------*/
 
@@ -38,6 +38,12 @@
 #define ASSERTG(a)
 #endif
 
+/* Bit manipulation macros */
+
+#define bitset(a,i)	{ ((char *)a)[(i) >> 3] |= (1 << ((i) & 7)); }
+#define bitclr(a,i)	{ ((char *)a)[(i) >> 3] &= ~(1 << ((i) & 7)); }
+#define bittst(a,i)	(((char *)a)[(i) >> 3] & (1 << ((i) & 7)))
+
 /* Define a "safe" strcpy.  The official C runtime library says that overlapping */
 /* buffers produce undefined results.  This safe strcpy allows overlapping */
 /* buffers by using memmove instead. */
@@ -47,10 +53,5 @@
 #undef strcpy
 #define strcpy(d,s)	assert((d) >= ((s)+strlen(s)+1) || (s) >= (d)+strlen(s)+1), safe_strcpy(d,s)
 #endif
-
-/* Utility routines in commonc.c */
-
-void truncated_strcpy (char *buf, unsigned int bufsize, const char *val);
-void truncated_strcpy_with_len (char *buf, unsigned int bufsize, const char *val, unsigned int valsize);
 
 #endif

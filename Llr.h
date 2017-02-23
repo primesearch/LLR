@@ -3,8 +3,8 @@
 
 /* Constants */
 
-#define LLR_VERSION		"3.8.18"
-#define LLR_VERSIONC	3,8,18
+#define LLR_VERSION		"3.8.20"
+#define LLR_VERSIONC	3,8,20
 
 /* Global variables */
 
@@ -166,6 +166,7 @@ EXTERNC int pfactor64();
 
 EXTERNC void* aligned_malloc (unsigned long, unsigned long);
 EXTERNC void  aligned_free (void *);
+EXTERNC void  truncated_strcpy (char*, unsigned long, const char*);
 
 
 /* Routines called by common routines */

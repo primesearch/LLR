@@ -288,7 +288,7 @@ void help_about ()
 	printf ("(Copyright 1996-2015 Just For Fun Software, Inc.\n");
 	printf ("Author: George Woltman\n");
 	printf ("Email:  woltman@alum.mit.edu)\n");
-	printf ("Written : April 20015 by Jean Penne\n");
+	printf ("Written : February 20017 by Jean Penne\n");
 	printf ("Email : jpenne@free.fr\n");
 	askOK ();
 }

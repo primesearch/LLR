@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.17 !
+		Welcome to LLR program Version 3.8.20 !
 
 
 1) Main features :
@@ -7,6 +7,8 @@
   LLR is a primality proving program for numbers of the form N = k*b^n +/- 1,
   (k < b^n), or numbers which can be rewritten in this form, like 
   Gaussian-Mersenne norms or b^n-b^m +/- 1 with n>m (new feature).
+  The identity Phi(3,-X) = X^2-X+1 is now used with X=b^n to search for
+  Generalized Unique Primes.
 
   It can also do strong and efficient PRP tests on more general k*b^n+c forms,
   on Wagstaff numbers (2^p+1)/3, repunits (10^p-1)/9 and generalized repunits
@@ -20,8 +22,9 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (28.8) of George Woltman's Gwnum
+  This version uses the last release version (28.13) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
+  A bug that affected tests using multithreading and FMA3 has been fixed.
   A bug has been fixed in 28.6 version, and a related new issue in 28.7 : 
   They affected only tests on a CPU which supports AVX code, and, indeed, 
   if this feature was activated. This bug existed in gwnum versions 27.1
@@ -37,6 +40,10 @@
 
   LLR can run on all machines where gwnum code can run, so, on all Intel x86
   compatible machines.
+
+  The MULTITHREADING can now be used by setting -t<number> or 
+  -oThreadsPerTest=<number> in the command line. Many thanks to
+  Serge Batalov who showed me how simple it was to implement this feature!
 
   11/02/16 : Three new features has been added in the small primes ranges
   (< 1000 digits), all of them using the GNU-MP library and the APR-CL codes :
@@ -64,7 +71,7 @@
 
   - To improve reliability, error checking may now be forced, if the program
   is working near the current FFT limit. This feature may be adjusted by using
-  the option -oPercentFFTLimit=dd.d, the default value beeing 0.5 ; note that
+  the option -oPercentFFTLimit=dd.d, the default value being 0.5 ; note that
   setting echk to one is generally not much time consuming : typically 5% more.
   Also, this feature may be wiped out by setting PercentFFTLimit to 0.0!
 
@@ -188,11 +195,14 @@
 
 6) Options used to change a default value :
 
+    ThreadsPerTest=<number> or -t<number> : (default is 1).
     OutputIterations=<number> : Nb. of iters between outputs (def. 10,000).
     DiskWriteTime=<number> : Time elapsed between disk savings (def. 30mn.).
     FBase=<number> : The base for the Fermat PRP test (default is 3).
     PBase=<number> : The starting P value for a Lucas test (default is 3).
     MaxRestarts=<number> : Max. restarts of an N+1 or N-1 test (default 10).
+    MaxN=<number> : Stop the batch when this exponent value is reached...
+    NoLresultFile=1 : Suppress the recording of the result file...
     - There are several other values you have almost no reason to change...
 
 7) More special options :
@@ -262,7 +272,7 @@
 	- ABC$a*$b^$a$c : (Generalized) Cullen/Woodall candidates
 	- ABC(2^$a$b)^2-2 : near-square (ex-Carol/Kynea) candidates
 	- ABC$a$b$c : Used to launch a Wieferich prime search, 
-	  the range beeing $b to $b and the base $c (new feature!)
+	  the range being $b to $b and the base $c (new feature!)
 	- ABC$a$b : Used to test a Wieferich prime candidate $a, base $b
 	- ABC$a : General APR-CL primality test of number $a
 
