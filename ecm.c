@@ -10,7 +10,7 @@
  *	Other important ideas courtesy of Peter Montgomery.
  *
  *	c. 1997 Perfectly Scientific, Inc.
- *	c. 1998-2015 Mersenne Research, Inc.
+ *	c. 1998-2017 Mersenne Research, Inc.
  *	All Rights Reserved.
  *
  *************************************************************/
@@ -41,161 +41,9 @@ int	QA_IN_PROGRESS = FALSE;
 int	QA_TYPE = 0;
 giant	QA_FACTOR = NULL;
 
-/**************************/
-/* Prime utility routines */
-/**************************/
-
-/* Bit manipulation macros */
-
-#define bitset(a,i)	{ a[(i) >> 3] |= (1 << ((i) & 7)); }
-#define bitclr(a,i)	{ a[(i) >> 3] &= ~(1 << ((i) & 7)); }
-#define bittst(a,i)	(a[(i) >> 3] & (1 << ((i) & 7)))
-
-/* Use a simple sieve to find prime numbers */
-
-#define MAX_PRIMES	6542		/* Num primes < 2^16 */
-typedef struct {
-	unsigned int *primes;
-	uint64_t first_number;
-	unsigned int bit_number;
-	unsigned int num_primes;
-	uint64_t start;
-	char	array[4096];
-} sieve_info;
-
-/* Fill up the sieve array */
-
-void fill_sieve (
-	sieve_info *si)
-{
-	unsigned int i, fmax;
-
-/* Determine the first bit to clear */
-
-	fmax = (unsigned int)
-		sqrt ((double) (si->first_number + sizeof (si->array) * 8 * 2));
-	for (i = si->num_primes; i < MAX_PRIMES * 2; i += 2) {
-		unsigned long f, r, bit;
-		f = si->primes[i];
-		if (f > fmax) break;
-		if (si->first_number == 3) {
-			bit = (f * f - 3) >> 1;
-		} else {
-			r = (unsigned long) (si->first_number % f);
-			if (r == 0) bit = 0;
-			else if (r & 1) bit = (f - r) / 2;
-			else bit = (f + f - r) / 2;
-			if (f == si->first_number + 2 * bit) bit += f;
-		}
-		si->primes[i+1] = bit;
-	}
-	si->num_primes = i;
-
-/* Fill the sieve with ones, then zero out the composites */
-
-	memset (si->array, 0xFF, sizeof (si->array));
-	for (i = 0; i < si->num_primes; i += 2) {
-		unsigned int f, bit;
-		f = si->primes[i];
-		for (bit = si->primes[i+1];
-		     bit < sizeof (si->array) * 8;
-		     bit += f)
-			bitclr (si->array, bit);
-		si->primes[i+1] = bit - sizeof (si->array) * 8;
-	}
-	si->bit_number = 0;
-}
-
-/* Start sieve by filling in sieve info structure */
-
-int start_sieve (
-	sieve_info *si,
-	int	thread_num,	 
-	uint64_t start)
-{
-	unsigned int i;
-
-/* Remember starting point (in case its 2) and make real start odd */
-
-	if (start < 2) start = 2;
-	si->start = start;
-	start |= 1;
-
-/* See if we can just reuse the existing sieve */
-
-	if (si->first_number &&
-	    start >= si->first_number &&
-	    start < si->first_number + sizeof (si->array) * 8 * 2) {
-		si->bit_number = (unsigned int) (start - si->first_number) / 2;
-		return (0);
-	}
-
-/* Initialize sieve */
-
-	if (si->primes == NULL) {
-		unsigned int f;
-		si->primes = (unsigned int *)
-			     malloc (MAX_PRIMES * 2 * sizeof (unsigned int));
-		if (si->primes == NULL) goto oom;
-		for (i = 0, f = 3; i < MAX_PRIMES * 2; f += 2)
-			if (isPrime (f)) si->primes[i] = f, i += 2;
-	}
-
-	si->first_number = start;
-	si->num_primes = 0;
-	fill_sieve (si);
-	return (0);
-
-/* Out of memory exit path */
-
-oom:	return (OutOfMemory (thread_num));
-}
-
-/* Return next prime from the sieve */
-
-uint64_t sieve (
-	sieve_info *si)
-{
-	if (si->start == 2) {
-		si->start = 3;
-		return (2);
-	}
-	for ( ; ; ) {
-		unsigned int bit;
-		if (si->bit_number == sizeof (si->array) * 8) {
-			si->first_number += 2 * sizeof (si->array) * 8;
-			fill_sieve (si);
-		}
-		bit = si->bit_number++;
-		if (bittst (si->array, bit))
-			return (si->first_number + 2 * bit);
-	}
-}
-
-/* Return next prime from the sieve */
-
-void end_sieve (
-	sieve_info *si)
-{
-	free (si->primes);
-}
-
-/* Simple routine to determine if two numbers are relatively prime */
-
-int relatively_prime (
-	unsigned long i,
-	unsigned long D)
-{
-	unsigned long f;
-	for (f = 3; f * f <= i; f += 2) {
-		if (i % f != 0) continue;
-		if (D % f == 0) return (FALSE);
-		do {
-			i = i / f;
-		} while (i % f == 0);
-	}
-	return (i == 1 || D % i != 0);
-}
+/********************/
+/* Utility routines */
+/********************/
 
 /* Test if N is a probable prime */
 /* Compute i^(N-1) mod N for i = 3,5,7 */
@@ -260,7 +108,7 @@ typedef struct {
 	gwnum	*pool_values;	/* Array of values to normalize */
 	gwnum	*poolz_values;	/* Array of z values we are normalize */
 	unsigned long modinv_count; /* Stats - count of modinv calls */
-	sieve_info si;
+	void	*sieve_info;
 } ecmhandle;
 
 /* Perform cleanup functions. */
@@ -274,7 +122,7 @@ void ecm_cleanup (
 	free (ecmdata->mQx); 
 	free (ecmdata->pairings);
 	gwdone (&ecmdata->gwdata);
-	end_sieve (&ecmdata->si);
+	end_sieve (ecmdata->sieve_info);	
 	memset (ecmdata, 0, sizeof (ecmhandle));
 }
 
@@ -1032,6 +880,63 @@ int setN (
 	bits = (unsigned long) (w->n * log ((double) w->b) / log ((double) 2.0));
 	*N = allocgiant ((bits >> 5) + 5);
 	if (*N == NULL) return (OutOfMemory (thread_num));
+
+/* This special code comes from Serge Batalov */
+
+	if (IniGetInt (INI_FILE, "PhiExtensions", 0) &&
+	    w->k == 1.0 && w->b == 2 && w->c == -1) {		/*=== this input means Phi(n,2) with n semiprime ===*/
+		unsigned int i,k,q,knownSmallMers[] = {3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607, 1279, 2203, 2281, 3217,
+						       4253, 4423, 9689, 9941, 11213, 19937, 999999999}; /* for now, just the cases where w->n = p * q, and 2^q-1 is prime */
+		for (i=0; (q=knownSmallMers[i]) < w->n || q*q <= w->n; i++) if ((w->n%q) == 0) {
+			giant tmp = allocgiant ((bits >> 5) + 5);
+			if (!tmp) return (OutOfMemory (thread_num));
+			ultog (1, tmp);
+			ultog (1, *N);
+			gshiftleft (w->n-w->n/q, *N);
+			for (k=2; k < q; k++) {
+				gshiftleft (w->n/q, tmp);
+				addg (tmp, *N);
+			}
+			iaddg (1, *N);
+			if (q != w->n/q) {
+				ultog (w->b, tmp);
+				power (tmp, w->n/q);
+				iaddg (w->c, tmp);
+				divg (tmp, *N);
+			}
+			free (tmp);
+			/* w->forced_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
+			if (!w->known_factors || !strcmp (w->known_factors, "1")) {
+				p = sprintf (buf, "M%lu", w->n/q); if(q != w->n/q) p += sprintf (buf+p, "/M%d", q);
+				w->known_factors = (char *) malloc (p+1);
+				memcpy (w->known_factors, buf, p+1);
+			}
+			return (0);
+		}
+        }
+
+	if (IniGetInt (INI_FILE, "PhiExtensions", 0) &&
+	    w->k == 1.0 && abs(w->c) == 1 && (w->n%3) == 0) {		/*=== this input means Phi(3,-b^(n/3)) ===*/
+		giant	tmp = allocgiant ((bits >> 5) + 5);
+		if (tmp == NULL) return (OutOfMemory (thread_num));
+		ultog (w->b, tmp);
+		power (tmp, w->n/3);
+		gtog (tmp, *N);
+		squareg (*N);
+		if (w->c == 1) subg (tmp, *N); else addg (tmp, *N);
+		iaddg (1, *N);
+		free (tmp);
+		/* w->forced_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
+		if (!w->known_factors) {
+			p = sprintf (buf, "(%lu^%lu%+ld)", w->b, w->n/3, w->c);
+			w->known_factors = (char *) malloc (p+1);
+			memcpy (w->known_factors, buf, p+1);
+		}
+		return (0);
+	}
+
+/* Standard code for working on k*b^n+c */
+
 	ultog (w->b, *N);
 	power (*N, w->n);
 	dblmulg (w->k, *N);
@@ -1213,7 +1118,7 @@ oom:	return (OutOfMemory (thread_num));
 /* returned in factor.  Function returns stop_reason if it was */
 /* interrupted by an escape. */
 
-int modinv (
+int ecm_modinv (
 	ecmhandle *ecmdata,
 	gwnum	b,
 	giant	N,			/* Number we are factoring */
@@ -1288,7 +1193,7 @@ int grouped_modinv (
 
 /* Handle group of 1 as a special case */
 
-	if (size == 1) return (modinv (ecmdata, *b, N, factor));
+	if (size == 1) return (ecm_modinv (ecmdata, *b, N, factor));
 
 /* Handle an odd size */
 
@@ -1350,7 +1255,7 @@ int normalize (
 
 /* Compute the modular inverse and scale up the first input value */
 
-	stop_reason = modinv (ecmdata, b, N, factor);
+	stop_reason = ecm_modinv (ecmdata, b, N, factor);
 	if (stop_reason) return (stop_reason);
 	if (*factor != NULL) return (0);
 	gwmul (&ecmdata->gwdata, b, a);
@@ -1503,7 +1408,7 @@ int normalize_pool (
 
 /* Compute the modular inverse */
 
-	stop_reason = modinv (ecmdata, ecmdata->pool_modinv_value, N, factor);
+	stop_reason = ecm_modinv (ecmdata, ecmdata->pool_modinv_value, N, factor);
 	if (stop_reason) return (stop_reason);
 	if (*factor != NULL) goto exit;
 
@@ -2248,6 +2153,7 @@ int ecm (
 
 /* Clear pointers to allocated memory */
 
+	memset (&ecmdata, 0, sizeof (ecmhandle));
 	N = NULL;
 	factor = NULL;
 	str = NULL;
@@ -2373,11 +2279,10 @@ return 0;
 if (w->n == 600) {
 gwhandle gwdata;
 void *workbuf;
-int j, min_test, max_test, test, cnt, NUM_X87_TESTS, NUM_SSE2_TESTS, NUM_AVX_TESTS;
+int j, min_test, max_test, test, cnt, NUM_X87_TESTS, NUM_SSE2_TESTS, NUM_AVX_TESTS, NUM_AVX512_TESTS;
 #define timeit(a,n,w) (((void**)a)[0]=w,((uint32_t*)a)[2]=n,gwtimeit(a))
 
 gwinit (&gwdata);
-gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 gwsetup (&gwdata, 1.0, 2, 10000000, -1);
 workbuf = (void *) aligned_malloc (40000000, 4096);
 memset (workbuf, 0, 40000000);
@@ -2387,15 +2292,18 @@ max_test = IniGetInt (INI_FILE, "MaxTest", min_test);
 NUM_X87_TESTS = timeit (gwdata.asm_data, -1, NULL);
 NUM_SSE2_TESTS = timeit (gwdata.asm_data, -2, NULL);
 NUM_AVX_TESTS = timeit (gwdata.asm_data, -3, NULL);
+NUM_AVX512_TESTS = timeit (gwdata.asm_data, -4, NULL);
 //SetThreadPriority (CURRENT_THREAD, THREAD_PRIORITY_TIME_CRITICAL);
-for (j = 0; j < NUM_X87_TESTS + NUM_SSE2_TESTS + NUM_AVX_TESTS; j++) {
+for (j = 0; j < NUM_X87_TESTS + NUM_SSE2_TESTS + NUM_AVX_TESTS + NUM_AVX512_TESTS; j++) {
 	cnt = 0;
 	test = (j < NUM_X87_TESTS ? j :
 		j < NUM_X87_TESTS + NUM_SSE2_TESTS ? 1000 + j - NUM_X87_TESTS :
-			2000 + j - NUM_X87_TESTS - NUM_SSE2_TESTS);
+		j < NUM_X87_TESTS + NUM_SSE2_TESTS + NUM_AVX_TESTS ? 2000 + j - NUM_X87_TESTS - NUM_SSE2_TESTS :
+			3000 + j - NUM_X87_TESTS - NUM_SSE2_TESTS - NUM_AVX_TESTS);
 	if (min_test && (test < min_test || test > max_test)) continue;
 	if (! (CPU_FLAGS & CPU_SSE2) && test >= 1000) break;
 	if (! (CPU_FLAGS & CPU_AVX) && test >= 2000) break;
+	if (! (CPU_FLAGS & CPU_AVX512F) && test >= 3000) break;
 for (i = 1; i <= 50; i++) {
 	start_timer (timers, 0);
 	timeit (gwdata.asm_data, test, workbuf);
@@ -2423,88 +2331,6 @@ return 0;
 }
 #endif
 
-//#define TIMING606
-#ifdef TIMING606
-#ifndef GDEBUG			// These timings should only be done with gwnum compiled with -O2
-if (w->n == 606) {
-	gwhandle gwdata;
-	void *workbuf;
-	int	j;
-
-	RDTSC_TIMING = 12;
-	workbuf = (void *) aligned_malloc (40000000, 4096);
-	for (j = 0; j < 8; j++) {
-		double k; unsigned long b, n; signed long c;
-		int	jj, len;
-		gwnum	g;
-
-		if (j == 0) {
-			k = 1.0; b = 2; n = 1000001; c = -1;
-		}
-		if (j == 1) {
-			k = 1234567654321.0; b = 2; n = 1000001; c = -1;
-		}
-		if (j == 2) {
-			k = 1.0; b = 2; n = 1000001; c = 5599;
-		}
-		if (j == 3) {
-			k = 1234567654321.0; b = 2; n = 1000001; c = 5599;
-		}
-
-		if (j == 4) {
-			k = 1.0; b = 29; n = 205001; c = -1;
-		}
-		if (j == 5) {
-			k = 1234567654321.0; b = 29; n = 205001; c = -1;
-		}
-		if (j == 6) {
-			k = 1.0; b = 29; n = 205001; c = 5599;
-		}
-		if (j == 7) {
-			k = 1234567654321.0; b = 29; n = 205001; c = 5599;
-		}
-
-		gwinit (&gwdata);
- 		gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		start_timer (timers, 0);
-		gwsetup (&gwdata, k, b, n, c);
-		end_timer (timers, 0);
-		sprintf (buf, "gwsetup %s: ", gwmodulo_as_string (&gwdata));
-		print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
-		OutputBoth (thread_num, buf);
-
-		g = gwalloc (&gwdata);
-		start_timer (timers, 0);
-		dbltogw (&gwdata, 55332211.0, g);
-		end_timer (timers, 0);
-		sprintf (buf, "dbltogw: ");
-		print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
-		OutputBoth (thread_num, buf);
-
-		for (jj = 0; jj < 50; jj++) gwsquare (&gwdata, g);
-		start_timer (timers, 0);
-		len = gwtobinary (&gwdata, g, (uint32_t *) workbuf, 500000);
-		end_timer (timers, 0);
-		sprintf (buf, "gwtobinary: ");
-		print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
-		OutputBoth (thread_num, buf);
-
-		start_timer (timers, 0);
-for ( ; ; ) {
-		binarytogw (&gwdata, (uint32_t *) workbuf, len, g);
-}
-		end_timer (timers, 0);
-		sprintf (buf, "binarytogw: ");
-		print_timer (timers, 0, buf, TIMER_NL | TIMER_CLR);
-		OutputBoth (thread_num, buf);
-
-		gwdone (&gwdata);
-	}
-	aligned_free (workbuf);
-	return 0;
-}
-#endif
-#endif
 
 /* Init filename */
 
@@ -2540,10 +2366,10 @@ for ( ; ; ) {
 /* Setup the gwnum assembly code */
 
 	gwinit (&ecmdata.gwdata);
-//	gwset_num_threads (&gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-	gwset_num_threads (&ecmdata.gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 	gwset_sum_inputs_checking (&ecmdata.gwdata, SUM_INPUTS_ERRCHK);
-	gwset_num_threads (&ecmdata.gwdata, THREADS_PER_TEST[thread_num]);
+	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0)) gwset_use_large_pages (&ecmdata.gwdata);
+	if (HYPERTHREAD_LL) sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+	gwset_num_threads (&ecmdata.gwdata, CORES_PER_TEST[thread_num] * sp_info->normal_work_hyperthreads);
 	gwset_thread_callback (&ecmdata.gwdata, SetAuxThreadPriority);
 	gwset_thread_callback_data (&ecmdata.gwdata, sp_info);
 	gwset_safety_margin (&ecmdata.gwdata, IniGetFloat (INI_FILE, "ExtraSafetyMargin", 0.0));
@@ -2631,8 +2457,8 @@ strcpy (buf, "100 adds: ");
 print_timer (timers, 6, buf, TIMER_NL | TIMER_CLR);
 OutputStr (thread_num, buf);
 	start_timer (timers, 7);
-	start_sieve (&ecmdata.si, thread_num, 2);
-	for (i = 0; sieve (&ecmdata.si) < 0xFFFFFFFF; i++);
+	start_sieve (thread_num, 2, &ecmdata.sieve_info);
+	for (i = 0; sieve (ecmdata.sieve_info) < 0xFFFFFFFF; i++);
 	end_timer (timers, 7);
 sprintf (buf, "Sieve: %ld primes found.  ", i);
 print_timer (timers, 7, buf, TIMER_NL | TIMER_CLR);
@@ -2727,9 +2553,9 @@ OutputStr (thread_num, buf);
 
 		if (C > save_C_processed) {
 			dbltogw (&ecmdata.gwdata, 1.0, z);
-			stop_reason = start_sieve (&ecmdata.si, thread_num, save_C_processed);
+			stop_reason = start_sieve (thread_num, save_C_processed, &ecmdata.sieve_info);
 			if (stop_reason) goto exit;
-			prime = sieve (&ecmdata.si);
+			prime = sieve (ecmdata.sieve_info);
 			goto restart3;
 		}
 		
@@ -2784,10 +2610,10 @@ restart1:
 	sprintf (w->stage, "C%ldS1", curve);
 	w->pct_complete = sieve_start * one_over_B;
 	start_timer (timers, 0);
-	stop_reason = start_sieve (&ecmdata.si, thread_num, sieve_start);
+	stop_reason = start_sieve (thread_num, sieve_start, &ecmdata.sieve_info);
 	if (stop_reason) goto exit;
 	for ( ; ; ) {
-		prime = sieve (&ecmdata.si);
+		prime = sieve (ecmdata.sieve_info);
 		if (prime > B) break;
 
 /* Apply as many powers of prime as long as prime^n <= B */
@@ -3201,7 +3027,7 @@ restart3:
 /* 2 FFT per prime continuation - deals with all normalized values */
 
 		if (ecmdata.TWO_FFT_STAGE2) {
-		    for ( ; ; prime = sieve (&ecmdata.si)) {
+		    for ( ; ; prime = sieve (ecmdata.sieve_info)) {
 			if (prime < m) {	/* Do the m-D to m range */
 				i = (unsigned long) (m - prime) >> 1;
 				bitset (ecmdata.pairings, i);
@@ -3220,7 +3046,7 @@ restart3:
 /* 4 FFT per prime continuation - deals with only nQx values normalized */
 
 		else {
-		    for ( ; ; prime = sieve (&ecmdata.si)) {
+		    for ( ; ; prime = sieve (ecmdata.sieve_info)) {
 			if (prime < m) {	/* Do the m-D to m range */
 				i = (unsigned long) (m - prime) >> 1;
 				bitset (ecmdata.pairings, i);
@@ -3639,7 +3465,7 @@ typedef struct {
 	unsigned long E;	/* Suyama's power in stage 2 */
 	gwnum	*nQx;		/* Array of data used in stage 2 */
 	gwnum	*eQx;		/* Array of data used in stage 2 of P-1 */
-	sieve_info si;		/* Prime number sieve */
+	void	*sieve_info;	/* Prime number sieve */
 	uint64_t B_done;	/* We have completed calculating 3^e */
 				/* to this bound #1 */
 	uint64_t B;		/* We are trying to increase bound #1 */
@@ -3687,7 +3513,7 @@ void pm1_cleanup (
 	free (pm1data->eQx);
 	free (pm1data->bitarray);
 	gwdone (&pm1data->gwdata);
-	end_sieve (&pm1data->si);
+	end_sieve (pm1data->sieve_info);
 	memset (pm1data, 0, sizeof (pm1handle));
 }
 
@@ -4447,11 +4273,11 @@ errexit:	pm1data->bitarray_len = 0;
 
 /* Set one bit for each prime between C_start and C */
 
-	stop_reason = start_sieve (&pm1data->si, pm1data->thread_num, pm1data->C_start);
+	stop_reason = start_sieve (pm1data->thread_num, pm1data->C_start, &pm1data->sieve_info);
 	if (stop_reason) goto errexit;
-	for (prime = sieve (&pm1data->si);
+	for (prime = sieve (pm1data->sieve_info);
 	     prime <= pm1data->C;
-	     prime = sieve (&pm1data->si)) {
+	     prime = sieve (pm1data->sieve_info)) {
 		bitset (pm1data->bitarray, bitcvt (prime, pm1data));
 		stop_reason = stopCheck (pm1data->thread_num);
 		if (stop_reason) goto errexit;
@@ -4559,7 +4385,7 @@ void calc_exp (
 
 /* Find all the primes in the range and use as many powers as possible */
 
-	for ( ; *p <= B1 && (unsigned long) g->sign < len; *p = sieve (&pm1data->si)) {
+	for ( ; *p <= B1 && (unsigned long) g->sign < len; *p = sieve (pm1data->sieve_info)) {
 		uint64_t val, max;
 		val = *p;
 		max = B1 / *p;
@@ -4611,6 +4437,7 @@ int pminus1 (
 /* Clear pointers to allocated memory (so common error exit code knows */
 /* what to free) */
 
+	memset (&pm1data, 0, sizeof (pm1handle));
 	N = NULL;
 	exp = NULL;
 	factor = NULL;
@@ -4684,11 +4511,10 @@ restart:
 /* Setup the assembly code */
 
 	gwinit (&pm1data.gwdata);
- 	gwset_num_threads (&pm1data.gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 	gwset_sum_inputs_checking (&pm1data.gwdata, SUM_INPUTS_ERRCHK);
-	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0))
-		gwset_use_large_pages (&pm1data.gwdata);
-	gwset_num_threads (&pm1data.gwdata, THREADS_PER_TEST[thread_num]);
+	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0)) gwset_use_large_pages (&pm1data.gwdata);
+	if (HYPERTHREAD_LL) sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+	gwset_num_threads (&pm1data.gwdata, CORES_PER_TEST[thread_num] * sp_info->normal_work_hyperthreads);
 	gwset_thread_callback (&pm1data.gwdata, SetAuxThreadPriority);
 	gwset_thread_callback_data (&pm1data.gwdata, sp_info);
 	gwset_safety_margin (&pm1data.gwdata, IniGetFloat (INI_FILE, "ExtraSafetyMargin", 0.0));
@@ -4804,9 +4630,9 @@ restart:
 				goto restart2;
 			}
 			if (B < pm1data.B) pm1data.B = B;
-			stop_reason = start_sieve (&pm1data.si, thread_num, processed + 1);
+			stop_reason = start_sieve (thread_num, processed + 1, &pm1data.sieve_info);
 			if (stop_reason) goto exit;
-			prime = sieve (&pm1data.si);
+			prime = sieve (pm1data.sieve_info);
 			goto restart1;
 		}
 
@@ -4910,9 +4736,9 @@ restart0:
 	pm1data.stage = PM1_STAGE0;
 	start_timer (timers, 0);
 	start_timer (timers, 1);
-	stop_reason = start_sieve (&pm1data.si, thread_num, 2);
+	stop_reason = start_sieve (thread_num, 2, &pm1data.sieve_info);
 	if (stop_reason) goto exit;
-	prime = sieve (&pm1data.si);
+	prime = sieve (pm1data.sieve_info);
 	stage_0_limit = (pm1data.B > 1000000) ? 1000000 : pm1data.B;
 	i = ((unsigned long) (stage_0_limit * 1.5) >> 5) + 4;
 	exp = allocgiant (i);
@@ -5051,7 +4877,7 @@ restart1:
 	start_timer (timers, 1);
 	pm1data.stage = PM1_STAGE1;
 	SQRT_B = (unsigned long) sqrt ((double) pm1data.B);
-	for ( ; prime <= pm1data.B; prime = sieve (&pm1data.si)) {
+	for ( ; prime <= pm1data.B; prime = sieve (pm1data.sieve_info)) {
 
 /* Apply as many powers of prime as long as prime^n <= B */
 
@@ -5147,9 +4973,9 @@ restart1:
 
 	if (B > pm1data.B) {
 more_B:		pm1data.B = B;
-		stop_reason = start_sieve (&pm1data.si, thread_num, 2);
+		stop_reason = start_sieve (thread_num, 2, &pm1data.sieve_info);
 		if (stop_reason) goto exit;
-		prime = sieve (&pm1data.si);
+		prime = sieve (pm1data.sieve_info);
 		goto restart1;
 	}
 

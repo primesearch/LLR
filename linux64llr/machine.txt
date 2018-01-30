@@ -1,6 +1,0 @@
-CPU Information:
-AMD Phenom(tm) II X4 965 Processor
-CPU speed: 3411.23 MHz
-CPU features: RDTSC, CMOV, PREFETCH, MMX, SSE, SSE2
-L1 cache size: 64 KB
-L2 cache size: 512 KB

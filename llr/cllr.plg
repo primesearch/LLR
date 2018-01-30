@@ -6,14 +6,14 @@
 --------------------Configuration: cllr - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9A.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPC.tmp" with contents
 [
 /nologo /MT /W3 /GX /Zi /O2 /I "..\..\gwnum" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllr___Win32_Release/cllr.pch" /YX /Fo"cllr___Win32_Release/" /Fd"cllr___Win32_Release/" /FD /c 
-"I:\D\Jean\LLR\llr38ksrc\lmenu.c"
-"I:\D\Jean\LLR\llr38ksrc\lprime.c"
+"I:\D\Jean\LLR\llr38lsrc\lmenu.c"
+"I:\D\Jean\LLR\llr38lsrc\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9A.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9B.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPC.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPD.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllr___Win32_Release/cllr.pdb" /machine:I386 /nodefaultlib:"LIBC" /out:"cllr___Win32_Release/cllr.exe" 
 .\cllr___Win32_Release\lmenu.obj
@@ -22,7 +22,7 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9B.tmp" with cont
 .\factor32lp.obj
 ..\gwnum\gwnum.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9B.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPD.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c

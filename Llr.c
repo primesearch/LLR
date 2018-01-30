@@ -5047,7 +5047,7 @@ int isexpdiv (
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
 		if (bitval (N, bitpos = Nlen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
@@ -5710,7 +5710,7 @@ Frobeniusresume:
 
 /* Process this bit */
 
-//			gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
+//			gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
 			if (bitv = bitval (tmp3, Nlen-bit-1)) {
 				gwsetnormroutine (gwdata, 0, echk, 1);
@@ -6105,7 +6105,7 @@ int commonPRP (
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
 		if (bitval (tmp2, bitpos = Nlen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
@@ -6527,7 +6527,7 @@ int commonCC1P (
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
 		if (bitval (exponent, Nlen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
@@ -6904,7 +6904,7 @@ int commonCC2P (
 /* Process this bit */
 
 		gwsetnormroutine (gwdata, 0, echk, 0);
-//		gwstartnextfft (postfft && !debug && !stopping && !saving && (bit+26 < Nlen) && (bit > 26));
+//		gwstartnextfft (postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26));
 
 		gwstartnextfft (gwdata, FALSE);
 
@@ -8875,7 +8875,7 @@ int Lucasequence (
 
 /* Process this bit */
 
-//		gwstartnextfft (postfft && !debug && !stopping && !saving && (bit+26 < explen) && (bit > 26));
+//		gwstartnextfft (postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < explen) && (bit > 26));
 
 		gwsetnormroutine (gwdata, 0, echk, 0);
 		gwstartnextfft (gwdata, FALSE);
@@ -9952,7 +9952,7 @@ PLMCONTINUE:
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && (bit+26 < explen) && (bit > 26) && !maxerr_recovery_mode[6]);
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < explen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
 		if (bitval (tmp, explen-bit-1)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
@@ -10832,6 +10832,20 @@ restart:
 				OutputBoth(buf);
 			else
 				OutputStr(buf);
+                        if (showdigits)
+                                sprintf (buf, "Starting Lucas Lehmer prime test of %s (%lu decimal digits)\n", str, nbdg);
+                        else
+                                sprintf (buf, "Starting Lucas Lehmer prime test of %s\n", str);
+                        if (verbose)
+                            OutputBoth(buf);
+                        else
+                            OutputStr (buf); 
+			gwfft_description (gwdata, fft_desc);
+			sprintf (buf, "%s\n", fft_desc);
+                        if (verbose)
+                            OutputBoth(buf);
+                        else
+                            OutputStr (buf); 
 			v1 = 4;
 			dbltogw (gwdata, (double) v1, x);
 			clear_timers ();		// Init. timers
@@ -11148,11 +11162,11 @@ restart:
 		_unlink (filename);	/* Remove the save file */
 	    filename[0] = 'z';	/* restore filename which was modified... */
 		lasterr_point = 0;	// Reset last error point.
-
-MERSENNE:
 	    sprintf (buf, "Starting Lucas-Lehmer loop..."); 
 	    OutputStr (buf); 
-		LineFeed();
+            LineFeed();
+
+MERSENNE:
 		j = 1;
 	} 
 
@@ -11182,7 +11196,7 @@ MERSENNE:
 
 		gwsetnormroutine (gwdata, 0, echk, 0);
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving &&  !((interimFiles && (j+1) % interimFiles == 0)) &&
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && j != lasterr_point &&  !((interimFiles && (j+1) % interimFiles == 0)) &&
 			!(interimResidues && ((j+1) % interimResidues < 2)) && 
 			(j >= 30) && (j < last - 31) && !maxerr_recovery_mode[6]); 
 
@@ -11564,9 +11578,7 @@ int isProthP (
 		gk = newgiant ((gksize >> 4)  + 8);	// Allocate space for gk
 		ctog (sgk, gk);						// Convert k string to giant
 	}
-
 	klen = bitlen(gk);					// Length of initial k multiplier
-
 	if (klen > 53 || generic) {			// we must use generic reduction
 		dk = 0.0;
 	}
@@ -11608,7 +11620,6 @@ int isProthP (
 	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
-
 	setone (N);
 	gshiftleft (n, N);
 	mulg (gk, N); 
@@ -11908,7 +11919,7 @@ restart:
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && !((interimFiles && (bit+1) % interimFiles == 0)) &&
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && !((interimFiles && (bit+1) % interimFiles == 0)) &&
 			!(interimResidues && ((bit+1) % interimResidues < 2)) && 
 			(bit >= 30) && (bit < Nlen-31) && !maxerr_recovery_mode[6]);
 
@@ -12996,7 +13007,7 @@ restart:
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && !((interimFiles && (bit+1) % interimFiles == 0)) &&
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && !((interimFiles && (bit+1) % interimFiles == 0)) &&
 			!(interimResidues && ((bit+1) % interimResidues < 2)) && 
 			(bit >= (30+loopshift)) && (bit < explen-31) && !maxerr_recovery_mode[6]);
 
@@ -13888,7 +13899,7 @@ restart:
 
 /* Process this bit */
 
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && !((interimFiles && (bit+1) % interimFiles == 0)) &&
+		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && !((interimFiles && (bit+1) % interimFiles == 0)) &&
 			!(interimResidues && ((bit+1) % interimResidues < 2)) && 
 			(bit >= 30) && (bit < expx-31) && !maxerr_recovery_mode[6]);
 
@@ -14429,7 +14440,7 @@ int primeContinue ()
 	    char c;
 
 	    IniGetString (INI_FILE, "PgenInputFile", inputfile, IBSIZE, NULL);
-	    IniGetString (INI_FILE, "OldInputFile", oldinputfile, IBSIZE, NULL);
+	    IniGetString (INI_FILE, "OldInputFile", oldinputfile, IBSIZE, inputfile);	// Default it to PgenInputFile! JP 26/02/17
 	    IniGetString (INI_FILE, "PgenOutputFile", outputfile, IBSIZE, NULL);
 	    IniGetString (INI_FILE, "MaxRoundOff", cmaxroundoff, 5, "0.40");
 	    IniGetString (INI_FILE, "PercentFFTLimit", cpcfftlim, 5, "0.50");
@@ -14611,7 +14622,6 @@ OPENFILE :
 				else if (sscanf(pinput, fkpstring, &smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
-
 				}
 				else if (sscanf(pinput, fkmstring, &smallk, &incr) == 2) {
 					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
