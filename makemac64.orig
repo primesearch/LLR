@@ -1,0 +1,25 @@
+# Compile the LLR source files for MacIntel OS X 64 bits architecture
+
+D = ./mac64llr
+
+ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
+
+CC = gcc
+CFLAGS = -I. -I./gwnum -O2 -m64 -DX86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5 -arch x86_64
+
+CPP = g++
+CPPFLAGS = -I. -I./gwnum -O2 -m64 -DX86_64 -isysroot /Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5 -arch x86_64
+
+COMPOBJS = lprime.o lmenu.o
+
+compile: $(COMPOBJS)
+	mv $(COMPOBJS) $(D)
+
+lprime.o: lprime.c
+	$(ENVP) $(CC) $(CFLAGS) -c lprime.c
+
+lmenu.o: lmenu.c
+	$(ENVP) $(CC) $(CFLAGS) -c lmenu.c
+
+.cpp.o:
+	$(ENVP) $(CPP) $(CPPFLAGS) -c $<

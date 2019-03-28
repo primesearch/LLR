@@ -2,14 +2,14 @@
 #
 
 CC = gcc
-CFLAGS = -I.. -O2 -march=i486 -malign-double
+CFLAGS = -I.. -I../sqlite-amalgamation-3180000 -DSQLITE_OMIT_LOAD_EXTENSION -Wno-unused-result -march=i486 -malign-double -O2
 
 CPP = g++
 CPPFLAGS = -I.. -I../qd -O2 -march=i486 -malign-double
 
 AR = ar
 
-OBJS = cpuid.o gwnum.o gwtables.o gwthread.o gwini.o gwutil.o gwdbldbl.o giants.o ecmstag1.o
+OBJS = cpuid.o gwnum.o gwtables.o gwthread.o gwini.o gwbench.o gwutil.o gwdbldbl.o giants.o ecmstag1.o
 
 LIB = gwnum.a
 

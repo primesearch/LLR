@@ -3,7 +3,7 @@
 ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 
 CC = gcc
-LFLAGS = -Wl,-syslibroot,/Developer/SDKs/MacOSX10.5.sdk -mmacosx-version-min=10.5 -arch i386
+LFLAGS = -Wl -mmacosx-version-min=10.5 -arch i386
 LIBMAC = ../gwnum/release/gwnum.a
 LIBS   = $(LIBMAC) ./libgmp.a -lm -lstdc++
 LIBS2  = $(LIBMAC) ./libgmp.a -lm -lstdc++ -static

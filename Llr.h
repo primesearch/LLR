@@ -3,8 +3,8 @@
 
 /* Constants */
 
-#define LLR_VERSION		"3.8.21"
-#define LLR_VERSIONC	3,8,21
+#define LLR_VERSION		"3.8.22"
+#define LLR_VERSIONC	3,8,22
 
 /* Global variables */
 
@@ -117,29 +117,34 @@ void getCpuInfo ();
  
 int isPrime (unsigned long p);
 
-void nameIniFiles (int named_ini_files);
+
+#include "gwnum/gwini.h"
+
+struct IniCache {						// defined in gwini.c but not in gwini.h
+	char	*filename;
+	int	immediate_writes;
+	int	dirty;
+	unsigned int num_lines;
+	unsigned int array_size;
+	struct IniLine **lines;
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct IniCache *openIniFile (			// defined in gwini.c but not in gwini.h
+	char	*,
+	int);
+void writeIniFile (						// defined in gwini.c but not in gwini.h
+	struct IniCache *);
+void IniFileOpen (char *, int);
+void nameIniFiles (int);
 void readIniFiles ();
 
-void IniGetString (char *, char *, char *, unsigned int, char *);
-long IniGetInt (char *, char *, long);
-void IniWriteString (char *, char *, char *);
-void IniWriteInt (char *, char *, long);
-
-void IniFileOpen (char *, int);
-void processTimedIniFile (char *);
-void IniFileClose (char *);
-unsigned int IniGetNumLines (char *);
-void IniGetLineAsString (char *, unsigned int, char *, unsigned int,
-			 char *, unsigned int);
-void IniGetLineAsInt (char *, unsigned int, char *, unsigned int, long *);
-void IniReplaceLineAsString (char *, unsigned int, char *, char *);
-void IniReplaceLineAsInt (char *, unsigned int, char *, long);
-void IniInsertLineAsString (char *, unsigned int, char *, char *);
-void IniInsertLineAsInt (char *, unsigned int, char *, long);
-void IniAppendLineAsString (char *, char *, char *);
-void IniAppendLineAsInt (char *, char *, long);
-void IniDeleteLine (char *, unsigned int);
-void IniDeleteAllLines (char *);
+#ifdef __cplusplus
+}
+#endif
 
 void OutputBoth (char *);
 void OutputSomewhere (char *);

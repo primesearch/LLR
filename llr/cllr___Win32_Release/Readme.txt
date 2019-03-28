@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.21 !
+		Welcome to LLR program Version 3.8.22 !
 
 
 1) Main features :
@@ -22,7 +22,7 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (28.14) of George Woltman's Gwnum
+  This version uses the last release version (29.6) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
   A multithreading AVX bug due to a misuse of the POSTFFT feature has been
   fixed (28/01/18).

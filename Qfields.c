@@ -334,7 +334,7 @@ int gen_v1(giant k, uint32_t n, int general, int eps2, int debug) {
 
 //		Search if the quadratic unit candidate is the square of the fundamental one.
 
-		if (X=issquare(v-2)) {
+		if ((X=issquare(v-2))) {
 			Y=issquare((v+2)/d);		// Yes,the fundamental unit has norm == -1
 			if (debug) {				// And then, the candidate is already valid,
 				if (X&1 || Y&1) {		// because Jacobi(v-2,N) is +1 and sign is -1
@@ -503,8 +503,8 @@ int genProthBase1(giant N)
 		return (-1);
 }
 
-int genLucasBaseQ(giant N, uint32_t D) {
-	uint32_t NmodD, dred, Nmod8;
+int genLucasBaseQ(giant N, uint32_t D0) {
+	uint32_t D, NmodD, dred, Nmod8;
 	int jNp, chgsign;
 
 //	Return the least D = 1+4*Q such as kronecker (D, N) = -1
@@ -513,7 +513,7 @@ int genLucasBaseQ(giant N, uint32_t D) {
 
 	Nmod8 = N->n[0] & 7;
 
-	for (D; D<=2147483647; D+=4) {
+	for (D=D0; D<=2147483647; D+=4) {
 		dred = D;
 		chgsign = 1;
 		while (!(dred&1)) {
@@ -580,8 +580,8 @@ int isLucasBaseQ(giant N, uint32_t D, int sign) {
 //	}
 }
 
-int genLucasBaseP(giant N, uint32_t P) {
-	uint32_t NmodD, D, dred, Nmod8;
+int genLucasBaseP(giant N, uint32_t P0) {
+	uint32_t P, NmodD, D, dred, Nmod8;
 	int jNp, chgsign;
 
 //	Return the least P such as D = P^2-4 and kronecker (D, N) = -1
@@ -590,7 +590,7 @@ int genLucasBaseP(giant N, uint32_t P) {
 
 	Nmod8 = N->n[0] & 7;
 
-	for (P; P*P<=2147483647; P++) {
+	for (P=P0; P*P<=2147483647; P++) {
 		D = P*P-4;
 		dred = D;
 		chgsign = 1;
@@ -619,8 +619,8 @@ int genLucasBaseP(giant N, uint32_t P) {
 	return (-1);
 }
 
-long generalLucasBase(giant N, uint32_t *P, uint32_t *Q) {
-	uint32_t NmodD, D, dred, Nmod8, NmodPQD, gcdNPQD;
+long generalLucasBase(giant N, uint32_t *P0, uint32_t *Q) {
+	uint32_t *P, NmodD, D, dred, Nmod8, NmodPQD, gcdNPQD;
 	int jNp, chgsign;
 
 //	Return the least D = P^2-4*Q such as kronecker (D, N) = -1
@@ -629,7 +629,7 @@ long generalLucasBase(giant N, uint32_t *P, uint32_t *Q) {
 
 	Nmod8 = N->n[0] & 7;
 
-	for (*P; (*P)*(*P)<=2147483647; (*P)++) {
+	for (P=P0; (*P)*(*P)<=2147483647; (*P)++) {
 		for ((*Q)=2; 4*(*Q)<(*P)*(*P); (*Q)++) {
 			D = (*P)*(*P)-4*(*Q);
 			if ((uint32_t)(floor(sqrt ((double)D)) * floor(sqrt ((double)D))) == D) {

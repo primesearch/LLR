@@ -216,8 +216,7 @@ char	INI_FILE[80] = {0};
 char	SVINI_FILE[80] = {0};
 char	RESFILE[80] = {0};
 char	LOGFILE[80] = {0};
-char	EXTENSION[8] = {0};
-
+char	EXTENSION[8] = {0};;
 int volatile ERRCHK = 0;
 unsigned int PRIORITY = 1;
 unsigned int CPU_AFFINITY = 99;
@@ -773,7 +772,28 @@ int isPrime (
 	return (TRUE);
 }
 
-/* Determine the names of the INI files */
+/*------------------------------------------------------------------------------
+| Portable routines to read and write ini files that are not in gwnum library...
++-------------------------------------------------------------------------------*/
+
+void save_IniFile (char *filename, char *savedfilename) {
+	struct IniCache *p;	
+	p = openIniFile (filename, 1);		// open and read the source IniFile.
+	p->filename = savedfilename;		// put the target filename in the structure.
+	writeIniFile (p);					// Write the target.
+	p->filename = filename;				// Restore the structure in memory.
+}
+
+void IniFileOpen (
+	char	*filename,
+	int	immediate_writes)
+{
+	struct IniCache *p;
+	p = openIniFile (filename, 1);
+	p->immediate_writes = immediate_writes;
+}
+
+// Determine the names of the INI files.
 
 void nameIniFiles (
 	int	named_ini_files)
@@ -793,7 +813,7 @@ void nameIniFiles (
 		sprintf (EXTENSION, ".%03d", named_ini_files);
 	}
 
-/* Let the user rename these files and pick a different working directory */
+// Let the user rename these files and pick a different working directory
 
 	IniGetString (INI_FILE, "WorkingDir", buf, sizeof(buf), NULL);
 	IniGetString (INI_FILE, "results.txt", RESFILE, 80, RESFILE);
@@ -805,7 +825,7 @@ void nameIniFiles (
 	}
 }
 
-/* Read the INI files */
+// Read the INI files.
 
 void readIniFiles () 
 { 
@@ -832,519 +852,17 @@ void readIniFiles ()
 	HIDE_ICON = (int) IniGetInt (INI_FILE, "HideIcon", 0); 
 	TRAY_ICON = (int) IniGetInt (INI_FILE, "TrayIcon", 1); 
  
-/* Guess the CPU type if it isn't known.  Otherwise, validate it. */ 
+// Guess the CPU type if it isn't known.  Otherwise, validate it.
  
 	getCpuInfo (); 
  
-/* Other oddball options */ 
+// Other oddball options
  
 	CUMULATIVE_TIMING = IniGetInt (INI_FILE, "CumulativeTiming", 0); 
 	HIGH_RES_TIMER = isHighResTimerAvailable (); 
 } 
  
-/*----------------------------------------------------------------------
-| Portable routines to read and write ini files!  NOTE:  These only
-| work if you open no more than 5 ini files.  Also you must not
-| change the working directory at any time during program execution.
-+---------------------------------------------------------------------*/
-
-struct IniLine {
-	char	*keyword;
-	char	*value;
-	int	active;
-};
-struct IniCache {
-	char	*filename;
-	int	immediate_writes;
-	int	dirty;
-	unsigned int num_lines;
-	unsigned int array_size;
-	struct IniLine **lines;
-};
-
-void growIniLineArray (
-	struct IniCache *p)
-{
-	struct IniLine **newlines;
-
-	if (p->num_lines != p->array_size) return;
-
-	newlines = (struct IniLine **)
-		malloc ((p->num_lines + 100) * sizeof (struct IniLine **));
-	if (p->num_lines) {
-		memcpy (newlines, p->lines, p->num_lines * sizeof (struct IniLine *));
-		free (p->lines);
-	}
-	p->lines = newlines;
-	p->array_size = p->num_lines + 100;
-}
-
-struct IniCache *openIniFile (
-	char	*filename,
-	int	forced_read)
-{
-static	struct IniCache *cache[10] = {0};
-	struct IniCache *p;
-	FILE	*fd;
-	unsigned int i;
-	char	line[IBSIZE];
-	char	*val;
-
-/* See if file is cached */
-
-	for (i = 0; i < 10; i++) {
-		p = cache[i];
-		if (p == NULL) {
-			p = (struct IniCache *) malloc (sizeof (struct IniCache));
-			p->filename = (char *) malloc (strlen (filename) + 1);
-			strcpy (p->filename, filename);
-			p->immediate_writes = 1;
-			p->dirty = 0;
-			p->num_lines = 0;
-			p->array_size = 0;
-			p->lines = NULL;
-			forced_read = 1;
-			cache[i] = p;
-			break;
-		}
-		if (strcmp (filename, p->filename) == 0)
-			break;
-	}
-
-/* Skip reading the ini file if appropriate */
-
-	if (!forced_read) return (p);
-	if (p->dirty) return (p);
-
-/* Free the data if we've already read some in */
-
-	for (i = 0; i < p->num_lines; i++) {
-		free (p->lines[i]->keyword);
-		free (p->lines[i]->value);
-		free (p->lines[i]);
-	}
-	p->num_lines = 0;
-
-/* Read the IniFile */
-	
-	fd = fopen (filename, "r");
-	if (fd == NULL) return (p);
-
-	while (fgets (line, IBSIZE, fd)) {
-		if (line[strlen(line)-1] == '\n') line[strlen(line)-1] = 0;
-		if (line[0] == 0) continue;
-		if (line[strlen(line)-1] == '\r') line[strlen(line)-1] = 0;
-		if (line[0] == 0) continue;
-
-		val = strchr (line, '=');
-		if (val == NULL) {
-			char	buf[IBSIZE];
-			sprintf (buf, "Illegal line in INI file: %s\n", line);
-			OutputSomewhere (buf);
-			continue;
-		}
-		*val++ = 0;
-
-		growIniLineArray (p);
-		
-/* Allocate and fill in a new line structure */
-
-		i = p->num_lines++;
-		p->lines[i] = (struct IniLine *) malloc (sizeof (struct IniLine));
-		p->lines[i]->keyword = (char *) malloc (strlen (line) + 1);
-		p->lines[i]->value = (char *) malloc (strlen (val) + 1);
-		p->lines[i]->active = TRUE;
-		strcpy (p->lines[i]->keyword, line);
-		strcpy (p->lines[i]->value, val);
-	}
-	fclose (fd);
-
-	return (p);
-}
-
-void writeIniFile (
-	struct IniCache *p)
-{
-	int	fd;
-	unsigned int j;
-//	char	buf[IBSIZE];
-
-/* Delay writing the file unless this INI file is written */
-/* to immediately */
-
-	if (!p->immediate_writes) {
-		p->dirty = 1;
-		return;
-	}
-
-/* Create and write out the INI file */
-
-	fd = _open (p->filename, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_TEXT, 0666);
-	if (fd < 0) return;
-	for (j = 0; j < p->num_lines; j++) {
-		strcpy (inifilebuf, p->lines[j]->keyword);
-		strcat (inifilebuf, "=");
-		strcat (inifilebuf, p->lines[j]->value);
-		strcat (inifilebuf, "\n");
-		writelg = _write (fd, inifilebuf, strlen (inifilebuf));
-	}
-	p->dirty = 0;
-	_close (fd);
-}
-
-void save_IniFile (char *filename, char *savedfilename) {
-	struct IniCache *p;	
-	p = openIniFile (filename, 1);		// open and read the source IniFile.
-	p->filename = savedfilename;		// put the target filename in the structure.
-	writeIniFile (p);					// Write the target.
-	p->filename = filename;				// Restore the structure in memory.
-}
-
-/*
-void truncated_strcpy (
-	char	*buf,
-	unsigned int bufsize,
-	char	*val)
-{
-	if (strlen (val) >= bufsize) {
-		memcpy (buf, val, bufsize-1);
-		buf[bufsize-1] = 0;
-	} else {
-		strcpy (buf, val);
-	}
-}
-*/
-
-void IniGetString (
-	char	*filename,
-	char	*keyword,
-	char	*val,
-	unsigned int val_bufsize,
-	char	*default_val)
-{
-	struct IniCache *p;
-	unsigned int i;
-
-/* Open ini file */
-
-	p = openIniFile (filename, 1);
-
-/* Look for the keyword */
-
-	for (i = 0; ; i++) {
-		if (i == p->num_lines) {
-			if (default_val == NULL) {
-				val[0] = 0;
-			} else {
-				truncated_strcpy (val, val_bufsize, default_val);
-			}
-			return;
-		}
-		if (p->lines[i]->active &&
-		    stricmp (keyword, p->lines[i]->keyword) == 0) break;
-	}
-
-/* Copy info from the line structure to the user buffers */
-
-	truncated_strcpy (val, val_bufsize, p->lines[i]->value);
-}
-
-long IniGetInt (
-	char	*filename,
-	char	*keyword,
-	long	default_val)
-{
-	char	buf[20], defval[20];
-	sprintf (defval, "%ld", default_val);
-	IniGetString (filename, keyword, buf, 20, defval);
-	return (atol (buf));
-}
-
-void IniWriteString (
-	char	*filename,
-	char	*keyword,
-	char	*val)
-{
-	struct IniCache *p;
-	unsigned int i, j;
-
-/* Open ini file */
-	p = openIniFile (filename, 1);
-/* Look for the keyword */
-
-	for (i = 0; ; i++) {
-		if (i == p->num_lines ||
-		    stricmp (p->lines[i]->keyword, "Time") == 0) {
-
-/* Ignore request if we are deleting line */
-
-			if (val == NULL) return;
-
-/* Make sure the line array has room for the new line */
-
-			growIniLineArray (p);
-
-/* Shuffle entries down to make room for this entry */
-
-			for (j = p->num_lines; j > i; j--)
-				p->lines[j] = p->lines[j-1];
-
-/* Allocate and fill in a new line structure */
-
-			p->lines[i] = (struct IniLine *) malloc (sizeof (struct IniLine));
-			p->lines[i]->keyword = (char *) malloc (strlen (keyword) + 1);
-			strcpy (p->lines[i]->keyword, keyword);
-			p->lines[i]->value = NULL;
-			p->num_lines++;
-			break;
-		}
-		if (p->lines[i]->active &&
-		    stricmp (keyword, p->lines[i]->keyword) == 0) {
-			if (val != NULL && strcmp (val, p->lines[i]->value) == 0) return;
-			break;
-		}
-	}
-/* Delete the line if requested */
-
-	if (val == NULL) {
-		IniDeleteLine (filename, i+1);
-		return;
-	}
-/* Replace the value associated with the keyword */
-
-	free (p->lines[i]->value);
-	p->lines[i]->value = (char *) malloc (strlen (val) + 1);
-	strcpy (p->lines[i]->value, val);
-
-/* Write the INI file back to disk */
-	writeIniFile (p);
-}
-
-void IniWriteInt (
-	char	*filename,
-	char	*keyword,
-	long	val)
-{
-	char	buf[20];
-	sprintf (buf, "%ld", val);
-	IniWriteString (filename, keyword, buf);
-}
-
-void IniFileOpen (
-	char	*filename,
-	int	immediate_writes)
-{
-	struct IniCache *p;
-	p = openIniFile (filename, 1);
-	p->immediate_writes = immediate_writes;
-}
-
-void IniFileClose (
-	char	*filename)
-{
-	struct IniCache *p;
-	p = openIniFile (filename, 0);
-	if (p->dirty) {
-		p->immediate_writes = 1;
-		writeIniFile (p);
-		p->immediate_writes = 0;
-	}
-}
-
-int IniFileWritable (
-	char	*filename)
-{
-	struct IniCache *p;
-	int	fd;
-	unsigned int j;
-	char	buf[IBSIZE];
-
-/* Create and write out the INI file */
-
-	p = openIniFile (filename, 0);
-	fd = _open (p->filename, _O_CREAT | _O_TRUNC | _O_WRONLY | _O_TEXT, 0666);
-	if (fd < 0) return (FALSE);
-	for (j = 0; j < p->num_lines; j++) {
-		strcpy (buf, p->lines[j]->keyword);
-		strcat (buf, "=");
-		strcat (buf, p->lines[j]->value);
-		strcat (buf, "\n");
-		if (_write (fd, buf, strlen (buf)) != (int) strlen (buf)) {
-			_close (fd);
-			return (FALSE);
-		}
-	}
-	if (p->num_lines == 0) {
-		if (_write (fd, "DummyLine=XXX\n", 14) != 14) {
-			_close (fd);
-			return (FALSE);
-		}
-		p->dirty = 1;
-	}
-	_close (fd);
-	return (TRUE);
-}
-
-unsigned int IniGetNumLines (
-	char	*filename)
-{
-	struct IniCache *p;
-	p = openIniFile (filename, 0);
-	return (p->num_lines);
-}
-
-void IniGetLineAsString (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	unsigned int keyword_bufsize,
-	char	*val,
-	unsigned int val_bufsize)
-{
-	struct IniCache *p;
-
-/* Open ini file */
-
-	p = openIniFile (filename, 0);
-
-/* Copy info from the line structure to the user buffers */
-
-	truncated_strcpy (keyword, keyword_bufsize, p->lines[line-1]->keyword);
-	truncated_strcpy (val, val_bufsize, p->lines[line-1]->value);
-}
-
-void IniGetLineAsInt (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	unsigned int keyword_bufsize,
-	long	*val)
-{
-	char	buf[20];
-	IniGetLineAsString (filename, line, keyword, keyword_bufsize, buf, 20);
-	*val = atol (buf);
-}
-
-void IniReplaceLineAsString (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	char	*val)
-{
-	IniDeleteLine (filename, line);
-	IniInsertLineAsString (filename, line, keyword, val);
-}
-
-void IniReplaceLineAsInt (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	long	val)
-{
-	char	buf[20];
-	sprintf (buf, "%ld", val);
-	IniReplaceLineAsString (filename, line, keyword, buf);
-}
-
-void IniInsertLineAsString (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	char	*val)
-{
-	struct IniCache *p;
-	unsigned int i;
-
-/* Open ini file, do not reread it as that could change the line numbers! */
-
-	p = openIniFile (filename, 0);
-
-/* Adjust line number if it doesn't make sense */
-
-	if (line == 0) line = 1;
-	if (line > p->num_lines+1) line = p->num_lines+1;
-
-/* Make sure the line array has room for the new line */
-
-	growIniLineArray (p);
-
-/* Shuffle lines down in the array to make room for the new line */
-
-	for (i = p->num_lines; i >= line; i--) p->lines[i] = p->lines[i-1];
-	p->num_lines++;
-
-/* Allocate and fill in a new line structure */
-
-	p->lines[line-1] = (struct IniLine *) malloc (sizeof (struct IniLine));
-	p->lines[line-1]->keyword = (char *) malloc (strlen (keyword) + 1);
-	p->lines[line-1]->value = (char *) malloc (strlen (val) + 1);
-	p->lines[line-1]->active = TRUE;
-	strcpy (p->lines[line-1]->keyword, keyword);
-	strcpy (p->lines[line-1]->value, val);
-
-/* Write the INI file back to disk */
-
-	writeIniFile (p);
-}
-
-void IniInsertLineAsInt (
-	char	*filename,
-	unsigned int line,
-	char	*keyword,
-	long	val)
-{
-	char	buf[20];
-	sprintf (buf, "%ld", val);
-	IniInsertLineAsString (filename, line, keyword, buf);
-}
-
-void IniAppendLineAsString (
-	char	*filename,
-	char	*keyword,
-	char	*val)
-{
-	struct IniCache *p;
-	p = openIniFile (filename, 0);
-	IniInsertLineAsString (filename, p->num_lines+1, keyword, val);
-}
-
-void IniAppendLineAsInt (
-	char	*filename,
-	char	*keyword,
-	long	val)
-{
-	char	buf[20];
-	sprintf (buf, "%ld", val);
-	IniAppendLineAsString (filename, keyword, buf);
-}
-
-void IniDeleteLine (
-	char	*filename,
-	unsigned int line)
-{
-	struct IniCache *p;
-	unsigned int i;
-
-/* Open ini file, do not reread it as that could change the line numbers! */
-
-	p = openIniFile (filename, 0);
-	if (line == 0 || line > p->num_lines) return;
-
-/* Free the data associated with the given line */
-
-	free (p->lines[line-1]->keyword);
-	free (p->lines[line-1]->value);
-	free (p->lines[line-1]);
-
-/* Delete the line from the lines array */
-
-	for (i = line; i < p->num_lines; i++) p->lines[i-1] = p->lines[i];
-	p->num_lines--;
-
-/* Write the INI file back to disk */
-
-	writeIniFile (p);
-}
+/*---------------------------------------------------------------------------*/
 
 /* Output string to screen or results file */
 
@@ -2433,7 +1951,9 @@ int	gwpequal (gwhandle *gwdata, gwnum gw1, gwnum gw2) {
 }
 
 
-/* Print some words of a gwnum */
+*/
+
+// Print some words of a gwnum.
 
 int
 gwprint(
@@ -2724,14 +2244,14 @@ loop:
 			if (!resn) {
 				gtog (N, testn);
 				modg (testf, testn);
-				if (resn = isZero (testn)) {
+				if ((resn = isZero (testn))) {
 					makestr (FACHSW, FACMSW, FACLSW, facnstr);
 				}
 			}
 			if (!resnp) {
 				gtog (NP, testnp);
 				modg (testf, testnp);
-				if (resnp = isZero (testnp)) {
+				if ((resnp = isZero (testnp))) {
 					makestr (FACHSW, FACMSW, FACLSW, facnpstr);
 				}
 			}
@@ -4473,7 +3993,7 @@ int gmpwfsearch (char *sstart, char *sstop, char *sbase) {
 			break;
 	}
 	mpz_get_str (lbuf2, 10, start);
-	for (i; ; i++) {
+	for (i=0; ; i++) {
 		if (i>=(np+phi)) {
 			mpz_get_str (lbuf2, 10, n);
 			writeFilew (lbuf2, TEMP_FILE);		// Make a checkpoint
@@ -5049,7 +4569,8 @@ int isexpdiv (
 
 		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
-		if (bitval (N, bitpos = Nlen-bit-1)) {
+		bitpos = Nlen-bit-1;
+		if (bitval (N, bitpos)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
@@ -5438,7 +4959,7 @@ int commonFrobeniusPRP (
 		gwsetnormroutine (gwdata, 0, echk, 0);
 		gwstartnextfft (gwdata, FALSE);
 
-		if ( bitv = bitval (tmp3, Nlen-bit)) {
+		if ((bitv = bitval (tmp3, Nlen-bit))) {
 			if (abs(gwdata->c)==1)				// Warning : gwsetaddin must not be used if abs(c) != 1 !!
 				gwsetaddin (gwdata, 0);
 			if ((bit+26 < Nlen) && (bit > 26) &&
@@ -5712,7 +5233,7 @@ Frobeniusresume:
 
 //			gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
 
-			if (bitv = bitval (tmp3, Nlen-bit-1)) {
+			if ((bitv = bitval (tmp3, Nlen-bit-1))) {
 				gwsetnormroutine (gwdata, 0, echk, 1);
 			} else {
 				gwsetnormroutine (gwdata, 0, echk, 0);
@@ -5861,17 +5382,20 @@ Frobeniusresume:
 
 	clearline (100);
 
-	if (*res)
-		if (IniGetInt(INI_FILE, "LucasPRPtest", 0))
+	if (*res) {
+		if (IniGetInt(INI_FILE, "LucasPRPtest", 0)) {
 			if (bpsw)
 				sprintf (buf, "%s is BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 			else
 				sprintf (buf, "%s is Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
-		else
+		}
+		else {
 			if (bpsw)
 				sprintf (buf, "%s is Fermat, BPSW and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
 			else
 				sprintf (buf, "%s is Fermat, Lucas and Frobenius PRP! (P = %ld, Q = %ld, D = %ld)", str, P, Q, D);
+		}
+	}
 
 	pushg (gdata, 4);
 	gwfree (gwdata, x);				// Clean up
@@ -6106,8 +5630,8 @@ int commonPRP (
 /* Process this bit */
 
 		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && (bit+26 < Nlen) && (bit > 26) && !maxerr_recovery_mode[6]);
-
-		if (bitval (tmp2, bitpos = Nlen-bit-1)) {
+		bitpos = Nlen-bit-1;
+		if (bitval (tmp2, bitpos)) {
 			gwsetnormroutine (gwdata, 0, echk, 1);
 		} else {
 			gwsetnormroutine (gwdata, 0, echk, 0);
@@ -6845,7 +6369,7 @@ int commonCC2P (
 
 	else {
 		clear_timers ();	// Init. timers
-		D = D = P*P-4;
+		D = P*P-4;
 		if (showdigits)
 			sprintf (buf, "Starting Lucas sequence (%lu decimal digits)\n", nbdg);
 		else
@@ -6908,7 +6432,7 @@ int commonCC2P (
 
 		gwstartnextfft (gwdata, FALSE);
 
-		if ( bitv = bitval (exponent, explen-bit)) {
+		if ((bitv = bitval (exponent, explen-bit))) {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
 			if ((bit+26 < explen) && (bit > 26) &&
@@ -7229,7 +6753,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0)); 
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
@@ -7285,7 +6809,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
@@ -7352,7 +6876,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
 			free (gwdata);
@@ -7453,7 +6977,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
 			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
 		if (!setupok (gwdata, gwsetup (gwdata, k, b, n, c))) {
@@ -7551,7 +7075,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		if (abs(Q) <= GWMULBYCONST_MAX)
 			gwsetmaxmulbyconst (gwdata, max (3, abs(Q)));
 		gwdata->force_general_mod = TRUE;
@@ -7612,7 +7136,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, M))) {
 			free (gwdata);
@@ -7750,7 +7274,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
@@ -7801,7 +7325,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst (gwdata, a);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
@@ -7864,7 +7388,7 @@ restart:
 		gwinit (gwdata);
 		gdata = &gwdata->gdata;
  		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-		gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 		gwsetmaxmulbyconst(gwdata, P);
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
 			free (gwdata);
@@ -8880,7 +8404,7 @@ int Lucasequence (
 		gwsetnormroutine (gwdata, 0, echk, 0);
 		gwstartnextfft (gwdata, FALSE);
 
-		if ( bitv = bitval (tmp2, explen-bit)) {
+		if ((bitv = bitval (tmp2, explen-bit))) {
 			if (abs(gwdata->c) == 1)
 				gwsetaddin (gwdata, -(int)P);
 			if ((bit+26 < explen) && (bit > 26) &&
@@ -9658,11 +9182,12 @@ PLMCONTINUE:
 					sprintf (buf+strlen(buf), "\n");
 			}
 		}
-		if (!setuponly)
+		if (!setuponly) {
 			if (verbose)
 				OutputBoth(buf);
 			else
 				OutputStr(buf);
+		}
 	}
 
 
@@ -9691,11 +9216,12 @@ PLMCONTINUE:
 				sprintf (buf+strlen(buf), "%lu\n", bpf[j]);
 	}
 
-	if (!setuponly)
+	if (!setuponly) {
 		if (verbose)
 			OutputBoth(buf);
 		else
 			OutputStr(buf);
+	}
 
 	maxrestarts = IniGetInt(INI_FILE, "MaxRestarts", 100);
 	nrestarts = IniGetInt (INI_FILE, "NRestarts", 0);
@@ -9738,7 +9264,7 @@ PLMCONTINUE:
 	gtog (N, tmp);
 	ulsubg (1, tmp);					// tmp = N-1
 
-	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (incr == +1) {
 		gwsetmaxmulbyconst (gwdata, a);
 		divg (gb, tmp);					// tmp = (N-1)/base
@@ -10162,7 +9688,7 @@ DoLucas:
 					gwinit (gwdata);
 					gdata = &gwdata->gdata;
  					gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-					gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+					gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 					gwsetmaxmulbyconst (gwdata, max(a, P));
 					if (dk >= 1.0) {
 						if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, -1))) {
@@ -10527,11 +10053,12 @@ int isLLRP (
 			strcpy (sgk1, sgk);
 //	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
 		}
-		if ((format != ABCDN) && (format != ABCDNG))
+		if ((format != ABCDN) && (format != ABCDNG)) {
 			if (b_else != 1)	// Lei, J.P.
 				sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
 			else
 				sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+		}
 
 //	gk must be odd for the LLR test, so, adjust gk and n if necessary.
 
@@ -10737,7 +10264,7 @@ restart:
 
 	*res = TRUE;		/* Assume it is prime */ 
 
-	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (dk >= 1.0) {
 		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, -1))) { 
 			free(gk);
@@ -11609,11 +11136,12 @@ int isProthP (
 	else
 		strcpy (sgk1, sgk);
 
-	if ((format != ABCDN) && (format != ABCDNG))
+	if ((format != ABCDN) && (format != ABCDNG)) {
 		if (b_else != 1)	// Lei, J.P.
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
 		else
 			sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
+	}
 
 
 	bits = n + bitlen(gk);				// Bit length of N
@@ -11777,7 +11305,7 @@ restart:
 
 	*res = TRUE;						/* Assume it is a prime */ 
 
-	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (dk >= 1.0) {					// Setup the DWT mode
 		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) {
 			free(gk);
@@ -12279,7 +11807,7 @@ int isGMNP (
 	double	reallymaxerr = 0.0; 
 	double dk;
 
-	if (!facto && !isPrime (n) || n == 2) {
+	if ((!facto && !isPrime (n)) || n == 2) {
 		sprintf (buf, "Gaussian-Mersenne prime test not done because %lu is not an odd prime.\n", n); 
 		OutputBoth (buf); 
 		*res = FALSE;
@@ -12829,7 +12357,7 @@ restart:
 
 	*res = TRUE;						/* Assume it is a prime */ 
 
-	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
 		*res = res1 = res2 = FALSE;
 		free(gk);
@@ -13458,11 +12986,11 @@ error:
 	goto restart;
 } 
 
-/************************************** Strong Fermat PRP test code for Wagstaff numbers *************************************
+/************************************** Strong Fermat PRP test code for Wagstaff numbers ************************************
 
 Wagstaff numbers are numbers of the form W(n) = (2^n+1)/3 where n is an odd integer.
 
-/****************************************************************************************************************************/
+****************************************************************************************************************************/
 
 
 int isWSPRP ( 
@@ -13485,7 +13013,7 @@ int isWSPRP (
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
 
-	if (!facto && !isPrime (n) || n == 2) {
+	if ((!facto && !isPrime (n)) || n == 2) {
 		sprintf (buf, "(2^%lu+1)/3 SPRP test not done because %lu is not an odd prime.\n", n, n); 
 		OutputBoth (buf); 
 		*res = FALSE;
@@ -13743,7 +13271,7 @@ restart:
 
 	*res = TRUE;						/* Assume it is a prime */ 
 
-	gwset_larger_fftlen_count(gwdata, IniGetInt(INI_FILE, "FFT_Increment", 0));
+	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (!setupok (gwdata, gwsetup (gwdata, 1.0, 2, n, +1))) { 	// Setup the DWT mode
 		*res = FALSE;
 		free(NP);
@@ -13908,13 +13436,15 @@ restart:
 
 
 		ubx <<= 1;
-		if (ubx >= bits) ubx -= bits;				// Compute the doubled shift modulo n
+		if (ubx >= bits) 
+			ubx -= bits;								// Compute the doubled shift modulo n
 
-		if (dovrbareix)						// Fix-up the addin constant
-			if (ubx&1)								// See if a change of sign is needed
+		if (dovrbareix)	{								// Fix-up the addin constant
+			if (ubx&1)									// See if a change of sign is needed
 				gwsetaddinatpowerofb (gwdata, 2, ubx);
 			else
 				gwsetaddinatpowerofb (gwdata, -2, ubx);
+		}
 
 		if ((bit > 30) && (bit < expx-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
 			gwsquare (gwdata, x);
@@ -14306,21 +13836,21 @@ int process_num (
 
 	gformat = format; // save format in a global.
 
-	if(mult = IniGetInt(INI_FILE, "StopOnPrimedK", 0)) {
+	if((mult = IniGetInt(INI_FILE, "StopOnPrimedK", 0))) {
 		sprintf (outbuf, "ks%s", sgk);
 		if(IniGetInt(INI_FILE, outbuf, 0) >= mult) {// is the count for this k value reached ?
 			*res = FALSE;							// then, skip this test
 			return TRUE;
 		}
 	}
-	else if(mult = IniGetInt(INI_FILE, "StopOnPrimedN", 0)) {
+	else if((mult = IniGetInt(INI_FILE, "StopOnPrimedN", 0))) {
 		sprintf (outbuf, "ns%lu", n);
 		if(IniGetInt(INI_FILE, outbuf, 0) >= mult) {// is the count for this n value reached ?
 			*res = FALSE;							// then, skip this test
 			return TRUE;
 		}
 	}
-	else if(mult = IniGetInt(INI_FILE, "StopOnPrimedB", 0)) {
+	else if((mult = IniGetInt(INI_FILE, "StopOnPrimedB", 0))) {
 		sprintf (outbuf, "bs%s", sgb);
 		if(IniGetInt(INI_FILE, outbuf, 0) >= mult) {// is the count for this base value reached ?
 			*res = FALSE;							// then, skip this test
@@ -14496,9 +14026,14 @@ int primeContinue ()
 		throttle = IniGetInt (INI_FILE, "Throttle", 0);
 
 OPENFILE :
-	    fd = fopen (inputfile, "r");
+//	    fd = fopen (inputfile, "r");
 
-	    if (fd == NULL) {
+		for (i=0;i<5;i++) {
+			if ((fd = fopen (inputfile, "r")) != NULL)
+				break;
+		}
+		if (fd==NULL) {
+			OutputBoth ("Could not open the input file...\n");
 			IniWriteInt (INI_FILE, "WorkDone", 1);
 			return (FALSE);
 	    }

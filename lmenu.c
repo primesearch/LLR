@@ -285,10 +285,10 @@ void help_about ()
 {
 	printf ("Primality Testing of k*b^n+/-1 Program - PC/MacIntel Version "LLR_VERSION"\n");
 	printf ("Using new Gwnum library (V"GWNUM_VERSION") and IBDWT for k's up to 22 bits\n"); 
-	printf ("(Copyright 1996-2015 Just For Fun Software, Inc.\n");
+	printf ("(Copyright 1996-2019 Just For Fun Software, Inc.\n");
 	printf ("Author: George Woltman\n");
 	printf ("Email:  woltman@alum.mit.edu)\n");
-	printf ("Written : February 20017 by Jean Penne\n");
+	printf ("Written : March 20019 by Jean Penne\n");
 	printf ("Email : jpenne@free.fr\n");
 	askOK ();
 }

@@ -10,7 +10,7 @@
  *	Other important ideas courtesy of Peter Montgomery.
  *
  *	c. 1997 Perfectly Scientific, Inc.
- *	c. 1998-2017 Mersenne Research, Inc.
+ *	c. 1998-2019 Mersenne Research, Inc.
  *	All Rights Reserved.
  *
  *************************************************************/
@@ -72,10 +72,12 @@ int isProbablePrime (
 		}
 		gwfree (gwdata, t2);
 		x = popg (&gwdata->gdata, ((int) gwdata->bit_length >> 5) + 10);
-		gwtogiant (gwdata, t1, x);
-		modgi (&gwdata->gdata, N, x);
-		iaddg (-i, x);
-		if (!isZero (x)) retval = FALSE;	/* Not a prime */
+		if (gwtogiant (gwdata, t1, x)) retval = FALSE;	/* Technically, prime status is unknown on an unexpected error */
+		else {
+			modgi (&gwdata->gdata, N, x);
+			iaddg (-i, x);
+			if (!isZero (x)) retval = FALSE;	/* Not a prime */
+		}
 		pushg (&gwdata->gdata, 1);
 	}
 	gwfree (gwdata, t1);
@@ -232,6 +234,7 @@ oom:	return (OutOfMemory (ecmdata->thread_num));
 /* Like ell_add except that x1, z1, xdiff, and zdiff have been FFTed */
 /* NOTE: x2 and z2 represent the FFTs of (x2+z2) and (x2-z2) respectively. */
 
+#ifdef ELL_ADD_SPECIAL_USED
 int ell_add_special (
 	ecmhandle *ecmdata,
 	gwnum 	x1,
@@ -264,6 +267,49 @@ int ell_add_special (
 	gwfftmul (&ecmdata->gwdata, xdiff, t1);
 	gwcopy (&ecmdata->gwdata, t2, x3);
 	gwcopy (&ecmdata->gwdata, t1, z3);
+	gwfree (&ecmdata->gwdata, t1);
+	gwfree (&ecmdata->gwdata, t2);
+	return (0);
+
+/* Out of memory exit path */
+
+oom:	return (OutOfMemory (ecmdata->thread_num));
+}
+#endif
+
+/* Like ell_add except that x1, z1, xdiff, and zdiff have been FFTed */
+/* NOTE: x2 and z2 represent the FFTs of (x2+z2) and (x2-z2) respectively. */
+/* ALSO: Like ell_add_special except x3 is returned in zdiff and z3 is returned in xdiff */
+/* caller must then gwswap xdiff and zdiff.  This save two gwcopies. */
+
+int ell_add_special2 (
+	ecmhandle *ecmdata,
+	gwnum 	x1,
+	gwnum 	z1,
+	gwnum 	x2,
+	gwnum 	z2,
+	gwnum	xdiff,
+	gwnum	zdiff)
+{				/* 10 FFTs */
+	gwnum	t1, t2;
+	t1 = gwalloc (&ecmdata->gwdata);
+	if (t1 == NULL) goto oom;
+	t2 = gwalloc (&ecmdata->gwdata);
+	if (t2 == NULL) goto oom;
+	gwfftaddsub4 (&ecmdata->gwdata, x1, z1, t1, t2);/* Calc (x1 + z1) and (z1 - z1) */
+	gwfftfftmul (&ecmdata->gwdata, z2, t1, t1);	/* t1 = (x1 + z1)(x2 - z2) */
+	gwfftfftmul (&ecmdata->gwdata, x2, t2, t2);	/* t2 = (x1 - z1)(x2 + z2) */
+	gwaddsub (&ecmdata->gwdata, t2, t1);		/* Calc t2 + t1 and t2 - t1 */
+	gwstartnextfft (&ecmdata->gwdata, TRUE);	/* x3 = (t2 + t1)^2 * zdiff */
+	gwsquare (&ecmdata->gwdata, t2);
+	gwfft (&ecmdata->gwdata, t2, t2);
+	gwstartnextfft (&ecmdata->gwdata, FALSE);
+	gwfftfftmul (&ecmdata->gwdata, t2, zdiff, zdiff); /* Return x3 in zdiff */
+	gwstartnextfft (&ecmdata->gwdata, TRUE);	/* z3 = (t2 - t1)^2 * xdiff */
+	gwsquare (&ecmdata->gwdata, t1);
+	gwfft (&ecmdata->gwdata, t1, t1);
+	gwstartnextfft (&ecmdata->gwdata, FALSE);
+	gwfftfftmul (&ecmdata->gwdata, t1, xdiff, xdiff); /* Return z3 in xdiff */
 	gwfree (&ecmdata->gwdata, t1);
 	gwfree (&ecmdata->gwdata, t2);
 	return (0);
@@ -871,13 +917,12 @@ int setN (
 	giant	*N)		/* k*b^n+c as a giant */
 {
 	unsigned long bits, p;
-	FILE	*fd;
 	char	buf[2500];
 
 /* Create the binary representation of the number we are factoring */
 /* Allocate 5 extra words to handle any possible k value. */
 
-	bits = (unsigned long) (w->n * log ((double) w->b) / log ((double) 2.0));
+	bits = (unsigned long) (w->n * _log2 (w->b));
 	*N = allocgiant ((bits >> 5) + 5);
 	if (*N == NULL) return (OutOfMemory (thread_num));
 
@@ -905,7 +950,7 @@ int setN (
 				divg (tmp, *N);
 			}
 			free (tmp);
-			/* w->forced_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
+			/* w->minimum_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
 			if (!w->known_factors || !strcmp (w->known_factors, "1")) {
 				p = sprintf (buf, "M%lu", w->n/q); if(q != w->n/q) p += sprintf (buf+p, "/M%d", q);
 				w->known_factors = (char *) malloc (p+1);
@@ -916,7 +961,7 @@ int setN (
         }
 
 	if (IniGetInt (INI_FILE, "PhiExtensions", 0) &&
-	    w->k == 1.0 && abs(w->c) == 1 && (w->n%3) == 0) {		/*=== this input means Phi(3,-b^(n/3)) ===*/
+	    w->k == 1.0 && labs(w->c) == 1 && (w->n%3) == 0) {		/*=== this input means Phi(3,-b^(n/3)) ===*/
 		giant	tmp = allocgiant ((bits >> 5) + 5);
 		if (tmp == NULL) return (OutOfMemory (thread_num));
 		ultog (w->b, tmp);
@@ -926,7 +971,7 @@ int setN (
 		if (w->c == 1) subg (tmp, *N); else addg (tmp, *N);
 		iaddg (1, *N);
 		free (tmp);
-		/* w->forced_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
+		/* w->minimum_fftlen = w->n; */ /*=== too late to do this here. Moved before gwsetup() --SB. */
 		if (!w->known_factors) {
 			p = sprintf (buf, "(%lu^%lu%+ld)", w->b, w->n/3, w->c);
 			w->known_factors = (char *) malloc (p+1);
@@ -961,33 +1006,37 @@ int setN (
 
 			ctog (p, f);
 			if (gsign (f) < 1 || isone (f)) {
-				char	msg[100];
+				char	msg[1000];
 				strcpy (buf, p);
 				buf[10] = 0;
-				sprintf (msg, "Error parsing comma separated known factor list near: %s\n", buf);
+				sprintf (msg, "Error parsing known factors of %s near: '%s'\n", gwmodulo_as_string (gwdata), buf);
 				OutputStr (thread_num, msg);
+				free (f);
+				free (tmp);
+				deleteWorkToDoLine (thread_num, w, FALSE);
+				return (STOP_ABORT);
 			}
 
 /* Divide N by factor - then verify the factor */
 
-			else {
-				gtog (*N, tmp);
-				divg (f, tmp);
-				mulg (tmp, f);
-				if (gcompg (f, *N)) {
-					strcpy (buf, p);
-					comma = strchr (buf, ',');
-					if (comma != NULL) *comma = 0;
-					sprintf (buf+strlen(buf),
-						 " does not divide %s\n",
-						 gwmodulo_as_string (gwdata));
-					OutputBoth (thread_num, buf);
-				} else
-					gtog (tmp, *N);
+			gtog (*N, tmp);
+			divg (f, tmp);
+			mulg (tmp, f);
+			if (gcompg (f, *N)) {
+				strcpy (buf, p);
+				comma = strchr (buf, ',');
+				if (comma != NULL) *comma = 0;
+				sprintf (buf+strlen(buf), " does not divide %s\n", gwmodulo_as_string (gwdata));
+				OutputBoth (thread_num, buf);
+				free (f);
+				free (tmp);
+				deleteWorkToDoLine (thread_num, w, FALSE);
+				return (STOP_ABORT);
 			}
+			gtog (tmp, *N);
 
 /* Skip to next factor in list */
-			
+
 			comma = strchr (p, ',');
 			if (comma == NULL) break;
 			p = comma + 1;
@@ -997,70 +1046,15 @@ int setN (
 		return (0);
 	}
 
-/* Ignore file of known factors when QAing */
+/* Return success */
 
-	if (QA_IN_PROGRESS) return (0);
-
-/* Open file of known factors.  This code has been obsoleted by the */
-/* known factors list in worktodo.ini. */
-
-	if (w->k != 1.0 || w->b != 2 || abs(w->c) != 1) return (0);
-	fd = fopen (w->c == 1 ? "lowp.txt" : "lowm.txt", "r");
-	if (fd == NULL) return (0);
-
-/* Loop until the entire file is processed */
-/* We are looking for lines of the form: "M( 2843 )C: 142151" */
-
-	while (fscanf (fd, "%s", buf) != EOF) {
-		giant	tmp, f;
-
-		if (buf[0] != 'M' && buf[0] != 'P') continue;
-		(void) fscanf (fd, "%ld", &p);
-		if (p > w->n) break;
-		if (p < w->n) continue;
-		(void) fscanf (fd, "%s", buf);
-		if (buf[1] != 'C') continue;
-
-/* Allocate space for factor verification */
-
-		tmp = allocgiant ((bits >> 5) + 5);
-		if (tmp == NULL) return (OutOfMemory (thread_num));
-		f = allocgiant ((bits >> 5) + 5);
-		if (f == NULL) return (OutOfMemory (thread_num));
-
-/* Get the factor */
-
-		(void) fscanf (fd, "%s", buf);
-		ctog (buf, f);
-
-/* Divide N by factor - but first verify the factor */
-
-		gtog (*N, tmp);
-		divg (f, tmp);
-		mulg (tmp, f);
-		if (gcompg (f, *N)) {
-			char bigbuf[3000];
-			sprintf (bigbuf,
-				 "Factor %s in %s does not divide %s\n",
-				 buf,
-				 w->c == 1 ? "lowp.txt" : "lowm.txt",
-				 gwmodulo_as_string (gwdata));
-			OutputBoth (thread_num, bigbuf);
-		} else
-			gtog (tmp, *N);
-		free (f);
-		free (tmp);
-	}
-
-/* Close file and return */
-
-	fclose (fd);
 	return (0);
 }
 
 /* Do a GCD of the input value and N to see if a factor was found. */
 /* The GCD is returned in factor iff a factor is found. */
-/* Returns TRUE if GCD completed, FALSE if it was interrupted */
+/* This routine used to be interruptible and thus returns a stop_reason. */
+/* Since switching to GMP's mpz code to implement the GCD this routine is no longer interruptible. */
 
 int gcd (
 	gwhandle *gwdata,
@@ -1069,44 +1063,44 @@ int gcd (
 	giant	N,		/* Number we are factoring */
 	giant	*factor)	/* Factor found if any */
 {
-	giant	v, save;
-	int	stop_reason;
+	giant	v;
+	mpz_t	a, b;
+
+/* Assume a factor will not be found */
+
+	*factor = NULL;
 
 /* Convert input number to binary */
 
 	v = popg (&gwdata->gdata, ((int) gwdata->bit_length >> 5) + 10);
 	if (v == NULL) goto oom;
-	save = popg (&gwdata->gdata, ((int) gwdata->bit_length >> 5) + 10);
-	if (save == NULL) goto oom;
-	gwtogiant (gwdata, gg, v);
-	gtog (v, save);
+	if (gwtogiant (gwdata, gg, v)) {	// On unexpected error, return no factor found
+		pushg (&gwdata->gdata, 1);
+		return (0);
+	}
 
-/* Do the GCD and let the gcdg code use gwnum gg's memory. */
+/* Do the GCD */
 
-	gwfree_temporarily (gwdata, gg);
-	stop_reason = gcdgi (&gwdata->gdata, thread_num, N, v);
-	if (stop_reason == GIANT_OUT_OF_MEMORY)
-		stop_reason = OutOfMemory (thread_num);
-	gwrealloc_temporarily (gwdata, gg);
-
-/* Restore the input argument */
-
-	gianttogw (gwdata, save, gg);
+	mpz_init (a);
+	mpz_init (b);
+	gtompz (v, a);
+	gtompz (N, b);
+	pushg (&gwdata->gdata, 1);
+	mpz_gcd (a, a, b);
 
 /* If a factor was found, save it in FAC */
 
-	if (stop_reason == 0 && ! isone (v) && gcompg (N, v)) {
-		*factor = allocgiant (v->sign);
+	if (mpz_cmp_ui (a, 1) && mpz_cmp (a, b)) {
+		*factor = allocgiant ((int) mpz_sizeinbase (a, 32));
 		if (*factor == NULL) goto oom;
-		gtog (v, *factor);
+		mpztog (a, *factor);
 	}
-	else
-		*factor = NULL;
 
 /* Cleanup and return */
 
-	pushg (&gwdata->gdata, 2);
-	return (stop_reason);
+	mpz_clear (a);
+	mpz_clear (b);
+	return (0);
 
 /* Out of memory exit path */
 
@@ -1125,15 +1119,21 @@ int ecm_modinv (
 	giant	*factor)		/* Factor found, if any */
 {
 	giant	v;
-	int	stop_reason;
 
 /* Convert input number to binary */
 
 	v = popg (&ecmdata->gwdata.gdata, ((int) ecmdata->gwdata.bit_length >> 5) + 10);
 	if (v == NULL) goto oom;
-	gwtogiant (&ecmdata->gwdata, b, v);
+	if (gwtogiant (&ecmdata->gwdata, b, v)) {
+		// On unexpected, should-never-happen error, return out-of-memory for lack of a better error message
+		goto oom;
+	}
 
-/* Let the invg code use gwnum b's memory. */
+#ifdef MODINV_USING_GIANTS
+
+	int	stop_reason;
+
+/* Let the invg code use gwnum b's memory.  This code is slower, but at least it is interruptible. */
 /* Compute 1/v mod N */
 
 	gwfree_temporarily (&ecmdata->gwdata, b);
@@ -1161,6 +1161,51 @@ int ecm_modinv (
 		*factor = NULL;
 		gianttogw (&ecmdata->gwdata, v, b);
 	}
+
+/* Use the faster GMP library to do an extended GCD which gives us 1/v mod N */
+
+#else
+	{
+	mpz_t	__v, __N, __gcd, __inv;
+
+/* Do the extended GCD */
+
+	mpz_init (__v);
+	mpz_init (__N);
+	mpz_init (__gcd);
+	mpz_init (__inv);
+	gtompz (v, __v);
+	gtompz (N, __N);
+	mpz_gcdext (__gcd, __inv, NULL, __v, __N);
+	mpz_clear (__v);
+
+/* If a factor was found (gcd != 1 && gcd != N), save it in FAC */
+
+	if (mpz_cmp_ui (__gcd, 1) && mpz_cmp (__gcd, __N)) {
+		*factor = allocgiant ((int) mpz_sizeinbase (__gcd, 32));
+		if (*factor == NULL) goto oom;
+		mpztog (__gcd, *factor);
+	}
+
+/* Otherwise, convert the inverse to FFT-ready form */
+
+	else {
+		*factor = NULL;
+		if (mpz_sgn (__inv) < 0) mpz_add (__inv, __inv, __N);
+		mpztog (__inv, v);
+		gianttogw (&ecmdata->gwdata, v, b);
+	}
+
+/* Cleanup and return */
+
+	mpz_clear (__gcd);
+	mpz_clear (__inv);
+	mpz_clear (__N);
+	}
+#endif
+
+/* Clean up */
+
 	pushg (&ecmdata->gwdata.gdata, 1);
 
 /* Increment count and return */
@@ -1172,6 +1217,7 @@ int ecm_modinv (
 
 oom:	return (OutOfMemory (ecmdata->thread_num));
 }
+
 
 /* Computes the modular inverse of an array of numbers */
 /* Uses extra multiplications to make only one real modinv call */
@@ -1658,10 +1704,10 @@ int mQ_next (
 /* by Q^2D to get the next Q^m value */
 
 	if (!ecmdata->TWO_FFT_STAGE2) {
-		stop_reason = ell_add_special (ecmdata, ecmdata->Qmx, ecmdata->Qmz,
-					       ecmdata->Q2Dxplus1, ecmdata->Q2Dxminus1,
-					       ecmdata->Qprevmx, ecmdata->Qprevmz,
-					       ecmdata->Qprevmx, ecmdata->Qprevmz);
+		stop_reason = ell_add_special2 (ecmdata, ecmdata->Qmx, ecmdata->Qmz,
+					        ecmdata->Q2Dxplus1, ecmdata->Q2Dxminus1,
+						ecmdata->Qprevmx, ecmdata->Qprevmz);
+		gwswap (ecmdata->Qprevmx, ecmdata->Qprevmz);
 		if (stop_reason) return (stop_reason);
 		gwswap (ecmdata->Qmx, ecmdata->Qprevmx);
 		gwswap (ecmdata->Qmz, ecmdata->Qprevmz);
@@ -1678,10 +1724,10 @@ int mQ_next (
 
 	if (ecmdata->mQx_count == 0) {
 		for ( ; ecmdata->mQx_count < ecmdata->E; ecmdata->mQx_count++) {
-			stop_reason = ell_add_special (ecmdata, ecmdata->Qmx, ecmdata->Qmz,
-						       ecmdata->Q2Dxplus1, ecmdata->Q2Dxminus1,
-						       ecmdata->Qprevmx, ecmdata->Qprevmz,
-						       ecmdata->Qprevmx, ecmdata->Qprevmz);
+			stop_reason = ell_add_special2 (ecmdata, ecmdata->Qmx, ecmdata->Qmz,
+						        ecmdata->Q2Dxplus1, ecmdata->Q2Dxminus1,
+						        ecmdata->Qprevmx, ecmdata->Qprevmz);
+			gwswap (ecmdata->Qprevmx, ecmdata->Qprevmz);
 			if (stop_reason) return (stop_reason);
 			gwswap (ecmdata->Qmx, ecmdata->Qprevmx);
 			gwswap (ecmdata->Qmz, ecmdata->Qprevmz);
@@ -1945,7 +1991,7 @@ replan:	stop_reason = avail_mem (thread_num,
 
 void ecm_save (
 	ecmhandle *ecmdata,
-	char	*filename,
+	writeSaveFileState *write_save_file_state,
 	struct work_unit *w,
 	int	stage,
 	unsigned long curve,
@@ -1961,7 +2007,7 @@ void ecm_save (
 
 /* Create the intermediate file */
 
-	fd = openWriteSaveFile (filename, NUM_BACKUP_FILES);
+	fd = openWriteSaveFile (write_save_file_state);
 	if (fd < 0) return;
 
 /* Write the file header. */
@@ -1986,13 +2032,13 @@ void ecm_save (
 
 	if (! write_checksum (fd, sum)) goto writeerr;
 
-	closeWriteSaveFile (filename, fd, NUM_BACKUP_FILES);
+	closeWriteSaveFile (write_save_file_state, fd);
 	return;
 
 /* An error occured.  Close and delete the current file. */
 
 writeerr:
-	deleteWriteSaveFile (filename, fd, NUM_BACKUP_FILES);
+	deleteWriteSaveFile (write_save_file_state, fd);
 }
 
 /* Read a save file */
@@ -2133,8 +2179,9 @@ int ecm (
 	double	sigma, last_output, last_output_t, one_over_B, one_over_C_minus_B;
 	double	output_frequency, output_title_frequency;
 	unsigned long i, j, curve, min_memory;
-	saveFileState save_file_state;	/* Manage savefile names during reading */
-	char	filename[32], buf[255], fft_desc[100];
+	readSaveFileState read_save_file_state;	/* Manage savefile names during reading */
+	writeSaveFileState write_save_file_state; /* Manage savefile names during writing */
+	char	filename[32], buf[255], JSONbuf[4000], fft_desc[200];
 	int	res, stop_reason, stage, first_iter_msg;
 	gwnum	x, z, t1, t2, gg;
 	gwnum	Q2x, Q2z, Qiminus2x, Qiminus2z, Qdiffx, Qdiffz;
@@ -2282,10 +2329,10 @@ void *workbuf;
 int j, min_test, max_test, test, cnt, NUM_X87_TESTS, NUM_SSE2_TESTS, NUM_AVX_TESTS, NUM_AVX512_TESTS;
 #define timeit(a,n,w) (((void**)a)[0]=w,((uint32_t*)a)[2]=n,gwtimeit(a))
 
-gwinit (&gwdata);
+gwinit (&gwdata); gwdata.cpu_flags &= ~CPU_AVX512F;
 gwsetup (&gwdata, 1.0, 2, 10000000, -1);
-workbuf = (void *) aligned_malloc (40000000, 4096);
-memset (workbuf, 0, 40000000);
+workbuf = (void *) aligned_malloc (400000000, 4096);
+memset (workbuf, 0, 400000000);
 RDTSC_TIMING = 2;
 min_test = IniGetInt (INI_FILE, "MinTest", 0);
 max_test = IniGetInt (INI_FILE, "MaxTest", min_test);
@@ -2300,6 +2347,11 @@ for (j = 0; j < NUM_X87_TESTS + NUM_SSE2_TESTS + NUM_AVX_TESTS + NUM_AVX512_TEST
 		j < NUM_X87_TESTS + NUM_SSE2_TESTS ? 1000 + j - NUM_X87_TESTS :
 		j < NUM_X87_TESTS + NUM_SSE2_TESTS + NUM_AVX_TESTS ? 2000 + j - NUM_X87_TESTS - NUM_SSE2_TESTS :
 			3000 + j - NUM_X87_TESTS - NUM_SSE2_TESTS - NUM_AVX_TESTS);
+	if (test == 3000 && CPU_FLAGS & CPU_AVX512F) {
+		gwdone (&gwdata);
+		gwinit (&gwdata);
+		gwsetup (&gwdata, 1.0, 2, 10000000, -1);
+	}
 	if (min_test && (test < min_test || test > max_test)) continue;
 	if (! (CPU_FLAGS & CPU_SSE2) && test >= 1000) break;
 	if (! (CPU_FLAGS & CPU_AVX) && test >= 2000) break;
@@ -2368,12 +2420,19 @@ return 0;
 	gwinit (&ecmdata.gwdata);
 	gwset_sum_inputs_checking (&ecmdata.gwdata, SUM_INPUTS_ERRCHK);
 	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0)) gwset_use_large_pages (&ecmdata.gwdata);
-	if (HYPERTHREAD_LL) sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+	if (IniGetInt (INI_FILE, "HyperthreadPrefetch", 0)) gwset_hyperthread_prefetch (&ecmdata.gwdata);
+	if (HYPERTHREAD_LL) {
+		sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+		gwset_will_hyperthread (&ecmdata.gwdata, sp_info->normal_work_hyperthreads);
+	}
+	gwset_bench_cores (&ecmdata.gwdata, NUM_CPUS);
+	gwset_bench_workers (&ecmdata.gwdata, NUM_WORKER_THREADS);
+	if (ERRCHK) gwset_will_error_check (&ecmdata.gwdata);
 	gwset_num_threads (&ecmdata.gwdata, CORES_PER_TEST[thread_num] * sp_info->normal_work_hyperthreads);
 	gwset_thread_callback (&ecmdata.gwdata, SetAuxThreadPriority);
 	gwset_thread_callback_data (&ecmdata.gwdata, sp_info);
 	gwset_safety_margin (&ecmdata.gwdata, IniGetFloat (INI_FILE, "ExtraSafetyMargin", 0.0));
-	gwset_specific_fftlen (&ecmdata.gwdata, w->forced_fftlen);
+	gwset_minimum_fftlen (&ecmdata.gwdata, w->minimum_fftlen);
 	res = gwsetup (&ecmdata.gwdata, w->k, w->b, w->n, w->c);
 	if (res) {
 		sprintf (buf, "Cannot initialize FFT code, errcode=%d\n", res);
@@ -2475,16 +2534,17 @@ OutputStr (thread_num, buf);
 /* Check for a continuation file.  Limit number of backup files we try */
 /* to read in case there is an error deleting bad save files. */
 
-	saveFileStateInit (&save_file_state, thread_num, filename);
+	readSaveFileStateInit (&read_save_file_state, thread_num, filename);
+	writeSaveFileStateInit (&write_save_file_state, filename, 0);
 	for ( ; ; ) {
 		uint64_t save_B, save_B_processed, save_C_processed;
 
-		if (! saveFileExists (&save_file_state)) {
+		if (! saveFileExists (&read_save_file_state)) {
 			/* If there were save files, they are all bad.  Report a message */
 			/* and temporarily abandon the work unit.  We do this in hopes that */
 			/* we can successfully read one of the bad save files at a later time. */
 			/* This sounds crazy, but has happened when OSes get in a funky state. */
-			if (save_file_state.a_non_bad_save_file_existed) {
+			if (read_save_file_state.a_non_bad_save_file_existed) {
 				OutputBoth (thread_num, ALLSAVEBAD_MSG);
 				return (0);
 			}
@@ -2503,13 +2563,13 @@ OutputStr (thread_num, buf);
 /* Read in the save file.  If the save file is no good ecm_restore will have */
 /* deleted it.  Loop trying to read a backup save file. */
 
-		if (! ecm_restore (&ecmdata, thread_num, save_file_state.current_filename, w, &stage,
+		if (! ecm_restore (&ecmdata, thread_num, read_save_file_state.current_filename, w, &stage,
 				   &curve, &sigma, &save_B, &save_B_processed,
 				   &save_C_processed, x, z)) {
 			gwfree (&ecmdata.gwdata, x);
 			gwfree (&ecmdata.gwdata, z);
 			/* Close and rename the bad save file */
-			saveFileBad (&save_file_state);
+			saveFileBad (&read_save_file_state);
 			continue;
 		}
 
@@ -2680,8 +2740,7 @@ restart1:
 
 		stop_reason = stopCheck (thread_num);
 		if (stop_reason || testSaveFilesFlag (thread_num)) {
-			ecm_save (&ecmdata, filename, w, ECM_STAGE1, curve,
-				  sigma, B, prime, 0, x, z);
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE1, curve, sigma, B, prime, 0, x, z);
 			if (stop_reason) goto exit;
 		}
 	}
@@ -2711,8 +2770,7 @@ restart1:
 skip_stage_2:	start_timer (timers, 0);
 		stop_reason = gcd (&ecmdata.gwdata, thread_num, z, N, &factor);
 		if (stop_reason) {
-			ecm_save (&ecmdata, filename, w, ECM_STAGE1, curve, sigma,
-				  B, B, 0, x, z);
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE1, curve, sigma, B, B, 0, x, z);
 			goto exit;
 		}
 		end_timer (timers, 0);
@@ -2736,7 +2794,7 @@ skip_stage_2:	start_timer (timers, 0);
 
 			gx = popg (&ecmdata.gwdata.gdata, ((int) ecmdata.gwdata.bit_length >> 5) + 10);
 			if (gx == NULL) goto oom;
-			gwtogiant (&ecmdata.gwdata, x, gx);
+			if (gwtogiant (&ecmdata.gwdata, x, gx)) goto oom;  // Unexpected error, return oom for lack of a better error message
 			modgi (&ecmdata.gwdata.gdata, N, gx);
 
 			msglen = N->sign * 8 + 5;
@@ -2806,8 +2864,7 @@ restart3:
 	stop_reason = choose_stage2_plan (thread_num, &ecmdata, B, C);
 	if (stop_reason) {
 		if (gg == NULL) {
-			ecm_save (&ecmdata, filename, w, ECM_STAGE1, curve,
-				  sigma, B, B, 0, x, z);
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE1, curve, sigma, B, B, 0, x, z);
 		}
 		goto exit;
 	}
@@ -2872,17 +2929,16 @@ restart3:
 /* MEMPEAK: 8 + nQx-1 + 2 for ell_add temporaries */
 
 	for (i = 3; i < ecmdata.D; i = i + 2) {
-		ell_add_special (&ecmdata, Qiminus2x, Qiminus2z, Q2x, Q2z,
-				 Qdiffx, Qdiffz, Qdiffx, Qdiffz);
+		ell_add_special2 (&ecmdata, Qiminus2x, Qiminus2z, Q2x, Q2z, Qdiffx, Qdiffz);
+		gwswap (Qdiffx, Qdiffz);
 
 		if (gw_test_for_error (&ecmdata.gwdata)) goto error;
 
 		stop_reason = stopCheck (thread_num);
 		if (stop_reason) {
 			if (gg == NULL) {
-				ecm_save (&ecmdata, filename, w, ECM_STAGE1,
-					  curve, sigma, B, B, 0,
-					  Qdiffx, Qdiffz);
+				ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE1,
+					  curve, sigma, B, B, 0, Qdiffx, Qdiffz);
 			}
 			goto exit;
 		}
@@ -2907,12 +2963,12 @@ restart3:
 /* MEMUSED: 8 + nQx gwnums (AD4, 6 for computing nQx, nQx vals, modinv_val) */
 /* MEMPEAK: 8 + nQx + 2 for ell_add temporaries */
 
-	ell_add_special (&ecmdata, Qiminus2x, Qiminus2z, Q2x, Q2z,
-			 Qdiffx, Qdiffz, Qdiffx, Qdiffz);
+	ell_add_special2 (&ecmdata, Qiminus2x, Qiminus2z, Q2x, Q2z, Qdiffx, Qdiffz);
+	gwswap (Qdiffx, Qdiffz);
 	gwfftaddsub (&ecmdata.gwdata, Q2x, Q2z); /* Recompute fft of Q2x,Q2z */
 	ell_begin_fft (&ecmdata, Qdiffx, Qdiffz, Qdiffx, Qdiffz);
-	ell_add_special (&ecmdata, Qiminus2x, Qiminus2z, Qdiffx, Qdiffz,
-			 Q2x, Q2z, Q2x, Q2z);
+	ell_add_special2 (&ecmdata, Qiminus2x, Qiminus2z, Qdiffx, Qdiffz, Q2x, Q2z);
+	gwswap (Q2x, Q2z);
 	gwfft (&ecmdata.gwdata, Q2x, Q2x); gwfft (&ecmdata.gwdata, Q2z, Q2z);
 	stop_reason = add_to_normalize_pool (&ecmdata, Q2x, Q2z, 1);
 	if (stop_reason) goto exit;
@@ -2936,7 +2992,7 @@ restart3:
 			gwfft (&ecmdata.gwdata, Q2x, Q2x);
 			gwfftfftmul (&ecmdata.gwdata, Q2x, Qiminus2x, Qiminus2x);
 			gwfftfftmul (&ecmdata.gwdata, Q2x, Qiminus2z, Qiminus2z);
-			ecm_save (&ecmdata, filename, w, ECM_STAGE1, curve,
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE1, curve,
 				  sigma, B, B, 0, Qiminus2x, Qiminus2z);
 		}
 		goto exit;
@@ -3014,7 +3070,7 @@ restart3:
 			dbltogw (&ecmdata.gwdata, 1.0, t1);
 			gwmul (&ecmdata.gwdata, t1, gg);
 			gwfftfftmul (&ecmdata.gwdata, t1, ecmdata.nQx[0], ecmdata.nQx[0]);
-			ecm_save (&ecmdata, filename, w, ECM_STAGE2, curve,
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE2, curve,
 				  sigma, B, B, prime, ecmdata.nQx[0], gg);
 			gwfree (&ecmdata.gwdata, t1);
 			goto exit;
@@ -3119,7 +3175,7 @@ restart3:
 			dbltogw (&ecmdata.gwdata, 1.0, t1);
 			gwmul (&ecmdata.gwdata, t1, gg);
 			gwfftfftmul (&ecmdata.gwdata, t1, ecmdata.nQx[0], t1);
-			ecm_save (&ecmdata, filename, w, ECM_STAGE2, curve,
+			ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE2, curve,
 				  sigma, B, B, prime, t1, gg);
 			gwfree (&ecmdata.gwdata, t1);
 			if (stop_reason) goto exit;
@@ -3159,8 +3215,7 @@ restart4:
 	start_timer (timers, 0);
 	stop_reason = gcd (&ecmdata.gwdata, thread_num, gg, N, &factor);
 	if (stop_reason) {
-		ecm_save (&ecmdata, filename, w, ECM_STAGE2, curve, sigma,
-			  B, B, C, gg, gg);
+		ecm_save (&ecmdata, &write_save_file_state, w, ECM_STAGE2, curve, sigma, B, B, C, gg, gg);
 		goto exit;
 	}
 	end_timer (timers, 0);
@@ -3178,7 +3233,7 @@ more_curves:
 
 /* Output line to results file indicating the number of curves run */
 
-	sprintf (buf, "%s completed %u ECM %s, B1=%.0f, B2=%.0f, We%d: %08lX\n",
+	sprintf (buf, "%s completed %u ECM %s, B1=%.0f, B2=%.0f, Wh%d: %08lX\n",
 		 gwmodulo_as_string (&ecmdata.gwdata), w->curves_to_do,
 		 w->curves_to_do == 1 ? "curve" : "curves",
 		 (double) B, (double) C, PORT, SEC5 (w->n, B, C));
@@ -3186,8 +3241,25 @@ more_curves:
 	formatMsgForResultsFile (buf, w);
 	writeResults (buf);
 
-/* Send ECM completed message to the server.  Although don't do it for */
-/* puny B1 values. */
+/* Format a JSON version of the result.  An example follows: */
+/* {"status":"NF", "exponent":45581713, "worktype":"ECM", "b1":50000, "b2":5000000, */
+/* "curves":5, "fft-length":5120, "security-code":"39AB1238", */
+/* "program":{"name":"prime95", "version":"29.5", "build":"8"}, "timestamp":"2019-01-15 23:28:16", */
+/* "user":"gw_2", "cpu":"work_computer", "aid":"FF00AA00FF00AA00FF00AA00FF00AA00"} */
+
+	strcpy (JSONbuf, "{\"status\":\"NF\"");
+	JSONaddExponent (JSONbuf, w);
+	strcat (JSONbuf, ", \"worktype\":\"ECM\"");
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"b1\":%.0f, \"b2\":%.0f", (double) B, (double) C);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"curves\":%u", w->curves_to_do);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"fft-length\":%lu", ecmdata.gwdata.FFTLEN);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"security-code\":\"%08lX\"", SEC5 (w->n, B, C));
+	JSONaddProgramTimestamp (JSONbuf);
+	JSONaddUserComputerAID (JSONbuf, w);
+	strcat (JSONbuf, "}\n");
+	if (IniGetInt (INI_FILE, "OutputJSON", 1)) writeResultsJSON (JSONbuf);
+
+/* Send ECM completed message to the server.  Although don't do it for puny B1 values. */
 
 	if (B >= 10000 || IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
 		struct primenetAssignmentResult pkt;
@@ -3205,12 +3277,13 @@ more_curves:
 		pkt.curves = w->curves_to_do;
 		pkt.fftlen = gwfftlen (&ecmdata.gwdata);
 		pkt.done = TRUE;
+		strcpy (pkt.JSONmessage, JSONbuf);
 		spoolMessage (PRIMENET_ASSIGNMENT_RESULT, &pkt);
 	}
 
 /* Delete the save file */
 
-	unlinkSaveFiles (filename);
+	unlinkSaveFiles (&write_save_file_state);
 
 /* Free memory and return */
 
@@ -3229,11 +3302,9 @@ oom:	stop_reason = OutOfMemory (thread_num);
 
 /* Print a message, we found a factor! */
 
-bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
-		 curve, stage);
+bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n", curve, stage);
 	writeResults (buf);
-	sprintf (buf, "Sigma=%.0f, B1=%.0f, B2=%.0f.\n",
-		 sigma, (double) B, (double) C);
+	sprintf (buf, "Sigma=%.0f, B1=%.0f, B2=%.0f.\n", sigma, (double) B, (double) C);
 	writeResults (buf);
 
 /* Allocate memory for the string representation of the factor and for */
@@ -3249,8 +3320,7 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 /* Validate the factor we just found */
 
 	if (!testFactor (&ecmdata.gwdata, w, factor)) {
-		sprintf (msg, "ERROR: Bad factor for %s found: %s\n",
-			 gwmodulo_as_string (&ecmdata.gwdata), str);
+		sprintf (msg, "ERROR: Bad factor for %s found: %s\n", gwmodulo_as_string (&ecmdata.gwdata), str);
 		OutputBoth (thread_num, msg);
 		OutputStr (thread_num, "Restarting ECM curve from scratch.\n");
 		continueECM = TRUE;
@@ -3266,6 +3336,28 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 	formatMsgForResultsFile (msg, w);
 	writeResults (msg);
 
+/* Format a JSON version of the result.  An example follows: */
+/* {"status":"F", "exponent":45581713, "worktype":"ECM", "factors":["430639100587696027847"], */
+/* "b1":50000, "b2":5000000, "sigma":"123456789123456", "stage":2 */
+/* "curves":5, "fft-length":5120, "security-code":"39AB1238", */
+/* "program":{"name":"prime95", "version":"29.5", "build":"8"}, "timestamp":"2019-01-15 23:28:16", */
+/* "user":"gw_2", "cpu":"work_computer", "aid":"FF00AA00FF00AA00FF00AA00FF00AA00"} */
+
+	strcpy (JSONbuf, "{\"status\":\"F\"");
+	JSONaddExponent (JSONbuf, w);
+	strcat (JSONbuf, ", \"worktype\":\"ECM\"");
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"factors\":[\"%s\"]", str);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"b1\":%.0f, \"b2\":%.0f", (double) B, (double) C);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"sigma\":%.0f", sigma);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"stage\":%d", stage);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"curves\":%lu", curve);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"fft-length\":%lu", ecmdata.gwdata.FFTLEN);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"security-code\":\"%08lX\"", SEC5 (w->n, B, C));
+	JSONaddProgramTimestamp (JSONbuf);
+	JSONaddUserComputerAID (JSONbuf, w);
+	strcat (JSONbuf, "}\n");
+	if (IniGetInt (INI_FILE, "OutputJSON", 1)) writeResultsJSON (JSONbuf);
+
 /* See if the cofactor is prime and set flag if we will be continuing ECM */
 
 	continueECM = IniGetInt (INI_FILE, "ContinueECM", 0);
@@ -3280,8 +3372,7 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 /* with small factors from users needlessly redoing factoring work, make */
 /* sure the factor is more than 50 bits or so. */
 
-	if (strlen (str) >= 15 ||
-	    IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
+	if (strlen (str) >= 15 || IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
 		struct primenetAssignmentResult pkt;
 		memset (&pkt, 0, sizeof (pkt));
 		strcpy (pkt.computer_guid, COMPUTER_GUID);
@@ -3299,6 +3390,7 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 		pkt.stage = stage;
 		pkt.fftlen = gwfftlen (&ecmdata.gwdata);
 		pkt.done = !continueECM;
+		strcpy (pkt.JSONmessage, JSONbuf);
 		spoolMessage (PRIMENET_ASSIGNMENT_RESULT, &pkt);
 
 /* If continuing ECM, subtract the curves we just reported from the */
@@ -3306,7 +3398,7 @@ bingo:	sprintf (buf, "ECM found a factor in curve #%ld, stage #%d\n",
 /* for this number from the worktodo file. */
 
 		if (continueECM) {
-			unlinkSaveFiles (filename);
+			unlinkSaveFiles (&write_save_file_state);
 			w->curves_to_do -= curve;
 			stop_reason = updateWorkToDoLine (thread_num, w);
 			if (stop_reason) return (stop_reason);
@@ -3330,7 +3422,7 @@ bad_factor_recovery:
 /* this inaccurate data. */
 
 	if (!continueECM) {
-		unlinkSaveFiles (filename);
+		unlinkSaveFiles (&write_save_file_state);
 		stop_reason = STOP_WORK_UNIT_COMPLETE;
 		invalidateNextRollingAverageUpdate ();
 		goto exit;
@@ -3519,12 +3611,12 @@ void pm1_cleanup (
 
 /* Raises number to the given power */
 
-int pm1_mul (
+void pm1_mul (
 	pm1handle *pm1data,
 	gwnum	xx,
+	gwnum	orig_xx_fft,
 	uint64_t n)
 {
-	gwnum	orig_xx_fft;
 	uint64_t c;
 
 /* Find most significant bit and then ignore it */
@@ -3536,8 +3628,6 @@ int pm1_mul (
 
 /* Handle the second most significant bit */
 
-	orig_xx_fft = gwalloc (&pm1data->gwdata);
-	if (orig_xx_fft== NULL) goto oom;
 	gwstartnextfft (&pm1data->gwdata, c > 1);
 	gwfft (&pm1data->gwdata, xx, orig_xx_fft);
 	gwfftfftmul (&pm1data->gwdata, orig_xx_fft, orig_xx_fft, xx);
@@ -3552,12 +3642,6 @@ int pm1_mul (
 		if (c&n) gwfftmul (&pm1data->gwdata, orig_xx_fft, xx);
 		c >>= 1;
 	}
-	gwfree (&pm1data->gwdata, orig_xx_fft);
-	return (0);
-
-/* Out of memory exit path */
-
-oom:	return (OutOfMemory (pm1data->thread_num));
 }
 
 /* Code to init "finite differences" for computing successive */
@@ -3675,11 +3759,11 @@ void fd_term (
 /* Routines to create and read save files for a P-1 factoring job */
 
 #define PM1_MAGICNUM	0x317a394b
-#define PM1_VERSION	1
+#define PM1_VERSION	2				/* Changed in 29.4 build 7 -- corrected calc_exp bug */
 
 void pm1_save (
 	pm1handle *pm1data,
-	char	*filename,
+	writeSaveFileState *write_save_file_state,
 	struct work_unit *w,
 	uint64_t processed,
 	gwnum	x,
@@ -3690,7 +3774,7 @@ void pm1_save (
 
 /* Create the intermediate file */
 
-	fd = openWriteSaveFile (filename, NUM_BACKUP_FILES);
+	fd = openWriteSaveFile (write_save_file_state);
 	if (fd < 0) return;
 
 /* Write the file header */
@@ -3710,10 +3794,8 @@ void pm1_save (
 	if (! write_long (fd, pm1data->E, &sum)) goto writeerr;
 	if (! write_long (fd, pm1data->rels_done, &sum)) goto writeerr;
 	if (! write_long (fd, pm1data->bitarray_len, &sum)) goto writeerr;
-	if (! write_array (fd, pm1data->bitarray, pm1data->bitarray_len, &sum))
-		goto writeerr;
-	if (! write_longlong (fd, pm1data->bitarray_first_number, &sum))
-		goto writeerr;
+	if (! write_array (fd, pm1data->bitarray, pm1data->bitarray_len, &sum)) goto writeerr;
+	if (! write_longlong (fd, pm1data->bitarray_first_number, &sum)) goto writeerr;
 	if (! write_long (fd, pm1data->pairs_set, &sum)) goto writeerr;
 	if (! write_long (fd, pm1data->pairs_done, &sum)) goto writeerr;
 
@@ -3727,102 +3809,26 @@ void pm1_save (
 			gwstartnextfft (&pm1data->gwdata, FALSE);
 			gwsquare (&pm1data->gwdata, gg);
 		}
-		if (! write_gwnum (fd, &pm1data->gwdata, gg, &sum))
-			goto writeerr;
+		if (! write_gwnum (fd, &pm1data->gwdata, gg, &sum)) goto writeerr;
 	}
 
 /* Write the checksum, we're done */
 
 	if (! write_checksum (fd, sum)) goto writeerr;
 
-	closeWriteSaveFile (filename, fd, NUM_BACKUP_FILES);
+	closeWriteSaveFile (write_save_file_state, fd);
 	return;
 
 /* An error occured.  Close and delete the current file. */
 
 writeerr:
-	deleteWriteSaveFile (filename, fd, NUM_BACKUP_FILES);
+	deleteWriteSaveFile (write_save_file_state, fd);
 }
 
 /* Read a save file */
 
-int old_pm1_restore (			/* For version 24 save files */
-	pm1handle *pm1data,
-	int	fd,
-	uint64_t *processed,
-	gwnum	*x,
-	gwnum	*gg)
-{
-	unsigned long magicnum, version;
-	unsigned long sum = 0, i;
-
-/* Read the file header */
-
-	_lseek (fd, 0, SEEK_SET);
-	if (!read_long (fd, &magicnum, NULL)) return (FALSE);
-	if (magicnum != 0x1a2b3c4d) return (FALSE);
-
-	if (!read_long (fd, &version, NULL)) return (FALSE);
-	if (version != 4) return (FALSE);
-
-/* Read the file data */
-
-	if (! read_long (fd, &pm1data->stage, &sum)) return (FALSE);
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	pm1data->B_done = i;
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	pm1data->B = i;
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	pm1data->C_done = i;
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	pm1data->C_start = i;
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	pm1data->C = i;
-	if (! read_long (fd, &i, &sum)) return (FALSE);
-	*processed = i;
-	if (! read_long (fd, &pm1data->D, &sum)) return (FALSE);
-	if (! read_long (fd, &pm1data->E, &sum)) return (FALSE);
-	if (! read_long (fd, &pm1data->rels_done, &sum)) return (FALSE);
-	if (! read_long (fd, &pm1data->bitarray_len, &sum)) return (FALSE);
-
-/* The new bitarray code is not compatible with the old bitarray code */
-/* Restart stage 2 from scratch */
-
-	if (pm1data->bitarray_len) {
-		pm1data->bitarray = (char *) malloc (pm1data->bitarray_len);
-		if (pm1data->bitarray == NULL) return (FALSE);
-		if (! read_array (fd, pm1data->bitarray,
-				  pm1data->bitarray_len, &sum))
-			return (FALSE);
-		free (pm1data->bitarray);
-		pm1data->bitarray = NULL;
-		pm1data->bitarray_len = 0;
-	}
-	if (! read_long (fd, &pm1data->pairs_set, &sum)) return (FALSE);
-	if (! read_long (fd, &pm1data->pairs_done, &sum)) return (FALSE);
-
-/* Read the values */
-
-	*x = gwalloc (&pm1data->gwdata);
-	if (*x == NULL) return (FALSE);
-	if (! read_gwnum (fd, &pm1data->gwdata, *x, &sum)) return (FALSE);
-
-	*gg = NULL;
-	if (pm1data->stage == PM1_STAGE2) {
-		*gg = gwalloc (&pm1data->gwdata);
-		if (*gg == NULL) return (FALSE);
-		if (! read_gwnum (fd, &pm1data->gwdata, *gg, &sum)) return (FALSE);
-	}
-
-/* Read and compare the checksum */
-
-	if (! read_long (fd, &i, NULL)) return (FALSE);
-	if (i != sum) return (FALSE);
-	_close (fd);
-	return (TRUE);
-}
-
-int pm1_restore (			/* For version 25 save files */
+int pm1_restore (			/* For version 25 and later save files */
+	int	thread_num,
 	pm1handle *pm1data,
 	char	*filename,
 	struct work_unit *w,
@@ -3841,13 +3847,9 @@ int pm1_restore (			/* For version 25 save files */
 
 /* Read the file header */
 
-	if (! read_magicnum (fd, PM1_MAGICNUM)) {
-		if (! old_pm1_restore (pm1data, fd, processed, x, gg))
-			goto readerr;
-		return (TRUE);
-	}
+	if (! read_magicnum (fd, PM1_MAGICNUM)) goto readerr;
 	if (! read_header (fd, &version, w, &filesum)) goto readerr;
-	if (version != PM1_VERSION) goto readerr;
+	if (version != 1 && version != 2) goto readerr;
 
 /* Read the file data */
 
@@ -3865,14 +3867,18 @@ int pm1_restore (			/* For version 25 save files */
 	if (pm1data->bitarray_len) {
 		pm1data->bitarray = (char *) malloc (pm1data->bitarray_len);
 		if (pm1data->bitarray == NULL) goto readerr;
-		if (! read_array (fd, pm1data->bitarray,
-				  pm1data->bitarray_len, &sum))
-			goto readerr;
+		if (! read_array (fd, pm1data->bitarray, pm1data->bitarray_len, &sum)) goto readerr;
 	}
-	if (! read_longlong (fd, &pm1data->bitarray_first_number, &sum))
-		goto readerr;
+	if (! read_longlong (fd, &pm1data->bitarray_first_number, &sum)) goto readerr;
 	if (! read_long (fd, &pm1data->pairs_set, &sum)) goto readerr;
 	if (! read_long (fd, &pm1data->pairs_done, &sum)) goto readerr;
+
+/* Note version 29.4 build 7 changed the calc_exp algorithm which invalidates earlier save files that are in stage 0. */
+
+	if (version == 1 && pm1data->stage == PM1_STAGE0) {
+		OutputBoth (thread_num, "P-1 save file incompatible with this program version.  Restarting stage 1 from the beginning.\n");
+		goto readerr;
+	}
 
 /* Read the values */
 
@@ -3884,14 +3890,16 @@ int pm1_restore (			/* For version 25 save files */
 	if (pm1data->stage == PM1_STAGE2) {
 		*gg = gwalloc (&pm1data->gwdata);
 		if (*gg == NULL) goto readerr;
-		if (! read_gwnum (fd, &pm1data->gwdata, *gg, &sum))
-			goto readerr;
+		if (! read_gwnum (fd, &pm1data->gwdata, *gg, &sum)) goto readerr;
 	}
 
 /* Read and compare the checksum */
 
 	if (filesum != sum) goto readerr;
 	_close (fd);
+
+/* All done */
+
 	return (TRUE);
 
 /* An error occured.  Cleanup and return. */
@@ -4013,7 +4021,7 @@ double cost_pminus1_plan (
 /* at a cost of about 1.5 multiplies per bit.  In other words, */
 /* (E+1) * E*log2(startpoint) * 1.5. */
 
-	cost = passes * (e+1) * e*log((double)(d/2))/log((double)2.0) * 1.5 +
+	cost = passes * (e+1) * e*_log2(d/2) * 1.5 +
 
 /* Then there are the D/2 calls to fd_next at E multiplies each. */
 
@@ -4022,7 +4030,7 @@ double cost_pminus1_plan (
 /* Compute the eQx setup costs.  To calculate eQx values, one fd_init is */
 /* required on each pass with a start point of B. */
 
-		passes * (e+1) * e*log((double)B)/log((double)2.0) * 1.5;
+		passes * (e+1) * e*_log2(B) * 1.5;
 
 /* If E=1 add the cost of (C-B)/D fd_next calls.  If E>=2, add the cost */
 /* of (C-B)/(D+D) calls to fd_next (E multiplies). */
@@ -4347,28 +4355,28 @@ void calc_exp (
 	unsigned long b,	/* B in K*B^N+C */
 	unsigned long n,	/* N in K*B^N+C */
 	signed long c,		/* C in K*B^N+C */
-	giant	g,
+	mpz_t	g,		/* Variable to accumulate multiplied small primes */
 	uint64_t B1,		/* P-1 stage 1 bound */
-	uint64_t *p,
+	uint64_t *p,		/* Variable to fetch next small prime into */
 	unsigned long lower,
 	unsigned long upper)
 {
 	unsigned long len;
 
-/* Compute the number of result words we are to calculate */
+/* Compute the number of result bits we are to calculate */
 
 	len = upper - lower;
 
 /* Use recursion to compute the exponent.  This will perform better */
-/* because mulg will be handling arguments of equal size. */
+/* because mpz_mul will be handling arguments of equal size. */
 
-	if (len >= 50) {
-		giant	x;
+	if (len >= 1024) {
+		mpz_t	x;
 		calc_exp (pm1data, k, b, n, c, g, B1, p, lower, lower + (len >> 1));
-		x = allocgiant (len);
+		mpz_init (x);
 		calc_exp (pm1data, k, b, n, c, x, B1, p, lower + (len >> 1), upper);
-		mulg (x, g);
-		free (x);
+		mpz_mul (g, x, g);
+		mpz_clear (x);
 		return;
 	}
 
@@ -4378,19 +4386,23 @@ void calc_exp (
 /* have pointed out that Fermat numbers should include 4n and generalized Fermat should include 2n). */
 /* Heck, maybe other forms may also need n included, so just always include 2n -- it is very cheap. */
 
-//	if (lower == 0 && k == 1.0 && b == 2 && c == -1) itog (2*n, g);
-//	else if (lower == 0 && k == 1.0 && c == 1) itog (n, g);
-//	else setone (g);
-	itog (2*n, g);
+	if (lower == 0) mpz_set_ui (g, 2*n);
+	else mpz_set_ui (g, 1);
 
 /* Find all the primes in the range and use as many powers as possible */
 
-	for ( ; *p <= B1 && (unsigned long) g->sign < len; *p = sieve (pm1data->sieve_info)) {
+	for ( ; *p <= B1 && mpz_sizeinbase (g, 2) < len; *p = sieve (pm1data->sieve_info)) {
 		uint64_t val, max;
 		val = *p;
 		max = B1 / *p;
 		while (val <= max) val *= *p;
-		ullmulg (val, g);
+		if (sizeof (unsigned int) == 4 && val > 0xFFFFFFFF) {
+			mpz_t	mpz_val;
+			mpz_init_set_d (mpz_val, (double) val);		/* Works for B1 up to 2^53 */
+			mpz_mul (g, g, mpz_val);
+			mpz_clear (mpz_val);
+		} else
+			mpz_mul_ui (g, g, (unsigned int) val);
 	}
 }
 
@@ -4408,20 +4420,22 @@ int pminus1 (
 	uint64_t processed;	/* Data read from save file */
 	giant	N;		/* Number being factored */
 	giant	factor;		/* Factor found, if any */
-	giant	exp;
+	mpz_t	exp;
+	int	exp_initialized;
 	uint64_t stage_0_limit, prime, m;
 	unsigned long memused, SQRT_B;
 	unsigned long numrels, first_rel, last_rel;
 	unsigned long i, j, stage2incr, len, bit_number;
 	unsigned long error_recovery_mode = 0;
-	gwnum	x, gg, t3;
-	saveFileState save_file_state;	/* Manage savefile names during reading */
-	char	filename[32], buf[255], testnum[100];
+	gwnum	x, gg, tmp_gwnum, t3;
+	readSaveFileState read_save_file_state;	/* Manage savefile names during reading */
+	writeSaveFileState write_save_file_state; /* Manage savefile names during writing */
+	char	filename[32], buf[255], JSONbuf[4000], testnum[100];
 	int	have_save_file;
 	int	res, stop_reason, stage, saving, near_fft_limit, echk;
 	double	one_over_len, one_over_B, one_pair_pct;
 	double	base_pct_complete, last_output, last_output_t, last_output_r;
-	double	output_frequency, output_title_frequency;
+	double	allowable_maxerr, output_frequency, output_title_frequency;
 	int	first_iter_msg;
 	int	using_t3;	/* Indicates we are using the gwnum t3 */
 				/* to avoid a gwfftadd3 in stage 2 */
@@ -4439,10 +4453,10 @@ int pminus1 (
 
 	memset (&pm1data, 0, sizeof (pm1handle));
 	N = NULL;
-	exp = NULL;
 	factor = NULL;
 	str = NULL;
 	msg = NULL;
+	exp_initialized = FALSE;
 
 /* Init local copies of B1 and B2 */
 
@@ -4513,12 +4527,20 @@ restart:
 	gwinit (&pm1data.gwdata);
 	gwset_sum_inputs_checking (&pm1data.gwdata, SUM_INPUTS_ERRCHK);
 	if (IniGetInt (LOCALINI_FILE, "UseLargePages", 0)) gwset_use_large_pages (&pm1data.gwdata);
-	if (HYPERTHREAD_LL) sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+	if (IniGetInt (INI_FILE, "HyperthreadPrefetch", 0)) gwset_hyperthread_prefetch (&pm1data.gwdata);
+	if (HYPERTHREAD_LL) {
+		sp_info->normal_work_hyperthreads = IniGetInt (LOCALINI_FILE, "HyperthreadLLcount", CPU_HYPERTHREADS);
+		gwset_will_hyperthread (&pm1data.gwdata, sp_info->normal_work_hyperthreads);
+	}
+	gwset_bench_cores (&pm1data.gwdata, NUM_CPUS);
+	gwset_bench_workers (&pm1data.gwdata, NUM_WORKER_THREADS);
+	if (ERRCHK) gwset_will_error_check (&pm1data.gwdata);
+	else gwset_will_error_check_near_limit (&pm1data.gwdata);
 	gwset_num_threads (&pm1data.gwdata, CORES_PER_TEST[thread_num] * sp_info->normal_work_hyperthreads);
 	gwset_thread_callback (&pm1data.gwdata, SetAuxThreadPriority);
 	gwset_thread_callback_data (&pm1data.gwdata, sp_info);
 	gwset_safety_margin (&pm1data.gwdata, IniGetFloat (INI_FILE, "ExtraSafetyMargin", 0.0));
-	gwset_specific_fftlen (&pm1data.gwdata, w->forced_fftlen);
+	gwset_minimum_fftlen (&pm1data.gwdata, w->minimum_fftlen);
 	res = gwsetup (&pm1data.gwdata, w->k, w->b, w->n, w->c);
 	if (res) {
 		sprintf (buf, "Cannot initialize FFT code, errcode=%d\n", res);
@@ -4540,7 +4562,7 @@ restart:
 /* Output message about the FFT length chosen */
 
 	{
-		char	fft_desc[100];
+		char	fft_desc[200];
 		gwfft_description (&pm1data.gwdata, fft_desc);
 		sprintf (buf, "Using %s\n", fft_desc);
 		OutputStr (thread_num, buf);
@@ -4551,6 +4573,13 @@ restart:
 
 	near_fft_limit = exponent_near_fft_limit (&pm1data.gwdata);
 	gwsetnormroutine (&pm1data.gwdata, 0, ERRCHK || near_fft_limit, 0);
+
+/* Figure out the maximum round-off error we will allow.  By default this is 27/64 when near the FFT limit and 26/64 otherwise. */
+/* We've found that this default catches errors without raising too many spurious error messages.  We let the user override */
+/* this default for user "Never Odd Or Even" who tests exponents well beyond an FFT's limit.  He does his error checking by */
+/* running the first-test and double-check simultaneously. */
+
+	allowable_maxerr = IniGetFloat (INI_FILE, "MaxRoundoffError", (float) (near_fft_limit ? 0.421875 : 0.40625));
 
 /* Compute the number we are factoring */
 
@@ -4563,14 +4592,15 @@ restart:
 /* to read in case there is an error deleting bad save files. */
 
 	have_save_file = FALSE;
-	saveFileStateInit (&save_file_state, thread_num, filename);
+	readSaveFileStateInit (&read_save_file_state, thread_num, filename);
+	writeSaveFileStateInit (&write_save_file_state, filename, 0);
 	for ( ; ; ) {
-		if (! saveFileExists (&save_file_state)) {
+		if (! saveFileExists (&read_save_file_state)) {
 			/* If there were save files, they are all bad.  Report a message */
 			/* and temporarily abandon the work unit.  We do this in hopes that */
 			/* we can successfully read one of the bad save files at a later time. */
 			/* This sounds crazy, but has happened when OSes get in a funky state. */
-			if (save_file_state.a_non_bad_save_file_existed) {
+			if (read_save_file_state.a_non_bad_save_file_existed) {
 				OutputBoth (thread_num, ALLSAVEBAD_MSG);
 				return (0);
 			}
@@ -4578,9 +4608,9 @@ restart:
 			break;
 		}
 
-		if (!pm1_restore (&pm1data, save_file_state.current_filename, w, &processed, &x, &gg)) {
+		if (!pm1_restore (thread_num, &pm1data, read_save_file_state.current_filename, w, &processed, &x, &gg)) {
 			/* Close and rename the bad save file */
-			saveFileBad (&save_file_state);
+			saveFileBad (&read_save_file_state);
 			continue;
 		}
 
@@ -4616,7 +4646,7 @@ restart:
 			gwstartnextfft (&pm1data.gwdata, FALSE);
 			gwsetnormroutine (&pm1data.gwdata, 0, 0, 0);
 			gwsquare_carefully (&pm1data.gwdata, x);
-			pm1_save (&pm1data, filename, w, processed, x, gg);
+			pm1_save (&pm1data, &write_save_file_state, w, processed, x, gg);
 			error_recovery_mode = 0;
 		}
 
@@ -4726,8 +4756,8 @@ restart:
 
 /* First restart point.  Compute the big exponent (a multiple of small */
 /* primes).  Then compute 3^exponent.  The exponent always contains 2*p. */
-/* We only compute 1.5 * B bits (up to 1.5 million).  The rest of the */
-/* exponent will be done one prime at a time in the second part of stage 1. */
+/* We only compute 1.5 * B bits (up to about 20 million bits).  The rest of the */
+/* exponentiation will be done one prime at a time in the second part of stage 1. */
 /* This stage uses 2 transforms per exponent bit. */
 
 restart0:
@@ -4739,14 +4769,13 @@ restart0:
 	stop_reason = start_sieve (thread_num, 2, &pm1data.sieve_info);
 	if (stop_reason) goto exit;
 	prime = sieve (pm1data.sieve_info);
-	stage_0_limit = (pm1data.B > 1000000) ? 1000000 : pm1data.B;
-	i = ((unsigned long) (stage_0_limit * 1.5) >> 5) + 4;
-	exp = allocgiant (i);
-	calc_exp (&pm1data, w->k, w->b, w->n, w->c, exp, pm1data.B, &prime, 0, i);
+	stage_0_limit = (pm1data.B > 13333333) ? 13333333 : pm1data.B;
+	mpz_init (exp);  exp_initialized = TRUE;
+	calc_exp (&pm1data, w->k, w->b, w->n, w->c, exp, pm1data.B, &prime, 0, (unsigned long) (stage_0_limit * 1.5));
 
 /* Find number of bits, ignoring the most significant bit */
 
-	len = bitlen (exp) - 1;
+	len = (unsigned long) mpz_sizeinbase (exp, 2) - 1;
 	one_over_len = 1.0 / (double) len;
 	if (prime < B) one_over_len *= (double) prime / (double) B;
 
@@ -4760,7 +4789,7 @@ restart0:
 
 		if (error_recovery_mode && bit_number == error_recovery_mode) {
 			gwstartnextfft (&pm1data.gwdata, FALSE);
-			gwsetnormroutine (&pm1data.gwdata, 0, 0, bitval (exp, len - bit_number - 1));
+			gwsetnormroutine (&pm1data.gwdata, 0, 0, mpz_tstbit (exp, len - bit_number - 1));
 			gwsquare_carefully (&pm1data.gwdata, x);
 			error_recovery_mode = 0;
 			saving = TRUE;
@@ -4777,14 +4806,14 @@ restart0:
 
 #ifndef SERVER_TESTING
 			gwstartnextfft (&pm1data.gwdata, !stop_reason && !saving && bit_number+1 != error_recovery_mode && bit_number+1 != len);
-			gwsetnormroutine (&pm1data.gwdata, 0, echk, bitval (exp, len - bit_number - 1));
+			gwsetnormroutine (&pm1data.gwdata, 0, echk, mpz_tstbit (exp, len - bit_number - 1));
 			gwsquare (&pm1data.gwdata, x);
 #endif
 		}
 
 /* Test for an error */
 
-		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
+		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) > allowable_maxerr) goto error;
 		bit_number++;
 
 /* Calculate our stage 1 percentage complete */
@@ -4837,7 +4866,7 @@ restart0:
 /* Check for escape and/or if its time to write a save file */
 
 		if (stop_reason || saving) {
-			pm1_save (&pm1data, filename, w, bit_number, x, NULL);
+			pm1_save (&pm1data, &write_save_file_state, w, bit_number, x, NULL);
 			if (stop_reason) goto exit;
 		}
 	}
@@ -4850,15 +4879,14 @@ restart0:
 		gwstartnextfft (&pm1data.gwdata, FALSE);
 		gwsetnormroutine (&pm1data.gwdata, 0, 0, 0);
 		gwsquare_carefully (&pm1data.gwdata, x);
-		pm1_save (&pm1data, filename, w, bit_number, x, NULL);
+		pm1_save (&pm1data, &write_save_file_state, w, bit_number, x, NULL);
 		error_recovery_mode = 0;
 	}
 
 /* Do stage 0 cleanup */
 
 	gwsetnormroutine (&pm1data.gwdata, 0, ERRCHK || near_fft_limit, 0);
-	free (exp);
-	exp = NULL;
+	mpz_clear (exp), exp_initialized = FALSE;
 	end_timer (timers, 0);
 	end_timer (timers, 1);
 
@@ -4876,14 +4904,22 @@ restart1:
 	start_timer (timers, 0);
 	start_timer (timers, 1);
 	pm1data.stage = PM1_STAGE1;
+	tmp_gwnum = gwalloc (&pm1data.gwdata);
+	if (tmp_gwnum == NULL) goto oom;
 	SQRT_B = (unsigned long) sqrt ((double) pm1data.B);
 	for ( ; prime <= pm1data.B; prime = sieve (pm1data.sieve_info)) {
+
+/* Test for user interrupt, save files, and error checking */
+
+		stop_reason = stopCheck (thread_num);
+		saving = testSaveFilesFlag (thread_num);
+		echk = stop_reason || saving || ERRCHK || near_fft_limit || ((prime & 127) == 127);
+		gwsetnormroutine (&pm1data.gwdata, 0, echk, 0);
 
 /* Apply as many powers of prime as long as prime^n <= B */
 
 		if (prime > pm1data.B_done) {
-			stop_reason = pm1_mul (&pm1data, x, prime);
-			if (stop_reason) goto exit;
+			pm1_mul (&pm1data, x, tmp_gwnum, prime);
 		}
 		if (prime <= SQRT_B) {
 			uint64_t mult, max;
@@ -4892,8 +4928,7 @@ restart1:
 			for ( ; ; ) {
 				mult *= prime;
 				if (mult > pm1data.B_done) {
-					stop_reason = pm1_mul (&pm1data, x, prime);
-					if (stop_reason) goto exit;
+					pm1_mul (&pm1data, x, tmp_gwnum, prime);
 				}
 				if (mult > max) break;
 			}
@@ -4901,16 +4936,11 @@ restart1:
 
 /* Test for an error */
 
-		if (gw_test_for_error (&pm1data.gwdata) ||
-		    gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
+		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) > allowable_maxerr) goto error;
 
 /* Calculate our stage 1 percentage complete */
 
 		w->pct_complete = (double) prime * one_over_B;
-
-/* Test for user interrupt */
-
-		stop_reason = stopCheck (thread_num);
 
 /* Output the title every so often */
 
@@ -4957,11 +4987,12 @@ restart1:
 
 /* Check for escape and/or if its time to write a save file */
 
-		if (stop_reason || testSaveFilesFlag (thread_num)) {
-			pm1_save (&pm1data, filename, w, prime, x, NULL);
+		if (stop_reason || saving) {
+			pm1_save (&pm1data, &write_save_file_state, w, prime, x, NULL);
 			if (stop_reason) goto exit;
 		}
 	}
+	gwfree (&pm1data.gwdata, tmp_gwnum);
 	pm1data.B_done = pm1data.B;
 	pm1data.C_done = pm1data.B;
 	end_timer (timers, 0);
@@ -5012,7 +5043,7 @@ restart2:
 		stop_reason = gcd (&pm1data.gwdata, thread_num, x, N, &factor);
 		gwaddsmall (&pm1data.gwdata, x, 1);
 		if (stop_reason) {
-			pm1_save (&pm1data, filename, w, B, x, NULL);
+			pm1_save (&pm1data, &write_save_file_state, w, B, x, NULL);
 			goto exit;
 		}
 		end_timer (timers, 0);
@@ -5057,7 +5088,7 @@ more_C:	pm1data.C_start = (C_start > pm1data.C_done) ? C_start : pm1data.C_done;
 	pm1data.C = C;
 	stop_reason = choose_pminus1_plan (&pm1data, w);
 	if (stop_reason) {
-		pm1_save (&pm1data, filename, w, 0, x, gg);
+		pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 		goto exit;
 	}
 	if (pm1data.D == 0) { /* We'll never have enough memory for stage 2 */
@@ -5067,7 +5098,7 @@ more_C:	pm1data.C_start = (C_start > pm1data.C_done) ? C_start : pm1data.C_done;
 	}
 	stop_reason = fill_pminus1_bitarray (&pm1data);
 	if (stop_reason) {
-		pm1_save (&pm1data, filename, w, 0, x, gg);
+		pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 		goto exit;
 	}
 	pm1data.rels_done = 0;
@@ -5099,7 +5130,7 @@ restart3b:
 
 replan:	stop_reason = choose_pminus1_implementation (&pm1data, w, &using_t3);
 	if (stop_reason) {
-		pm1_save (&pm1data, filename, w, 0, x, gg);
+		pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 		goto exit;
 	}
 
@@ -5161,14 +5192,13 @@ replan:	stop_reason = choose_pminus1_implementation (&pm1data, w, &using_t3);
 		if (i >= pm1data.D) break;
 		if (numrels == pm1data.rels_this_pass) break;
 		fd_next (&pm1data);
-		if (gw_test_for_error (&pm1data.gwdata) ||
-		    gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
+		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) > allowable_maxerr) goto error;
 		stop_reason = stopCheck (thread_num);
 		if (stop_reason) {
 			fd_term (&pm1data);
 			gwstartnextfft (&pm1data.gwdata, FALSE);
 			gwfftfftmul (&pm1data.gwdata, x, x, x);	/* Unfft x - generates x^2 */
-			pm1_save (&pm1data, filename, w, 0, x, gg);
+			pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 			goto exit;
 		}
 	}
@@ -5294,8 +5324,7 @@ found_a_bit:;
 
 /* Test for errors */
 
-errchk:		if (gw_test_for_error (&pm1data.gwdata) ||
-		    gw_get_maxerr (&pm1data.gwdata) >= 0.40625) goto error;
+errchk:		if (gw_test_for_error (&pm1data.gwdata) || gw_get_maxerr (&pm1data.gwdata) > allowable_maxerr) goto error;
 
 /* Output the title every so often */
 
@@ -5350,7 +5379,7 @@ errchk:		if (gw_test_for_error (&pm1data.gwdata) ||
 			if (stop_reason) fd_term (&pm1data);
 			if (using_t3) gwfree (&pm1data.gwdata, t3);
 			gwtouch (&pm1data.gwdata, gg);
-			pm1_save (&pm1data, filename, w, 0, x, gg);
+			pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 			if (stop_reason) goto exit;
 			saving = FALSE;
 			if (using_t3) {
@@ -5409,8 +5438,7 @@ errchk:		if (gw_test_for_error (&pm1data.gwdata) ||
 /* Print out round off error */
 
 	if (ERRCHK) {
-		sprintf (buf, "Round off: %.10g\n",
-			 gw_get_maxerr (&pm1data.gwdata));
+		sprintf (buf, "Round off: %.10g\n", gw_get_maxerr (&pm1data.gwdata));
 		OutputStr (thread_num, buf);
 		gw_clear_maxerr (&pm1data.gwdata);
 	}
@@ -5434,7 +5462,7 @@ restart4:
 	start_timer (timers, 0);
 	stop_reason = gcd (&pm1data.gwdata, thread_num, gg, N, &factor);
 	if (stop_reason) {
-		pm1_save (&pm1data, filename, w, C, x, gg);
+		pm1_save (&pm1data, &write_save_file_state, w, C, x, gg);
 		goto exit;
 	}
 	pm1data.stage = PM1_DONE;
@@ -5447,18 +5475,38 @@ restart4:
 /* Output line to results file indicating P-1 run */
 
 msg_and_exit:
-	sprintf (buf, "%s completed P-1, B1=%.0f",
-		 gwmodulo_as_string (&pm1data.gwdata), (double) B);
+	sprintf (buf, "%s completed P-1, B1=%.0f", gwmodulo_as_string (&pm1data.gwdata), (double) B);
 	if (C > B) {
 		if (pm1data.E <= 2)
 			sprintf (buf+strlen(buf), ", B2=%.0f", (double) C);
 		else
 			sprintf (buf+strlen(buf), ", B2=%.0f, E=%lu", (double) C, pm1data.E);
 	}
-	sprintf (buf+strlen(buf), ", We%d: %08lX\n", PORT, SEC5 (w->n, B, C));
+	sprintf (buf+strlen(buf), ", Wh%d: %08lX\n", PORT, SEC5 (w->n, B, C));
 	OutputStr (thread_num, buf);
 	formatMsgForResultsFile (buf, w);
 	writeResults (buf);
+
+/* Format a JSON version of the result.  An example follows: */
+/* {"status":"NF", "exponent":45581713, "worktype":"P-1", "b1":50000, "b2":5000000, "brent-suyama":6, */
+/* "fft-length":5120, "security-code":"39AB1238", */
+/* "program":{"name":"prime95", "version":"29.5", "build":"8"}, "timestamp":"2019-01-15 23:28:16", */
+/* "user":"gw_2", "cpu":"work_computer", "aid":"FF00AA00FF00AA00FF00AA00FF00AA00"} */
+
+	strcpy (JSONbuf, "{\"status\":\"NF\"");
+	JSONaddExponent (JSONbuf, w);
+	strcat (JSONbuf, ", \"worktype\":\"P-1\"");
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"b1\":%.0f", (double) B);
+	if (C > B) {
+		sprintf (JSONbuf+strlen(JSONbuf), ", \"b2\":%.0f", (double) C);
+		if (pm1data.E > 2) sprintf (JSONbuf+strlen(JSONbuf), ", \"brent-suyama\":%lu", pm1data.E);
+	}
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"fft-length\":%lu", pm1data.gwdata.FFTLEN);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"security-code\":\"%08lX\"", SEC5 (w->n, B, C));
+	JSONaddProgramTimestamp (JSONbuf);
+	JSONaddUserComputerAID (JSONbuf, w);
+	strcat (JSONbuf, "}\n");
+	if (IniGetInt (INI_FILE, "OutputJSON", 1)) writeResultsJSON (JSONbuf);
 
 /* Send P-1 completed message to the server.  Although don't do it for puny */
 /* B1 values as this is just the user tinkering with P-1 factoring. */
@@ -5477,8 +5525,8 @@ msg_and_exit:
 		pkt.B1 = (double) B;
 		pkt.B2 = (double) C;
 		pkt.fftlen = gwfftlen (&pm1data.gwdata);
-		pkt.done = (w->work_type == WORK_PMINUS1 ||
-			    w->work_type == WORK_PFACTOR);
+		pkt.done = (w->work_type == WORK_PMINUS1 || w->work_type == WORK_PFACTOR);
+		strcpy (pkt.JSONmessage, JSONbuf);
 		spoolMessage (PRIMENET_ASSIGNMENT_RESULT, &pkt);
 	}
 
@@ -5487,9 +5535,9 @@ msg_and_exit:
 /* save file. */
 
 	if (w->work_type == WORK_PMINUS1 && IniGetInt (INI_FILE, "KeepPminus1SaveFiles", 1))
-		pm1_save (&pm1data, filename, w, 0, x, NULL);
+		pm1_save (&pm1data, &write_save_file_state, w, 0, x, NULL);
 	else
-		unlinkSaveFiles (filename);
+		unlinkSaveFiles (&write_save_file_state);
 
 /* Return stop code indicating success or work unit complete */ 
 
@@ -5506,16 +5554,16 @@ done:	if (w->work_type == WORK_PMINUS1 || w->work_type == WORK_PFACTOR)
 
 exit:	pm1_cleanup (&pm1data);
 	free (N);
-	free (exp);
 	free (factor);
 	free (str);
 	free (msg);
+	if (exp_initialized) mpz_clear (exp);
 	return (stop_reason);
 
 /* Low on memory, reduce memory settings and try again */
 
 lowmem:	fd_term (&pm1data);
-	pm1_save (&pm1data, filename, w, 0, x, gg);
+	pm1_save (&pm1data, &write_save_file_state, w, 0, x, gg);
 	pm1_cleanup (&pm1data);
 	free (N);
 	N = NULL;
@@ -5558,10 +5606,9 @@ bingo:	if (stage == 1)
 /* Validate the factor we just found */
 
 	if (!testFactor (&pm1data.gwdata, w, factor)) {
-		sprintf (msg, "ERROR: Bad factor for %s found: %s\n",
-			 gwmodulo_as_string (&pm1data.gwdata), str);
+		sprintf (msg, "ERROR: Bad factor for %s found: %s\n", gwmodulo_as_string (&pm1data.gwdata), str);
 		OutputBoth (thread_num, msg);
-		unlinkSaveFiles (filename);
+		unlinkSaveFiles (&write_save_file_state);
 		OutputStr (thread_num, "Restarting P-1 from scratch.\n");
 		stop_reason = 0;
 		goto error_restart;
@@ -5582,12 +5629,34 @@ bingo:	if (stage == 1)
 	formatMsgForResultsFile (msg, w);
 	writeResults (msg);
 
+/* Format a JSON version of the result.  An example follows: */
+/* {"status":"F", "exponent":45581713, "worktype":"P-1", "factors":"430639100587696027847", */
+/* "b1":50000, "b2":5000000, "brent-suyama":6, */
+/* "fft-length":5120, "security-code":"39AB1238", */
+/* "program":{"name":"prime95", "version":"29.5", "build":"8"}, "timestamp":"2019-01-15 23:28:16", */
+/* "user":"gw_2", "cpu":"work_computer", "aid":"FF00AA00FF00AA00FF00AA00FF00AA00"} */
+
+	strcpy (JSONbuf, "{\"status\":\"F\"");
+	JSONaddExponent (JSONbuf, w);
+	strcat (JSONbuf, ", \"worktype\":\"P-1\"");
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"factors\":\"%s\"", str);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"b1\":%.0f", (double) B);
+	if (stage > 1) {
+		sprintf (JSONbuf+strlen(JSONbuf), ", \"b2\":%.0f", (double) C);
+		if (pm1data.E > 2) sprintf (JSONbuf+strlen(JSONbuf), ", \"brent-suyama\":%lu", pm1data.E);
+	}
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"fft-length\":%lu", pm1data.gwdata.FFTLEN);
+	sprintf (JSONbuf+strlen(JSONbuf), ", \"security-code\":\"%08lX\"", SEC5 (w->n, B, C));
+	JSONaddProgramTimestamp (JSONbuf);
+	JSONaddUserComputerAID (JSONbuf, w);
+	strcat (JSONbuf, "}\n");
+	if (IniGetInt (INI_FILE, "OutputJSON", 1)) writeResultsJSON (JSONbuf);
+
 /* Send assignment result to the server.  To avoid flooding the server */
 /* with small factors from users needlessly redoing factoring work, make */
 /* sure the factor is more than 50 bits or so. */
 
-	if (strlen (str) >= 15 ||
-	    IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
+	if (strlen (str) >= 15 || IniGetInt (INI_FILE, "SendAllFactorData", 0)) {
 		struct primenetAssignmentResult pkt;
 		memset (&pkt, 0, sizeof (pkt));
 		strcpy (pkt.computer_guid, COMPUTER_GUID);
@@ -5603,22 +5672,23 @@ bingo:	if (stage == 1)
 		pkt.B2 = (double) (stage == 1 ? 0 : C);
 		pkt.fftlen = gwfftlen (&pm1data.gwdata);
 		pkt.done = TRUE;
+		strcpy (pkt.JSONmessage, JSONbuf);
 		spoolMessage (PRIMENET_ASSIGNMENT_RESULT, &pkt);
 	}
 
 /* If LL testing, free all save files -- including possible LL save files */
 
 	if (w->work_type != WORK_PMINUS1 || !IniGetInt (INI_FILE, "KeepPminus1SaveFiles", 1)) {
-		unlinkSaveFiles (filename);
-		filename[0] = 'p';
-		unlinkSaveFiles (filename);
+		unlinkSaveFiles (&write_save_file_state);
+		write_save_file_state.base_filename[0] = 'p';
+		unlinkSaveFiles (&write_save_file_state);
 	}
 
 /* Otherwise create save file so that we can expand bound 1 or bound 2 */
 /* at a later date. */
 
 	else
-		pm1_save (&pm1data, filename, w, 0, x, NULL);
+		pm1_save (&pm1data, &write_save_file_state, w, 0, x, NULL);
 
 /* Since we found a factor, then we may have performed less work than */
 /* expected.  Make sure we do not update the rolling average with */
@@ -5634,7 +5704,7 @@ bingo:	if (stage == 1)
 /* Output an error message saying we are restarting. */
 /* Sleep five minutes before restarting from last save file. */
 
-error:	if (near_fft_limit && gw_get_maxerr (&pm1data.gwdata) >= 0.40625) {
+error:	if (gw_get_maxerr (&pm1data.gwdata) > allowable_maxerr) {
 		sprintf (buf, "Possible roundoff error (%.8g), backtracking to last save file.\n", gw_get_maxerr (&pm1data.gwdata));
 		OutputStr (thread_num, buf);
 	} else {
@@ -5645,16 +5715,11 @@ error:	if (near_fft_limit && gw_get_maxerr (&pm1data.gwdata) >= 0.40625) {
 	error_recovery_mode = bit_number ? bit_number : 1;
 error_restart:
 	pm1_cleanup (&pm1data);
-	free (N);
-	N = NULL;
-	free (exp);
-	exp = NULL;
-	free (factor);
-	factor = NULL;
-	free (str);
-	str = NULL;
-	free (msg);
-	msg = NULL;
+	free (N), N = NULL;
+	free (factor), factor = NULL;
+	free (str), str = NULL;
+	free (msg), msg = NULL;
+	if (exp_initialized) mpz_clear (exp), exp_initialized = FALSE;
 	goto restart;
 }
 
