@@ -270,7 +270,7 @@ int gettimeofday (
 {
 	// This magic number is the number of 100 nanosecond intervals since January 1, 1601 (UTC)
 	// until 00:00:00 January 1, 1970 
-	static const uint64_t EPOCH = ((uint64_t) 116444736000000000/*ULL*/);
+	static const uint64_t EPOCH = ((uint64_t) 116444736000000000U/*LL*/);
 
 	SYSTEMTIME  system_time;
 	FILETIME    file_time;
