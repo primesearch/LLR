@@ -3,7 +3,7 @@
 D = ./linuxllr
 
 CC = gcc
-CFLAGS = -I. -I./gwnum -O2 -march=i486 -malign-double
+CFLAGS = -I./include -I. -I./gwnum -O2 -march=i486 -malign-double
 
 CPP = g++
 CPPFLAGS = -I. -I./gwnum -O2 -march=i486 -malign-double

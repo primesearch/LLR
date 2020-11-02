@@ -241,10 +241,11 @@ void advanced_priority ()
 
 void options_cpu () 
 { 
-	char buf[512]; 
+	char buf[4096]; 
  
-	getCpuDescription (buf, 0); 
-	printf ("CPU Information:\n%s\n", buf); 
+	getCpuDescription (buf, 1); 
+	if (!IniGetInt (INI_FILE, "OutputTopology", 0))
+		printf ("CPU Information:\n%s\n", buf); 
  
 	askOK (); 
 } 
@@ -288,7 +289,7 @@ void help_about ()
 	printf ("(Copyright 1996-2019 Just For Fun Software, Inc.\n");
 	printf ("Author: George Woltman\n");
 	printf ("Email:  woltman@alum.mit.edu)\n");
-	printf ("Written : March 20019 by Jean Penne\n");
+	printf ("Written : June 2020 by Jean Penne\n");
 	printf ("Email : jpenne@free.fr\n");
 	askOK ();
 }

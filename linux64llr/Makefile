@@ -3,9 +3,9 @@
 CC = gcc
 
 LFLAGS =
-LIBELF = ../gwnum/gwnum.a
-LIBS   = $(LIBELF) ./libgmp.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
-LIBS2  = $(LIBELF) ./libgmp.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++ -static
+LIBELF = ../gwnum/gwnum.a ./libgmp.a ./libhwloc.a
+LIBS   = $(LIBELF)  ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
+LIBS2  = $(LIBELF)  ../gwnum/gwnum.ld -lm  -lpthread -lstdc++ -static
 
 FACTOROBJ = factor64p.o factor64lp.o
 COMPOBJS = lprime.o lmenu.o

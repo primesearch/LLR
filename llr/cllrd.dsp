@@ -39,9 +39,10 @@ RSC=rc.exe
 # PROP Use_Debug_Libraries 0
 # PROP Output_Dir "cllrd___Win32_Release"
 # PROP Intermediate_Dir "cllrd___Win32_Release"
+# PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
-# ADD CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
+# ADD CPP /nologo /MT /W3 /GX /O2 /I "../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
 # ADD BASE RSC /l 0x40c /d "NDEBUG"
 # ADD RSC /l 0x40c /d "NDEBUG"
 BSC32=bscmake.exe
@@ -49,7 +50,8 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:console /machine:I386
-# ADD LINK32 /nologo /subsystem:console /machine:I386
+# ADD LINK32 /nologo /subsystem:console /machine:I386 /nodefaultlib:"LIBC"
+# SUBTRACT LINK32 /pdb:none
 
 !ELSEIF  "$(CFG)" == "cllrd - Win32 Debug"
 
@@ -111,6 +113,14 @@ SOURCE=.\factor32lp.obj
 # Begin Source File
 
 SOURCE=..\gwnum\gwnumd.lib
+# End Source File
+# Begin Source File
+
+SOURCE=.\libhwloc.lib
+# End Source File
+# Begin Source File
+
+SOURCE=.\gmp.lib
 # End Source File
 # End Target
 # End Project

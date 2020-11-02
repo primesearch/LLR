@@ -38,13 +38,17 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <gmp.h>
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#include "./gmp.h"
+#else
+#include "./llr/gmp.h"
+#endif
 #include "mpz_aprcl.h"
 
 #ifndef HAVE_U64_T
 #define HAVE_U64_T
-typedef long long s64_t;
-typedef unsigned long long u64_t;
+typedef __int64 s64_t;
+typedef unsigned __int64 u64_t;
 #endif
 
 /* ******************************************************************
@@ -1334,7 +1338,7 @@ int aiNQ[] = {8,27,45,81,134,245,351,424,618};
 
 /*         t     |       e(t)   | #Qp |      Qmax  |   divisors of t         */
 /* --------------|--------------|-----|------------|------------------------ */
-s64_t aiT[] =  {
+	s64_t aiT[] =  {
           60, /* | 6.8144 E   9 |   8 |         61 | p={2,3,5}               */
         5040, /* | 1.5321 E  52 |  27 |       2521 | p={2,3,5,7}             */
        55440, /* | 4.9209 E 106 |  45 |      55441 | p={2,3,5,7,11}          */
@@ -1346,7 +1350,7 @@ s64_t aiT[] =  {
   6983776800};/* | 7.4712 E3010 | 618 | 1745944201 | p={2,3,5,7,11,13,17,19} */
 
 
-int aiInv[PWmax];
+int aiInv[PWmax] = {0};
 mpz_t biTmp;
 mpz_t biExp;
 mpz_t biN;
@@ -1369,14 +1373,14 @@ mpz_t TestNbr;
 void allocate_vars()
 {
   int i = 0;
-  aiJS = malloc(PWmax * sizeof(mpz_t));
-  aiJW = malloc(PWmax * sizeof(mpz_t));
-  aiJX = malloc(PWmax * sizeof(mpz_t));
-  aiJ0 = malloc(PWmax * sizeof(mpz_t));
-  aiJ1 = malloc(PWmax * sizeof(mpz_t));
-  aiJ2 = malloc(PWmax * sizeof(mpz_t));
-  aiJ00 = malloc(PWmax * sizeof(mpz_t));
-  aiJ01 = malloc(PWmax * sizeof(mpz_t));
+  aiJS = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJW = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJX = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJ0 = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJ1 = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJ2 = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJ00 = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
+  aiJ01 = (mpz_t*)malloc(PWmax * sizeof(mpz_t));
   for (i = 0 ; i < PWmax; i++)
   {
     mpz_init(aiJS[i]);
@@ -1648,8 +1652,6 @@ int mpz_aprtcle(mpz_t N, int verbose)
   int IV, InvX, LEVELnow, NP, PK, PL, PM, SW, VK, TestedQs, TestingQs;
   int QQ, T1, T3, U1, U3, V1, V3;
   int break_this = 0;
-
-
   /* make sure the input is >= 2 and odd */
   if (mpz_cmp_ui(N, 2) < 0)
     return APRTCLE_COMPOSITE;
@@ -1674,6 +1676,7 @@ int mpz_aprtcle(mpz_t N, int verbose)
   /* If the input number is larger than 7000 decimal digits
      we will just return whether it is a BPSW (probable) prime */
   NumberLength = mpz_sizeinbase(N, 10);
+
   if (NumberLength > 7000)
   {
     if (verbose >= APRTCLE_VERBOSE2)
@@ -1731,7 +1734,6 @@ int mpz_aprtcle(mpz_t N, int verbose)
   TestingQs = j;
   T = aiT[LEVELnow];
   NP = aiNP[LEVELnow];
-
 MainStart:
   for (;;)
   {
@@ -1742,7 +1744,7 @@ MainStart:
 
       SW = TestedQs = 0;
       /* Q = W = (int) BigNbrModLong(TestNbr, P * P); */
-      Q = W = mpz_fdiv_ui(TestNbr, P * P);
+      Q = W = mpz_fdiv_ui(TestNbr, (P * P));
       for (J = P - 2; J > 0; J--)
       {
         W = (W * Q) % (P * P);
@@ -1771,7 +1773,7 @@ MainStart:
 
           if (verbose >= APRTCLE_VERBOSE1)
           {
-            printf("P = %2d, Q = %12d  (%3.2f%%)\r", P, Q, (i * (TestingQs + 1) + j) * 100.0 / (NP * (TestingQs + 1)));
+            printf("P = %2d, Q = %12d  (%3.2f%%)\n", P, Q, (i * (TestingQs + 1) + j) * 100.0 / (NP * (TestingQs + 1)));
             fflush(stdout);
           }
 
@@ -2157,7 +2159,7 @@ MainStart:
               /* break MatchingRoot; */
               break;
             }
-            if (W != P - 1)
+            if (W != (P - 1))
             {
               /* Not prime */
               if (verbose >= APRTCLE_VERBOSE2)
@@ -2320,7 +2322,7 @@ MainStart:
       if (mpz_cmp_ui(biR, 1) == 0) /* biR == 1 */
       {
         /* Number is prime */
-        free_vars();
+       free_vars();
         return APRTCLE_PRIME;
       }
       if (mpz_divisible_p(TestNbr, biR) && mpz_cmp(biR, TestNbr) < 0) /* biR < N and biR | TestNbr */
@@ -2339,5 +2341,4 @@ MainStart:
     return mpz_bpsw_prp(N); /* Program error */
   }
 }
-
 /* ============================================================================================== */

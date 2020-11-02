@@ -120,6 +120,7 @@ char ffmstring[] = "$a*2^$b-1";		// Lei output
 char gmstring[] = "4^$a+1";			// Gaussian Mersenne norms
 char gfstring[] = "$a^$b+1";		// Special primality test for generalized Fermat numbers
 char spstring[] = "(2^$a+1)/3";		// Special SPRP test for Wagstaff numbers
+char dpstring[] = "DivPhi($a*$b^$c+1)"; // like-PRP test for DivPhi(...,2)
 char repustring[] = "(10^$a-1)/9";	// PRP test for repunits numbers
 char grepustring[] = "($a^$b-1)/($a-1)";// PRP test for generalized repunits numbers
 char diffnumpstring[] = "$a^$b-$a^$c+%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c+%d so, form K*B^N+C
@@ -217,6 +218,7 @@ char	SVINI_FILE[80] = {0};
 char	RESFILE[80] = {0};
 char	LOGFILE[80] = {0};
 char	EXTENSION[8] = {0};;
+char	HARDWARE_GUID[33] = {0};
 int volatile ERRCHK = 0;
 unsigned int PRIORITY = 1;
 unsigned int CPU_AFFINITY = 99;
@@ -224,20 +226,48 @@ EXTERNC unsigned int volatile CPU_TYPE = 0;
 unsigned long volatile ITER_OUTPUT = 0;
 unsigned long volatile ITER_OUTPUT_RES = 99999999;
 unsigned long volatile DISK_WRITE_TIME = 30;
+unsigned long INTERIM_FILES = 0;
+unsigned long INTERIM_RESIDUES = 0;
+int	CLASSIC_OUTPUT = 0;
+int	OUTPUT_ROUNDOFF = 0;
+int	CUMULATIVE_ROUNDOFF = 1;
 int	TWO_BACKUP_FILES = 1;
+int	NUM_BACKUP_FILES = 3;
+int	NUM_JACOBI_BACKUP_FILES = 2;
 int	RUN_ON_BATTERY = 1;
 int	TRAY_ICON = TRUE;
 int	HIDE_ICON = FALSE;
+double UNOFFICIAL_CPU_SPEED = 0.0;
+unsigned int WORKTODO_COUNT = 0;/* Count of valid work lines */
+unsigned int ROLLING_AVERAGE = 0;
 unsigned int PRECISION = 2;
+unsigned long NUM_CPUS = 1;	/* Number of CPUs/Cores in the computer */
+unsigned long NUM_WORKER_THREADS = 1;
+hwloc_topology_t hwloc_topology;	/* Hardware topology */
+uint32_t CPU_TOTAL_L1_CACHE_SIZE = 0;	/* Sum of all the L1 caches in KB as determined by hwloc */
+uint32_t CPU_TOTAL_L2_CACHE_SIZE = 0;	/* Sum of all the L2 caches in KB as determined by hwloc */
+uint32_t CPU_TOTAL_L3_CACHE_SIZE = 0;	/* Sum of all the L3 caches in KB as determined by hwloc */
+uint32_t CPU_TOTAL_L4_CACHE_SIZE = 0;	/* Sum of all the L4 caches in KB as determined by hwloc */
+uint32_t CPU_NUM_L1_CACHES = 0;		/* Number of L1 caches as determined by hwloc */
+uint32_t CPU_NUM_L2_CACHES = 0;		/* Number of L2 caches as determined by hwloc */
+uint32_t CPU_NUM_L3_CACHES = 0;		/* Number of L3 caches as determined by hwloc */
+uint32_t CPU_NUM_L4_CACHES = 0;		/* Number of L4 caches as determined by hwloc */
+int	CPU_L2_CACHE_INCLUSIVE = -1;	/* 1 if inclusive, 0 if exclusive, -1 if not known */
+int	CPU_L3_CACHE_INCLUSIVE = -1;	/* 1 if inclusive, 0 if exclusive, -1 if not known */
+int	CPU_L4_CACHE_INCLUSIVE = -1;	/* 1 if inclusive, 0 if exclusive, -1 if not known */
+unsigned int NUM_NUMA_NODES = 1;	/* Number of NUMA nodes in the computer */
+unsigned int NUM_THREADING_NODES = 1;	/* Number of nodes where it might be beneficial to keep a worker's threads in the same node */
 int	CUMULATIVE_TIMING = 0;
 int	HIGH_RES_TIMER = 0; 
+int	usingDivPhi_m = 0;
+int	RDTSC_TIMING = 1;
 
 extern double MAXDIFF;
 double maxdiffmult = 1.0;
 
 /* PRP and LLR global variables */
 
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 HANDLE hConsole;		// Handle to Console attributes
 #endif
 
@@ -254,6 +284,8 @@ unsigned long klen = 0;	/* Number of bits of k multiplier */
 unsigned long OLDFFTLEN = 0; /* previous value of FFTLEN, used by setuponly option */
 unsigned long ndiff = 0;/* used for b^n-b^m+c number processing */
 unsigned long gformat;	/* used for b^n-b^m+c number processing */
+
+struct work_unit *w = NULL;	// Work to do data as described in Prime95
 
 /* Global variables for factoring */
 
@@ -279,7 +311,7 @@ int resn = 0, resnp = 0;
 char facnstr[80], facnpstr[80];
 char m_pgen_input[IBSIZE], m_pgen_output[IBSIZE], oldm_pgen_input[IBSIZE];
 char keywords[10][IBSIZE], values[10][IBSIZE];
-char multiplier[IBSIZE], base[IBSIZE], exponent[IBSIZE], exponent2[IBSIZE], addin[IBSIZE];
+char multiplier[IBSIZE], base[IBSIZE], exponent[IBSIZE], exponent2[IBSIZE], addin[IBSIZE], divisors[IBSIZE];
 char inifilebuf[IBSIZE];
 char sgd[sgkbufsize];
 char sgb[sgkbufsize];
@@ -294,8 +326,39 @@ int pfactor64();
 
 #endif
 
-void* aligned_malloc (unsigned long, unsigned long);
+//void* aligned_malloc (unsigned long, unsigned long);
 void  aligned_free (void *);
+
+void md5 (
+	char output[33],
+	const char *string);
+
+/* Calculate the 32-byte hex string for the hardware GUID.  We use the */
+/* output of the CPUID function to generate this.  We don't include the */
+/* cache size information because when a new processor comes out the CPUID */
+/* does not recognize the cache size.  When a new version of prime95 is */
+/* released that does recognize the cache size a different hardware GUID */
+/* would be generated. */
+
+void calc_hardware_guid (void)
+{
+	char	buf[500];
+
+	sprintf (buf, "%s%d", CPU_BRAND, CPU_SIGNATURE);
+	md5 (HARDWARE_GUID, buf);
+
+/* Sometimes a user might want to run the program on several machines. */
+/* Typically this is done by carrying the program and files around on a */
+/* portable media such as a USB memory stick.  In this case, */
+/* we need to defeat the code that automatically detects hardware changes. */
+/* The FixedHardwareUID INI option tells us to get the Windows and */
+/* hardware hashes from the INI file rather than calculating them. */
+
+	if (IniGetInt (INI_FILE, "FixedHardwareUID", 0)) {
+		IniGetString (INI_FILE, "HardwareGUID", HARDWARE_GUID, sizeof (HARDWARE_GUID), HARDWARE_GUID);
+		IniWriteString (INI_FILE, "HardwareGUID", HARDWARE_GUID);
+	}
+}
 
 static unsigned long last_bit[10] = {0};				// Bit or iter. currently tested on operaton N° index.
 static double last_suminp[10] = {0.0};
@@ -425,11 +488,15 @@ char ERRMSG7[] = "Fatal Error, divisibility test of %d^(N-1)-1 aborted\n";
 char ERRMSG8[] = "Unrecoverable error, Restarting with next larger FFT length...\n";
 //char ERRMSG9[] = "Too much errors while using the standard method ; continuing with a slower, more reliable one.\n";
 char ERRMSG9[] = "Too much errors ; Restarting with next larger FFT length...\n";
+char ERRMSG60[] = "ERROR: Comparing double-check values failed.  Rolling back to iteration %lu.\n";
+char ERRMSG70[] = "ERROR: Comparing Gerbicz checksum values failed.  Rolling back to iteration %lu.\n";
+char ERRMSG80[] = "ERROR: Invalid FFT data.  Restarting from last save file.\n";
+char ERRMSG90[] = "ERROR: Invalid PRP state.  Restarting from last save file.\n";
 char WRITEFILEERR[] = "Error writing intermediate file: %s\n";
 
-void	trace(int n) {			// Debugging tool...
+void	trace(unsigned long n) {			// Debugging tool...
 	char buf[100];
-	sprintf(buf, "OK until number %d\n", n);
+	sprintf(buf, "OK until number %lu\n", n);
 	if (verbose)
 		OutputBoth (buf); 
 	else
@@ -474,6 +541,47 @@ int SleepFive ()
 	}
 	ChangeIcon (WORKING_ICON);	/* And back to the working icon */
 	return (TRUE);
+}
+
+/* Generate the scaling factors for ITER_OUTPUT in the rare cases where the user */
+/* has used some undoc.txt settings to change how often the title is output or to */
+/* make the frequency roughly the same in all windows even if using different FFT sizes. */
+
+void calc_output_frequencies (
+	gwhandle *gwdata,		/* Handle to the gwnum code */
+	double	*output_frequency,	/* Calculated adjustment to ITER_OUTPUT */
+	double	*output_title_frequency)/* Calculated adjustment to ITER_OUTPUT for title */
+{
+	int	scaled_freq, title_freq;
+	double	exp, temp;
+
+	/* Check the flag that says scale ITER_OUTPUT so that messages */
+	/* appear at roughly same rate for all FFT sizes (scale factor */
+	/* should be 1.0 if testing M50000000). */
+	scaled_freq = (int) IniGetInt (INI_FILE, "ScaleOutputFrequency", 0);
+	if (!scaled_freq) {
+		*output_frequency = 1.0;
+	} else {
+		*output_frequency = gwmap_to_timing (1.0, 2, 50000000, -1) /
+				    gwmap_to_timing (gwdata->k, gwdata->b, gwdata->n, gwdata->c);
+		if (gwget_num_threads (gwdata) > 1 && NUM_WORKER_THREADS < NUM_CPUS)
+			*output_frequency /= 1.8 * (gwget_num_threads (gwdata) - 1);
+		/* For prettier output (outputs likely to be a multiple of a power of 10), round the */
+		/* output frequency to the nearest (10,15,20,25,30,40,...90) times a power of ten */
+		exp = floor (_log10 (*output_frequency));
+		temp = *output_frequency * pow (10.0, -exp);
+		if (temp < 1.25) temp = 1.0;
+		else if (temp <1.75) temp = 1.5;
+		else if (temp < 2.25) temp = 2.0;
+		else if (temp < 2.75) temp = 2.5;
+		else temp = floor (temp + 0.5);
+		*output_frequency = temp * pow (10.0, exp);
+	}
+
+	/* Calculate the title frequency as a fraction of the output frequency */
+	title_freq = (int) IniGetInt (INI_FILE, "TitleOutputFrequency", 1);
+	if (title_freq < 1) title_freq = 1;
+	*output_title_frequency = *output_frequency / (double) title_freq;
 }
 
 /* Truncate a percentage to the requested number of digits. */
@@ -575,6 +683,7 @@ double timer_value (
 #define TIMER_NL	0x1
 #define TIMER_CLR	0x2
 #define TIMER_OPT_CLR	0x4
+#define TIMER_MS	0x8
 
 void print_timer (
 	int	i,
@@ -642,123 +751,422 @@ void OutputBTimeStamp ()
 //	}
 }
 
-/* Determine the CPU speed either empirically or by user overrides. */ 
-/* getCpuType must be called prior to calling this routine. */ 
- 
-void getCpuSpeed (void) 
-{ 
-	int	temp; 
- 
-/* Guess the CPU speed using the RDTSC instruction */ 
- 
-	guessCpuSpeed (); 
+/* Determine the CPU speed either empirically or by user overrides. */
+/* getCpuType must be called prior to calling this routine. */
 
-/* Now let the user override the cpu speed from the local.ini file */ 
- 
-	if (IniGetInt (INI_FILE, "CpuOverride", 0)) { 
-		temp = IniGetInt (INI_FILE, "CpuSpeed", 99); 
-		if (temp != 99) CPU_SPEED = temp; 
-	} 
- 
-/* Make sure the cpu speed is reasonable */ 
- 
-	if (CPU_SPEED > 50000) CPU_SPEED = 50000; 
-	if (CPU_SPEED < 25) CPU_SPEED = 25; 
-} 
- 
-/* Set the CPU flags based on the CPUID data.  Also, the */ 
-/* advanced user can override our guesses. */ 
- 
-unsigned int SAVE_CPU_FLAGS;
+void getCpuSpeed (void)
+{
+	int	temp, old_cpu_speed, report_new_cpu_speed;
 
-void getCpuInfo (void) 
-{ 
-	int	temp; 
- 
-/* Get the CPU info using CPUID instruction */ 
- 
-	guessCpuType (); 
+/* Guess the CPU speed using the RDTSC instruction */
 
-/* Let the user override the cpu flags from the local.ini file */ 
- 
-	temp = IniGetInt (INI_FILE, "CpuSupportsRDTSC", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_RDTSC; 
-	if (temp == 1) CPU_FLAGS |= CPU_RDTSC; 
-	temp = IniGetInt (INI_FILE, "CpuSupportsCMOV", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_CMOV; 
-	if (temp == 1) CPU_FLAGS |= CPU_CMOV; 
-	temp = IniGetInt (INI_FILE, "CpuSupportsPrefetch", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_PREFETCH; 
-	if (temp == 1) CPU_FLAGS |= CPU_PREFETCH; 
-	temp = IniGetInt (INI_FILE, "CpuSupportsSSE", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_SSE; 
-	if (temp == 1) CPU_FLAGS |= CPU_SSE; 
-	temp = IniGetInt (INI_FILE, "CpuSupportsSSE2", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_SSE2; 
-	if (temp == 1) CPU_FLAGS |= CPU_SSE2; 
-	temp = IniGetInt (INI_FILE, "CPUSupportsAVX", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_AVX; 
-	if (temp == 1) CPU_FLAGS |= CPU_AVX; 
-	temp = IniGetInt (INI_FILE, "CPUSupportsFMA3", 99); 
-	if (temp == 0) CPU_FLAGS &= ~CPU_FMA3; 
-	if (temp == 1) CPU_FLAGS |= CPU_FMA3; 
- 
-SAVE_CPU_FLAGS = CPU_FLAGS;		// Duplicate these values
+	guessCpuSpeed ();
 
-/* Now get the CPU speed */ 
- 
-//	getCpuSpeed ();				// 16/06/12 CPU_SPEED no more used...
-	CPU_SPEED = 100;			// 16/06/12 Avoid gessCpuSpeed call from gwinit...
-} 
- 
-/* Format a long or very long textual cpu description */ 
- 
-void getCpuDescription ( 
-	char	*buf,			/* A 512 byte buffer */ 
-	int	long_desc)		/* True for a very long description */ 
-{ 
- 
-/* Recalculate the CPU speed in case speed step has changed the original */ 
-/* settings. */ 
- 
-	getCpuSpeed (); 
- 
-/* Now format a pretty CPU description */ 
- 
-	sprintf (buf, "%s\nCPU speed: %.2f MHz\n", CPU_BRAND, CPU_SPEED); 
-	if (CPU_FLAGS) { 
-		strcat (buf, "CPU features: "); 
-		if (CPU_FLAGS & CPU_RDTSC) strcat (buf, "RDTSC, "); 
-		if (CPU_FLAGS & CPU_CMOV) strcat (buf, "CMOV, "); 
-		if (CPU_FLAGS & CPU_PREFETCH) strcat (buf, "PREFETCH, "); 
-		if (CPU_FLAGS & CPU_MMX) strcat (buf, "MMX, "); 
-		if (CPU_FLAGS & CPU_SSE) strcat (buf, "SSE, "); 
-		if (CPU_FLAGS & CPU_SSE2) strcat (buf, "SSE2, "); 
-		if (CPU_FLAGS & CPU_AVX) strcat (buf, "AVX, "); 
-		if (CPU_FLAGS & CPU_FMA3) strcat (buf, "FMA3, "); 
-		strcpy (buf + strlen (buf) - 2, "\n"); 
-	} 
-	strcat (buf, "L1 cache size: "); 
-	if (CPU_L1_CACHE_SIZE < 0) strcat (buf, "unknown\n"); 
-	else sprintf (buf + strlen (buf), "%d KB\n", CPU_L1_CACHE_SIZE); 
-	strcat (buf, "L2 cache size: "); 
-	if (CPU_L2_CACHE_SIZE < 0) strcat (buf, "unknown\n"); 
-	else sprintf (buf + strlen (buf), "%d KB\n", CPU_L2_CACHE_SIZE); 
-	if (! long_desc) return; 
-	strcat (buf, "L1 cache line size: "); 
-	if (CPU_L1_CACHE_LINE_SIZE < 0) strcat (buf, "unknown\n"); 
-	else sprintf (buf+strlen(buf), "%d bytes\n", CPU_L1_CACHE_LINE_SIZE); 
-	strcat (buf, "L2 cache line size: "); 
-	if (CPU_L2_CACHE_LINE_SIZE < 0) strcat (buf, "unknown\n"); 
-	else sprintf (buf+strlen(buf), "%d bytes\n", CPU_L2_CACHE_LINE_SIZE); 
-	if (CPU_L1_DATA_TLBS > 0) 
-		sprintf (buf + strlen (buf), "L1 TLBS: %d\n", CPU_L1_DATA_TLBS); 
-	if (CPU_L2_DATA_TLBS > 0) 
-		sprintf (buf + strlen (buf), "%sTLBS: %d\n", 
-			 CPU_L1_DATA_TLBS > 0 ? "L2 " : "", 
-			 CPU_L2_DATA_TLBS); 
-} 
- 
+/* Now let the user override the cpu speed from the local.ini file */
+
+	temp = IniGetInt (INI_FILE, "CpuSpeed", 99);
+	if (temp != 99) CPU_SPEED = temp;
+
+/* Make sure the cpu speed is reasonable */
+
+	if (CPU_SPEED > 50000) CPU_SPEED = 50000;
+	if (CPU_SPEED < 25) CPU_SPEED = 25;
+
+/* Set the unofficial CPU speed.  The unofficial CPU speed is the */
+/* last CPU speed measurement.  The official CPU speed is the one */
+/* reported to the server. */
+
+	UNOFFICIAL_CPU_SPEED = CPU_SPEED;
+
+/* If CPU speed is much less than the official CPU speed, then set a new */
+/* official CPU speed only after several slower measurements. */
+/* The reason for this is that erroneously (due to one aberrant CPU speed */
+/* calculation) reducing the speed we report to the server may result */
+/* in erroneously unreserving exponents. */
+
+	report_new_cpu_speed = FALSE;
+	old_cpu_speed = IniGetInt (INI_FILE, "OldCpuSpeed", 0);
+	if (CPU_SPEED < (double) old_cpu_speed * 0.97) {
+		if (IniGetInt (INI_FILE, "NewCpuSpeedCount", 0) <= 5) {
+			if (CPU_SPEED > (double) IniGetInt (INI_FILE, "NewCpuSpeed", 0))
+				IniWriteInt (INI_FILE, "NewCpuSpeed", (int) (CPU_SPEED + 0.5));
+			IniWriteInt (INI_FILE, "NewCpuSpeedCount", IniGetInt (INI_FILE, "NewCpuSpeedCount", 0) + 1);
+			CPU_SPEED = old_cpu_speed;
+		} else {
+			if (CPU_SPEED < (double) IniGetInt (INI_FILE, "NewCpuSpeed", 0))
+				CPU_SPEED = (double) IniGetInt (INI_FILE, "NewCpuSpeed", 0);
+			report_new_cpu_speed = TRUE;
+		}
+	}
+
+/* If CPU speed is close to last reported CPU speed, then use it. */
+/* tell the server, recalculate new completion dates, and reset the */
+/* rolling average.  Don't do this on the first run (before the Welcome */
+/* dialog has been displayed). */
+
+	else if (CPU_SPEED < (double) old_cpu_speed * 1.03) {
+		IniWriteInt (INI_FILE, "NewCpuSpeedCount", 0);
+		IniWriteInt (INI_FILE, "NewCpuSpeed", 0);
+	}
+
+/* If CPU speed is much larger than the speed reported to the server, then */
+/* use this new speed and tell the server. */
+
+	else {
+		report_new_cpu_speed = TRUE;
+	}
+
+/* Report a new CPU speed.  Remember the new CPU speed, tell the server, */
+/* recalculate new completion dates, and reset the rolling average in */
+/* such a way as to reduce the chance of spurious unreserves.  Don't */
+/* do this on the first run (before the Welcome dialog has been displayed). */
+
+	if (report_new_cpu_speed) {
+		IniWriteInt (INI_FILE, "OldCpuSpeed", (int) (CPU_SPEED + 0.5));
+		IniWriteInt (INI_FILE, "NewCpuSpeedCount", 0);
+		IniWriteInt (INI_FILE, "NewCpuSpeed", 0);
+		if (old_cpu_speed) {
+			if (WORKTODO_COUNT) {
+				ROLLING_AVERAGE = (int) (ROLLING_AVERAGE * old_cpu_speed / CPU_SPEED);
+				if (ROLLING_AVERAGE < 1000) ROLLING_AVERAGE = 1000;
+			}
+			else
+				ROLLING_AVERAGE = 1000;
+			IniWriteInt (INI_FILE, "RollingAverage", ROLLING_AVERAGE);
+			IniWriteInt (INI_FILE, "RollingStartTime", 0);
+		}
+	}
+}
+
+/* Set the CPU flags based on the CPUID instruction.  Also, the advanced */
+/* user can override our guesses. */
+
+void getCpuInfo (void)
+{
+	int	depth, i, temp;
+			
+/* Get the CPU info using CPUID instruction */	
+
+	guessCpuType ();
+
+/* New in version 29!  Use hwloc info to determine NUM_CPUS and CPU_HYPERTHREADS.  Also get number of NUMA nodes */
+/* which we may use later on to allocate memory from the proper NUMA node. */
+/* We still allow overriding these settings using the INI file. */
+
+	NUM_CPUS = hwloc_get_nbobjs_by_type (hwloc_topology, HWLOC_OBJ_CORE);
+	if (NUM_CPUS < 1) NUM_CPUS = hwloc_get_nbobjs_by_type (hwloc_topology, HWLOC_OBJ_PU);
+	if (NUM_CPUS < 1) NUM_CPUS = 1;				// Shouldn't happen
+	CPU_HYPERTHREADS = hwloc_get_nbobjs_by_type (hwloc_topology, HWLOC_OBJ_PU) / NUM_CPUS;
+	if (CPU_HYPERTHREADS < 1) CPU_HYPERTHREADS = 1;		// Shouldn't happen
+	NUM_NUMA_NODES = hwloc_get_nbobjs_by_type (hwloc_topology, HWLOC_OBJ_NUMANODE);
+	if (NUM_NUMA_NODES < 1 || NUM_CPUS % NUM_NUMA_NODES != 0) NUM_NUMA_NODES = 1;
+
+/* New in version 29.5, get L1/L2/L3/L4 total cache size for use in determining torture test FFT sizes. */
+/* Overwrite cpuid's linesize and associativity with hwloc's */
+
+	CPU_TOTAL_L1_CACHE_SIZE = CPU_NUM_L1_CACHES = 0;
+	CPU_TOTAL_L2_CACHE_SIZE = CPU_NUM_L2_CACHES = 0;
+	CPU_TOTAL_L3_CACHE_SIZE = CPU_NUM_L3_CACHES = 0;
+	CPU_TOTAL_L4_CACHE_SIZE = CPU_NUM_L4_CACHES = 0;
+	CPU_L2_CACHE_INCLUSIVE = -1;
+	CPU_L3_CACHE_INCLUSIVE = -1;
+	CPU_L4_CACHE_INCLUSIVE = -1;
+#if HWLOC_API_VERSION >= 0x00020000
+	for (depth = 0; depth < hwloc_topology_get_depth (hwloc_topology); depth++) {
+		for (i = 0; i < (int) hwloc_get_nbobjs_by_depth (hwloc_topology, depth); i++) {
+			hwloc_obj_t obj;
+			const char *inclusive;
+
+			obj = hwloc_get_obj_by_depth (hwloc_topology, depth, i);
+			if (obj == NULL || obj->attr == NULL) break; // can't happen
+			if (obj->type == HWLOC_OBJ_L1CACHE) {
+				CPU_TOTAL_L1_CACHE_SIZE += (uint32_t) (obj->attr->cache.size >> 10);
+				CPU_NUM_L1_CACHES++;
+				if (obj->attr->cache.linesize > 0) CPU_L1_CACHE_LINE_SIZE = obj->attr->cache.linesize;
+				if (obj->attr->cache.associativity > 0) CPU_L1_SET_ASSOCIATIVE = obj->attr->cache.associativity;
+			}
+			else if (obj->type == HWLOC_OBJ_L2CACHE) {
+				CPU_TOTAL_L2_CACHE_SIZE += (uint32_t) (obj->attr->cache.size >> 10);
+				CPU_NUM_L2_CACHES++;
+				if (obj->attr->cache.linesize > 0) CPU_L2_CACHE_LINE_SIZE = obj->attr->cache.linesize;
+				if (obj->attr->cache.associativity > 0) CPU_L2_SET_ASSOCIATIVE = obj->attr->cache.associativity;
+				inclusive = hwloc_obj_get_info_by_name (obj, "Inclusive");
+				if (inclusive != NULL) CPU_L2_CACHE_INCLUSIVE = atoi (inclusive);
+			}
+			else if (obj->type == HWLOC_OBJ_L3CACHE) {
+				CPU_TOTAL_L3_CACHE_SIZE += (uint32_t) (obj->attr->cache.size >> 10);
+				CPU_NUM_L3_CACHES++;
+				if (obj->attr->cache.linesize > 0) CPU_L3_CACHE_LINE_SIZE = obj->attr->cache.linesize;
+				if (obj->attr->cache.associativity > 0) CPU_L3_SET_ASSOCIATIVE = obj->attr->cache.associativity;
+				inclusive = hwloc_obj_get_info_by_name (obj, "Inclusive");
+				if (inclusive != NULL) CPU_L3_CACHE_INCLUSIVE = atoi (inclusive);
+			}
+			else if (obj->type == HWLOC_OBJ_L4CACHE) {
+				CPU_TOTAL_L4_CACHE_SIZE += (uint32_t) (obj->attr->cache.size >> 10);
+				CPU_NUM_L4_CACHES++;
+				inclusive = hwloc_obj_get_info_by_name (obj, "Inclusive");
+				if (inclusive != NULL) CPU_L4_CACHE_INCLUSIVE = atoi (inclusive);
+			}
+		}
+	}
+#endif
+
+/* Overwrite the cache info calculated via CPUID as hwloc's info is more detailed and I believe more reliable. */
+/* We are transitioning away from using the cache size global variables computed by the CPUID code. */
+
+	if (CPU_NUM_L1_CACHES) CPU_L1_CACHE_SIZE = CPU_TOTAL_L1_CACHE_SIZE / CPU_NUM_L1_CACHES;
+	if (CPU_NUM_L2_CACHES) CPU_L2_CACHE_SIZE = CPU_TOTAL_L2_CACHE_SIZE / CPU_NUM_L2_CACHES;
+	if (CPU_NUM_L3_CACHES) CPU_L3_CACHE_SIZE = CPU_TOTAL_L3_CACHE_SIZE / CPU_NUM_L3_CACHES;
+
+/* If hwloc could not figure out the cache sizes, use the cache sizes as determined by CPUID. */
+/* Note that the CPUID code in gwnum is not good at determining the number of L2 and L3 caches. */
+/* Fortunately, it should be rare that we rely on the CPUID code. */
+
+	if (CPU_NUM_L1_CACHES == 0 && CPU_L1_CACHE_SIZE > 0) CPU_TOTAL_L1_CACHE_SIZE = CPU_L1_CACHE_SIZE * NUM_CPUS, CPU_NUM_L1_CACHES = NUM_CPUS;
+	if (CPU_NUM_L2_CACHES == 0 && CPU_L2_CACHE_SIZE > 0) CPU_TOTAL_L2_CACHE_SIZE = CPU_L2_CACHE_SIZE, CPU_NUM_L2_CACHES = 1;
+	if (CPU_NUM_L3_CACHES == 0 && CPU_L3_CACHE_SIZE > 0) CPU_TOTAL_L3_CACHE_SIZE = CPU_L3_CACHE_SIZE, CPU_NUM_L3_CACHES = 1;
+
+/* Calculate hardware GUID (global unique identifier) using the CPUID info. */
+/* Well, it isn't unique but it is about as good as we can do and still have */
+/* portable code.  Do this calculation before user overrides values */
+/* derived from CPUID results. */
+
+	calc_hardware_guid ();
+
+/* Let the user override the cpu flags from the local.ini file */
+
+	temp = IniGetInt (INI_FILE, "CpuSupportsRDTSC", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_RDTSC;
+	if (temp == 1) CPU_FLAGS |= CPU_RDTSC;
+	temp = IniGetInt (INI_FILE, "CpuSupportsCMOV", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_CMOV;
+	if (temp == 1) CPU_FLAGS |= CPU_CMOV;
+	temp = IniGetInt (INI_FILE, "CpuSupportsPrefetch", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_PREFETCH;
+	if (temp == 1) CPU_FLAGS |= CPU_PREFETCH;
+	temp = IniGetInt (INI_FILE, "CpuSupportsPrefetchw", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_PREFETCHW;
+	if (temp == 1) CPU_FLAGS |= CPU_PREFETCHW;
+	temp = IniGetInt (INI_FILE, "CpuSupportsPrefetchwt1", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_PREFETCHWT1;
+	if (temp == 1) CPU_FLAGS |= CPU_PREFETCHWT1;
+	temp = IniGetInt (INI_FILE, "CpuSupportsSSE", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_SSE;
+	if (temp == 1) CPU_FLAGS |= CPU_SSE;
+	temp = IniGetInt (INI_FILE, "CpuSupportsSSE2", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_SSE2;
+	if (temp == 1) CPU_FLAGS |= CPU_SSE2;
+	temp = IniGetInt (INI_FILE, "CpuSupportsSSE4", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_SSE41;
+	if (temp == 1) CPU_FLAGS |= CPU_SSE41;
+	temp = IniGetInt (INI_FILE, "CpuSupports3DNow", 99);
+	if (temp == 0) CPU_FLAGS &= ~(CPU_3DNOW + CPU_3DNOW_PREFETCH);
+	if (temp == 1) CPU_FLAGS |= (CPU_3DNOW + CPU_3DNOW_PREFETCH);
+	temp = IniGetInt (INI_FILE, "CpuSupportsAVX", 99);
+	if (temp == 0) CPU_FLAGS &= ~(CPU_AVX | CPU_FMA3);
+	if (temp == 1) CPU_FLAGS |= CPU_AVX;
+	temp = IniGetInt (INI_FILE, "CpuSupportsFMA3", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_FMA3;
+	if (temp == 1) CPU_FLAGS |= (CPU_AVX | CPU_FMA3);
+	temp = IniGetInt (INI_FILE, "CpuSupportsFMA4", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_FMA4;
+	if (temp == 1) CPU_FLAGS |= CPU_FMA4;
+	temp = IniGetInt (INI_FILE, "CpuSupportsAVX2", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_AVX2;
+	if (temp == 1) CPU_FLAGS |= CPU_AVX2;
+	temp = IniGetInt (INI_FILE, "CpuSupportsAVX512F", 99);
+	if (temp == 0) CPU_FLAGS &= ~CPU_AVX512F;
+	if (temp == 1) CPU_FLAGS |= CPU_AVX512F;
+
+/* Let the user override the L1/L2/L3/L4 cache size in local.txt file */
+
+	CPU_TOTAL_L1_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL1TotalCacheSize", CPU_TOTAL_L1_CACHE_SIZE);
+	CPU_NUM_L1_CACHES = IniGetInt (INI_FILE, "CpuL1NumCaches", CPU_NUM_L1_CACHES);
+
+	CPU_TOTAL_L2_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL2TotalCacheSize", CPU_TOTAL_L2_CACHE_SIZE);
+	CPU_NUM_L2_CACHES = IniGetInt (INI_FILE, "CpuL2NumCaches", CPU_NUM_L2_CACHES);
+	CPU_L2_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL2CacheSize", CPU_L2_CACHE_SIZE);
+	CPU_L2_CACHE_LINE_SIZE = IniGetInt (INI_FILE, "CpuL2CacheLineSize", CPU_L2_CACHE_LINE_SIZE);
+	CPU_L2_SET_ASSOCIATIVE = IniGetInt (INI_FILE, "CpuL2SetAssociative", CPU_L2_SET_ASSOCIATIVE);
+	CPU_L2_CACHE_INCLUSIVE = IniGetInt (INI_FILE, "CpuL2CacheInclusive", CPU_L2_CACHE_INCLUSIVE);
+
+	CPU_TOTAL_L3_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL3TotalCacheSize", CPU_TOTAL_L3_CACHE_SIZE);
+	CPU_NUM_L3_CACHES = IniGetInt (INI_FILE, "CpuL3NumCaches", CPU_NUM_L3_CACHES);
+	CPU_L3_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL3CacheSize", CPU_L3_CACHE_SIZE);
+	CPU_L3_CACHE_LINE_SIZE = IniGetInt (INI_FILE, "CpuL3CacheLineSize", CPU_L3_CACHE_LINE_SIZE);
+	CPU_L3_SET_ASSOCIATIVE = IniGetInt (INI_FILE, "CpuL3SetAssociative", CPU_L3_SET_ASSOCIATIVE);
+	CPU_L3_CACHE_INCLUSIVE = IniGetInt (INI_FILE, "CpuL3CacheInclusive", CPU_L3_CACHE_INCLUSIVE);
+
+	CPU_TOTAL_L4_CACHE_SIZE = IniGetInt (INI_FILE, "CpuL4TotalCacheSize", CPU_TOTAL_L4_CACHE_SIZE);
+	CPU_NUM_L4_CACHES = IniGetInt (INI_FILE, "CpuL4NumCaches", CPU_NUM_L4_CACHES);
+	CPU_L4_CACHE_INCLUSIVE = IniGetInt (INI_FILE, "CpuL4CacheInclusive", CPU_L4_CACHE_INCLUSIVE);
+
+/* Let the user override the CPUID brand string.  It should never be necessary. */
+/* However, one Athlon owner's brand string became corrupted with illegal characters. */
+	
+	IniGetString (INI_FILE, "CpuBrand", CPU_BRAND, sizeof(CPU_BRAND), CPU_BRAND);
+
+/* Allow overriding the hwloc's generated values for number of physical processors, hyperthreads, and NUMA nodes. */
+
+	NUM_CPUS = IniGetInt (INI_FILE, "NumCPUs", NUM_CPUS);
+	if (NUM_CPUS == 0) NUM_CPUS = 1;
+	CPU_HYPERTHREADS = IniGetInt (INI_FILE, "CpuNumHyperthreads", CPU_HYPERTHREADS);
+	if (CPU_HYPERTHREADS == 0) CPU_HYPERTHREADS = 1;
+	NUM_NUMA_NODES = IniGetInt (INI_FILE, "NumNUMANodes", NUM_NUMA_NODES);
+	if (NUM_NUMA_NODES == 0) NUM_NUMA_NODES = 1;
+
+/* Apply sane corrections if NUM_CPUs was reduced significantly) */
+
+	if (CPU_NUM_L1_CACHES > NUM_CPUS) CPU_NUM_L1_CACHES = NUM_CPUS;
+	if (CPU_NUM_L2_CACHES > NUM_CPUS) CPU_NUM_L2_CACHES = NUM_CPUS;
+	if (CPU_NUM_L3_CACHES > NUM_CPUS) CPU_NUM_L3_CACHES = NUM_CPUS;
+	if (CPU_NUM_L4_CACHES > NUM_CPUS) CPU_NUM_L4_CACHES = NUM_CPUS;
+	if (NUM_NUMA_NODES > NUM_CPUS) NUM_NUMA_NODES = NUM_CPUS;
+
+/* Let user override the CPU architecture */
+
+	CPU_ARCHITECTURE = IniGetInt (INI_FILE, "CpuArchitecture", CPU_ARCHITECTURE);
+
+/* We also compute the number of "threading nodes".  That is, number of nodes where we don't want to split a worker's threads */
+/* across 2 threading nodes.  For example, there may well be a performance penalty if a worker's threads are on two different */
+/* physical CPUS or access data from two different L3 caches. */
+// bug -- may need much more sophisticated hwloc code here, such as handling asymetric cores or caches per threading node
+
+	NUM_THREADING_NODES = hwloc_get_nbobjs_by_type (hwloc_topology, HWLOC_OBJ_PACKAGE);
+	if (CPU_NUM_L3_CACHES > NUM_THREADING_NODES) NUM_THREADING_NODES = CPU_NUM_L3_CACHES;
+	NUM_THREADING_NODES = IniGetInt (INI_FILE, "NumThreadingNodes", NUM_THREADING_NODES);
+	if (NUM_THREADING_NODES < 1 || NUM_CPUS % NUM_THREADING_NODES != 0) NUM_THREADING_NODES = 1;
+
+/* Now get the CPU speed */
+
+	getCpuSpeed ();
+}
+
+/* Print the machine topology as discovered by hwloc library */
+
+void topology_print_children (
+	hwloc_obj_t obj,
+        int depth)
+{
+	char type[32], attr[1024], cpuset[256], topbuf[1500];
+	unsigned int i;
+	if (obj == NULL) return;  // Shouldn't happen
+	hwloc_obj_type_snprintf (type, sizeof(type), obj, 0);
+	sprintf (topbuf, "%*s%s", 2*depth, " ", type);
+	if (obj->os_index != (unsigned) -1)
+		sprintf (topbuf+strlen(topbuf), "#%u", obj->os_index);
+	hwloc_obj_attr_snprintf (attr, sizeof(attr), obj, ", ", 1 /* verbose */);
+	if (obj->type == HWLOC_OBJ_CORE || obj->type == HWLOC_OBJ_PU)
+		hwloc_bitmap_snprintf (cpuset, sizeof(cpuset), obj->cpuset);
+	else
+		cpuset[0] = 0;
+	if (attr[0] && cpuset[0]) sprintf (topbuf+strlen(topbuf), " (%s, cpuset: %s)", attr, cpuset);
+	else if (attr[0]) sprintf (topbuf+strlen(topbuf), " (%s)", attr);
+	else if (cpuset[0]) sprintf (topbuf+strlen(topbuf), " (cpuset: %s)", cpuset);
+	strcat (topbuf, "\n");
+	for (i = 0; i < obj->arity; i++) {
+		if (IniGetInt (INI_FILE, "OutputTopology", 0)&&(depth==0))
+			if (verbose)
+				OutputBoth ("Machine topology as determined by hwloc library:\n");
+			else
+				OutputStr ("Machine topology as determined by hwloc library:\n");
+		topology_print_children (obj->children[i], depth + 1);
+	}
+	if (IniGetInt (INI_FILE, "OutputTopology", 0)) {
+		if (verbose) {
+			OutputBoth (topbuf);
+		}
+		else {
+			OutputStr (topbuf);
+		}
+	}
+}
+
+/* Format a long or very long textual cpu description */
+
+void getCpuDescription (
+	char	*buf,			/* A 512 byte buffer */
+	int	long_desc)		/* True for a very long description */
+{
+
+/* Recalculate the CPU speed in case speed step has changed the original settings. */
+
+	getCpuSpeed ();
+
+/* Now format a pretty CPU description */
+
+	sprintf (buf, "%s\nCPU speed: %.2f MHz", CPU_BRAND, UNOFFICIAL_CPU_SPEED);
+	if (NUM_CPUS > 1 && CPU_HYPERTHREADS > 1)
+		sprintf (buf + strlen (buf), ", %lu hyperthreaded cores", NUM_CPUS);
+	else if (NUM_CPUS > 1)
+		sprintf (buf + strlen (buf), ", %lu cores", NUM_CPUS);
+	else if (CPU_HYPERTHREADS > 1)
+		sprintf (buf + strlen (buf), ", with hyperthreading");
+	strcat (buf, "\n");
+	if (CPU_FLAGS) {
+		strcat (buf, "CPU features: ");
+		if (CPU_FLAGS & CPU_RDTSC) strcat (buf, "RDTSC, ");
+		if (CPU_FLAGS & CPU_CMOV) strcat (buf, "CMOV, ");
+		if (CPU_FLAGS & CPU_MMX) strcat (buf, "MMX, ");
+		if (CPU_FLAGS & CPU_3DNOW) strcat (buf, "3DNow!, ");
+		else if (CPU_FLAGS & CPU_3DNOW_PREFETCH) strcat (buf, "3DNow! Prefetch, ");
+		else if (CPU_FLAGS & CPU_PREFETCHW) strcat (buf, "Prefetchw, ");
+		else if (CPU_FLAGS & CPU_PREFETCH) strcat (buf, "Prefetch, ");
+		if (CPU_FLAGS & CPU_SSE) strcat (buf, "SSE, ");
+		if (CPU_FLAGS & CPU_SSE2) strcat (buf, "SSE2, ");
+		if (CPU_FLAGS & CPU_SSE41) strcat (buf, "SSE4, ");
+		if (CPU_FLAGS & CPU_AVX) strcat (buf, "AVX, ");
+		if (CPU_FLAGS & CPU_AVX2) strcat (buf, "AVX2, ");
+		if (CPU_FLAGS & (CPU_FMA3 | CPU_FMA4)) strcat (buf, "FMA, ");
+		if (CPU_FLAGS & CPU_AVX512F) strcat (buf, "AVX512F, ");
+		strcpy (buf + strlen (buf) - 2, "\n");
+	}
+
+	strcat (buf, "L1 cache size: ");
+	if (CPU_NUM_L1_CACHES <= 0) strcat (buf, "unknown");
+	if (CPU_NUM_L1_CACHES > 1) sprintf (buf + strlen (buf), "%dx", CPU_NUM_L1_CACHES);
+	if (CPU_NUM_L1_CACHES >= 1) sprintf (buf + strlen (buf), "%d KB", CPU_TOTAL_L1_CACHE_SIZE / CPU_NUM_L1_CACHES);
+	
+	strcat (buf, ", L2 cache size: ");
+	if (CPU_NUM_L2_CACHES <= 0) strcat (buf, "unknown");
+	if (CPU_NUM_L2_CACHES > 1) sprintf (buf + strlen (buf), "%dx", CPU_NUM_L2_CACHES);
+	if (CPU_NUM_L2_CACHES >= 1) {
+		if ((CPU_TOTAL_L2_CACHE_SIZE / CPU_NUM_L2_CACHES) & 0x3FF)
+			sprintf (buf + strlen (buf), "%d KB", CPU_TOTAL_L2_CACHE_SIZE / CPU_NUM_L2_CACHES);
+		else
+			sprintf (buf + strlen (buf), "%d MB", CPU_TOTAL_L2_CACHE_SIZE / CPU_NUM_L2_CACHES / 1024);
+	}
+
+	if (CPU_NUM_L3_CACHES > 0) {
+		strcat (buf, CPU_NUM_L4_CACHES > 0 ? "\n" : ", ");
+		strcat (buf, "L3 cache size: ");
+		if (CPU_NUM_L3_CACHES > 1) sprintf (buf + strlen (buf), "%dx", CPU_NUM_L3_CACHES);
+		if ((CPU_TOTAL_L3_CACHE_SIZE / CPU_NUM_L3_CACHES) & 0x3FF)
+			sprintf (buf + strlen (buf), "%d KB", CPU_TOTAL_L3_CACHE_SIZE / CPU_NUM_L3_CACHES);
+		else
+			sprintf (buf + strlen (buf), "%d MB", CPU_TOTAL_L3_CACHE_SIZE / CPU_NUM_L3_CACHES / 1024);
+	}
+
+	if (CPU_NUM_L4_CACHES > 0) {
+		strcat (buf, ", L4 cache size: ");
+		if (CPU_NUM_L4_CACHES > 1) sprintf (buf + strlen (buf), "%dx", CPU_NUM_L4_CACHES);
+		if ((CPU_TOTAL_L4_CACHE_SIZE / CPU_NUM_L4_CACHES) & 0x3FF)
+			sprintf (buf + strlen (buf), "%d KB", CPU_TOTAL_L4_CACHE_SIZE / CPU_NUM_L4_CACHES);
+		else
+			sprintf (buf + strlen (buf), "%d MB", CPU_TOTAL_L4_CACHE_SIZE / CPU_NUM_L4_CACHES / 1024);
+	}
+
+	if (! long_desc) return;
+	strcat (buf, "\nL1 cache line size: ");
+	if (CPU_L1_CACHE_LINE_SIZE < 0) strcat (buf, "unknown");
+	else sprintf (buf+strlen(buf), "%d bytes", CPU_L1_CACHE_LINE_SIZE);
+	strcat (buf, ", L2 cache line size: ");
+	if (CPU_L2_CACHE_LINE_SIZE < 0) strcat (buf, "unknown");
+	else sprintf (buf+strlen(buf), "%d bytes", CPU_L2_CACHE_LINE_SIZE);
+	strcat (buf, "\n");
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
+}
+
 /* Determine if a small number is prime */
 
 int isPrime (
@@ -801,6 +1209,9 @@ void nameIniFiles (
 	char	buf[120];
 	int		lchd;
 
+	hwloc_topology_init (&hwloc_topology);
+	hwloc_topology_load (hwloc_topology);
+        
 	if (named_ini_files < 0) {
 		strcpy (INI_FILE, "llr.ini");
 		strcpy (RESFILE, "lresults.txt");
@@ -853,7 +1264,7 @@ void readIniFiles ()
 	TRAY_ICON = (int) IniGetInt (INI_FILE, "TrayIcon", 1); 
  
 // Guess the CPU type if it isn't known.  Otherwise, validate it.
- 
+        
 	getCpuInfo (); 
  
 // Other oddball options
@@ -1013,6 +1424,358 @@ fail:	_close (fd);
 	return (FALSE);
 }
 
+// There are (at least) 8 PRP or Prime residue types for testing N=(k*b^n+c)/d:
+
+#define	PRP_TYPE_FERMAT		1	// Fermat PRP.  Calculate a^(N-1) mod N.  PRP if result = 1
+#define	PRP_TYPE_SPRP		2	// SPRP variant.  Calculate a^((N-1)/2) mod N.  PRP if result = +/-1
+#define	PRP_TYPE_FERMAT_VAR	3	// Type 1 variant,b=2,d=1. Calculate a^(N-c) mod N.  PRP if result = a^-(c-1)
+#define	PRP_TYPE_SPRP_VAR	4	// Type 2 variant,b=2,d=1. Calculate a^((N-c)/2) mod N.  PRP if result = +/-a^-((c-1)/2)
+#define	PRP_TYPE_COFACTOR	5	// Cofactor variant.  Calculate a^(N*d-1) mod N*d.  PRP if result = a^(d-1) mod N
+#define PROTH_TYPE			6	// Proth prime variant. Calculate a^((N-1)/2) mod N with Jacobi (a,N) = -1. Prime iff result = -1
+#define	GMN_TYPE			7	// A special variant of Proth prime test
+#define	WAGSTAFF_TYPE		8	// A special variant of Cofactor SPRP test 
+
+// Primenet encourages programs to return type 1 PRP residues as that has been the standard for prime95, PFGW, LLR for many years.
+
+#define PRP_MAGICNUM		0x87f2a91b
+#define PRP_VERSION		4
+
+#ifndef SEC1
+#define SEC1(p)			0UL
+#define SEC2(p,hi,lo,u,e)	0UL
+#define SEC3(p)			0UL
+#define SEC4(p)			0UL
+#define SEC5(p,b1,b2)		0UL
+#endif
+
+/* Compare the final giant in a PRP run.  Different PRP residue types check for different final values */
+
+int isPRPg (
+	giant	v,			/* Final result of PRP powering */
+	giant	N,			/* Number we are PRPing, (k*b^n+c)/known_factors */
+	struct work_unit *w,		/* Number being tested */
+	unsigned int prp_base,		/* PRP base */
+	int	prp_residue_type)	/* Type of PRP test performed */
+{
+
+	int	result = FALSE;
+	giant kbnc, known_factors, reduced_v, compare_val;
+
+/* Standard Fermat PRP, test for one */
+
+	if (prp_residue_type == PRP_TYPE_FERMAT) return (isone (v));
+
+/* SPRP test is PRP if result is one or minus one */
+
+	if (prp_residue_type == PRP_TYPE_SPRP || prp_residue_type == PROTH_TYPE) {
+		if (prp_residue_type == PRP_TYPE_SPRP && isone (v))
+			return (TRUE);
+		subg (v, N); result = isone (N); addg (v, N);
+		return (result);
+	}
+
+/* Handle the cofactor case.  We calculated v = a^(N*KF-1) mod (N*KF).  We have a PRP if (v mod N) = (a^(KF-1)) mod N */
+
+	if (prp_residue_type == PRP_TYPE_COFACTOR) {
+		// Calculate k*b^n+c
+		if (w->k > 0.0) {
+			kbnc = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+			known_factors = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+			reduced_v = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+			compare_val = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+			dbltog (w->k, kbnc);
+		}
+		else {
+			kbnc = allocgiant ((w->n + bitlen(gk)) + 5);
+			known_factors = allocgiant ((w->n + bitlen(gk)) + 5);
+			reduced_v = allocgiant ((w->n + bitlen(gk)) + 5);
+			compare_val = allocgiant ((w->n + bitlen(gk)) + 5);
+			gtog (gk, kbnc);
+		}
+		gshiftleft (w->n, kbnc);
+		iaddg (w->c, kbnc);
+		gtog (kbnc, known_factors);
+		divg (N, known_factors);
+		ulsubg (1, known_factors);
+		ultog (prp_base, compare_val);
+		powermodg (compare_val, known_factors, kbnc);
+		modg (N, compare_val);
+		modg (kbnc, v);
+		gtog (v, reduced_v);
+		modg (N, reduced_v);
+		result = (gcompg (reduced_v, compare_val) == 0);
+		free (kbnc);
+		free (known_factors);
+		free (reduced_v);
+		free (compare_val);
+	}
+
+/* Handle the weird cases -- Fermat and SPRP variants, one of which gpuOwl uses 
+
+	else {
+		mpz_t	power;
+
+/* Calculate the compare_value 
+
+		mpz_init (power);
+		if (prp_residue_type == PRIMENET_PRP_TYPE_FERMAT_VAR) mpz_set_si (power, - (w->c - 1));
+		else mpz_set_si (power, - (w->c - 1) / 2);
+		mpz_set_ui (compare_val, prp_base);
+		mpz_powm (compare_val, compare_val, power, mpz_N);
+		mpz_clear (power);
+
+/* Now do the comparison(s) 
+
+		result = mpz_eq (mpz_v, compare_val);
+		if (prp_residue_type == PRIMENET_PRP_TYPE_SPRP_VAR && !result) {
+			mpz_sub (compare_val, mpz_N, compare_val);	// Negate compare val
+			result = mpz_eq (mpz_v, compare_val);
+		}
+	}
+
+/* Cleanup and return 
+
+	mpz_clear (mpz_v);
+	mpz_clear (mpz_N);
+	mpz_clear (compare_val);*/
+	return (result);
+}
+
+/* Mul giant by a power of the PRP or Proth base.  Used in optimizing PRPs for k*2^n+c numbers. */
+
+void basemulg (
+	giant	v,			/* Giant to multiply by base^power */
+	struct work_unit *w,		/* Number being tested */
+	unsigned int prp_base,		/* PRP base */
+	int	power)			/* Desired power of the PRP base */
+{
+	giant	modulus, prp_base_power;
+
+/* If power is zero, then multiply by base^0 is a no-op */
+
+	if (power == 0) return;
+
+/* Generate the modulus (k*b^n+c), b is known to be 2 */
+	if (w->k > 0.0) {
+		modulus = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+		prp_base_power = allocgiant ((w->n + (unsigned long)_log2(w->k)) + 5);
+		dbltog (w->k, modulus);
+	}
+	else {
+		modulus = allocgiant ((w->n + bitlen(gk)) + 5);
+		prp_base_power = allocgiant ((w->n + bitlen(gk)) + 5);
+		gtog (gk, modulus);
+	}
+	gshiftleft (w->n, modulus);
+	iaddg (w->c, modulus);
+
+/* Calculate prp_base^power mod k*b^n+c */
+
+	ultog (prp_base, prp_base_power);
+	powermod (prp_base_power, abs(power), modulus);
+	if (power < 0)
+		invg (modulus, prp_base_power);	// to avoid using powermod with a negative exponent (probably due to a bug in giants.c).
+
+/* Multiply by prp_base_power to get the final result */
+
+	mulg (prp_base_power, v);
+	modg (modulus, v);
+
+/* Cleanup and return */
+
+	free (prp_base_power);
+	free (modulus);
+}
+
+
+/* Data structure used in reading save files and their backups as well as */
+/* renaming bad save files. */
+
+typedef struct read_save_file_state {
+	int	thread_num;
+	int	read_attempt;
+	int	a_save_file_existed;
+	int	a_non_bad_save_file_existed;
+	int	num_original_bad_files;
+	int	num_save_files_renamed;
+	char	base_filename[80];
+	char	current_filename[80];
+} readSaveFileState;
+
+/* Data structure used in writing save files and their backups */
+
+typedef struct write_save_file_state {
+	char	base_filename[80];
+	int	num_ordinary_save_files;
+	int	num_special_save_files;		/* Example: Number of save files to keep that passed the Jacobi error check */
+	uint64_t special;			/* Bit array for which ordinary save files are special */
+} writeSaveFileState;
+
+/* Open the save file for writing.  Either overwrite or generate a temporary */
+/* file name to write to, where we will rename the file after the file is */
+/* successully written. */
+
+int openWriteSaveFile (
+	writeSaveFileState *state)
+{
+	char	output_filename[32];
+	int	fd;
+
+/* If we are allowed to create multiple intermediate files, then use a .write extension */
+/* The value 99, not accessible via the GUI, is a special value meaning overwrite the */
+/* existing save file -- a very dangerous choice.  You might use this for a floppy or */
+/* small USB stick installation where there is no room for two save files. */
+/* NOTE: This behavior is different than v24 where when the user selected one save */
+/* file, then he got the dangerous overwrite option. */
+
+	if (state->num_ordinary_save_files == 99)
+		strcpy (output_filename, state->base_filename);
+	else
+		sprintf (output_filename, "%s.write", state->base_filename);
+
+/* Now save to the intermediate file */
+
+	fd = _open (output_filename, _O_BINARY | _O_WRONLY | _O_TRUNC | _O_CREAT, CREATE_FILE_ACCESS);
+	return (fd);
+}
+
+/* Close the save file we finished writing.  If necessary, delete old */
+/* save file, and rename just written save file. */
+
+void closeWriteSaveFile (
+	writeSaveFileState *state,
+	int	fd)
+{
+	char	dest_filename[32], src_filename[32];
+	int	rename_count;
+
+/* Flush data to disk and close the save file. */
+
+	_commit (fd);
+	_close (fd);
+
+/* If no renaming is needed, we're done */
+
+	if (state->num_ordinary_save_files == 99) return;
+
+/* Save files that are special will be one step further down the chain after renaming */
+
+	state->special <<= 1;
+
+/* Decide how many save files need renaming (does the last ordinary file deserve to move into the special save files?) */
+
+	rename_count = bittst (&state->special, state->num_ordinary_save_files) ?
+			       state->num_ordinary_save_files + state->num_special_save_files : state->num_ordinary_save_files;
+
+/* Delete the last file in the rename chain */
+
+	if (rename_count == 1) strcpy (dest_filename, state->base_filename);
+	else if (rename_count == 2) sprintf (dest_filename, "%s.bu", state->base_filename);
+	else sprintf (dest_filename, "%s.bu%d", state->base_filename, rename_count-1);
+	_unlink (dest_filename);
+
+/* Perform the proper number of renames */
+
+	while (rename_count--) {
+		if (rename_count == 0) sprintf (src_filename, "%s.write", state->base_filename);
+		else if (rename_count == 1) strcpy (src_filename, state->base_filename);
+		else if (rename_count == 2) sprintf (src_filename, "%s.bu", state->base_filename);
+		else sprintf (src_filename, "%s.bu%d", state->base_filename, rename_count-1);
+		rename (src_filename, dest_filename);
+		strcpy (dest_filename, src_filename);
+	}
+}
+
+/* Mark the current save file as special (a super good save file -- Jacobi or Gerbicz checked) */
+
+void setWriteSaveFileSpecial (
+	writeSaveFileState *state)
+{
+	state->special |= 1;
+}
+
+/* Close and delete the save file we were writing.  This is done */
+/* when an error occurs while writing the save file. */
+
+void deleteWriteSaveFile (
+	writeSaveFileState *state,
+	int	fd)
+{
+	char	output_filename[32];
+
+/* Close and delete the save file */
+
+	_close (fd);
+	if (state->num_ordinary_save_files == 99)
+		strcpy (output_filename, state->base_filename);
+	else
+		sprintf (output_filename, "%s.write", state->base_filename);
+	_unlink (output_filename);
+}
+
+/* Delete save files when work unit completes. */
+
+void unlinkSaveFiles (
+	writeSaveFileState *state)
+{
+	int	i, maxbad;
+	char	unlink_filename[80];
+
+	maxbad = IniGetInt (INI_FILE, "MaxBadSaveFiles", 10);
+	for (i = 1; i <= maxbad; i++) {
+		sprintf (unlink_filename, "%s.bad%d", state->base_filename, i);
+		_unlink (unlink_filename);
+	}
+	if (state->num_ordinary_save_files != 99) {
+		for (i = 1; i < state->num_ordinary_save_files + state->num_special_save_files; i++) {
+			if (i == 1) sprintf (unlink_filename, "%s.bu", state->base_filename);
+			else sprintf (unlink_filename, "%s.bu%d", state->base_filename, i);
+			_unlink (unlink_filename);
+		}
+	}
+	if (state->base_filename[0] == 'p') {
+		sprintf (unlink_filename, "q%s", state->base_filename+1);
+		_unlink (unlink_filename);
+		sprintf (unlink_filename, "r%s", state->base_filename+1);
+		_unlink (unlink_filename);
+	}
+	sprintf (unlink_filename, "%s.write", state->base_filename);
+	_unlink (unlink_filename);
+	_unlink (state->base_filename);
+}
+
+/* Format a message for writing to the results file and sending to the */
+/* server.  We prepend the assignment ID to the message.  If operating */
+/* offline, then prepend other information. */
+
+void formatMsgForResultsFile (
+	char	*buf,		/* Msg to prepend to, 200 characters max */
+	struct work_unit *w)
+{
+	char	newbuf[2000];
+
+/* Output a USERID/COMPID prefix for result messages 
+
+	if (!USERID[0])
+		strcpy (newbuf, buf);
+	else if (!COMPID[0])
+		sprintf (newbuf, "UID: %s, %s", USERID, buf);
+	else
+		sprintf (newbuf, "UID: %s/%s, %s", USERID, COMPID, buf);
+
+/* Output the assignment ID too.  That alone should be enough info to */
+/* credit the correct userID.  However, we still output the user ID as it */
+/* is far more human friendly than an assignment ID. */
+
+	if (w->assignment_uid[0])
+		sprintf (newbuf + strlen (newbuf) - 1,
+			 ", AID: %s\n", w->assignment_uid);
+
+/* Now truncate the message to 200 characters */
+
+	newbuf[200] = 0;
+	strcpy (buf, newbuf);
+}
 
 /* Read and write intermediate results to a file */
 
@@ -1080,6 +1843,64 @@ int write_long (
 	return (TRUE);
 }
 
+
+int read_long298 (
+	int	fd,
+	unsigned long *val,
+	unsigned long *sum)
+{
+	uint32_t tmp;
+
+	if (_read (fd, &tmp, sizeof (uint32_t)) != sizeof (uint32_t))
+		return (FALSE);
+	if (sum != NULL) *sum = (uint32_t) (*sum + tmp);
+	*val = tmp;
+	return (TRUE);
+}
+
+int write_long298 (
+	int	fd,
+	unsigned long val,
+	unsigned long *sum)
+{
+	uint32_t tmp;
+
+	tmp = (uint32_t) val;
+	if (_write (fd, &tmp, sizeof (uint32_t)) != sizeof (uint32_t))
+		return (FALSE);
+	if (sum != NULL) *sum = (uint32_t) (*sum + tmp);
+	return (TRUE);
+}
+
+
+int read_slong (
+	int	fd,
+	long	*val,
+	unsigned long *sum)
+{
+	int32_t tmp;
+
+	if (_read (fd, &tmp, sizeof (int32_t)) != sizeof (int32_t))
+		return (FALSE);
+	if (sum != NULL) *sum = (uint32_t) (*sum + (uint32_t) tmp);
+	*val = tmp;
+	return (TRUE);
+}
+
+int write_slong (
+	int	fd,
+	long	val,
+	unsigned long *sum)
+{
+	int32_t tmp;
+
+	tmp = (int32_t) val;
+	if (_write (fd, &tmp, sizeof (int32_t)) != sizeof (int32_t))
+		return (FALSE);
+	if (sum != NULL) *sum = (uint32_t) (*sum + (uint32_t) tmp);
+	return (TRUE);
+}
+
 int read_double (
 	int	fd,
 	double *val,
@@ -1098,6 +1919,253 @@ int write_double (
 	if (_write (fd, &val, sizeof (double)) != sizeof (double)) return (FALSE);
 	*sum += (long)floor(val);
 	return (TRUE);
+}
+int read_double298 (
+	int	fd,
+	double	*val,
+	unsigned long *sum)
+{
+	if (_read (fd, val, sizeof (double)) != sizeof (double))
+		return (FALSE);
+	if (sum != NULL) *sum = (uint32_t) (*sum + (uint32_t) *val);
+	return (TRUE);
+}
+
+int write_double298 (
+	int	fd,
+	double	val,
+	unsigned long *sum)
+{
+	if (_write (fd, &val, sizeof (double)) != sizeof (double))
+		return (FALSE);
+	if (sum != NULL) *sum += (uint32_t) (*sum + (uint32_t) val);
+	return (TRUE);
+}
+
+/* Routines to read and write the common header portion of all save files */
+/* The save file format is: */
+/*	u32		magic number  (different for ll, p-1, prp, tf, ecm) */
+/*	u32		version number */
+/*	double		k in k*b^n+c */
+/*	u32		b in k*b^n+c */
+/*	u32		n in k*b^n+c */
+/*	s32		c in k*b^n+c */
+/*	double		pct complete */
+/*	char(11)	stage */
+/*	char(1)		pad */
+/*	u32		checksum of all following data */
+
+/* Read and test the "magic number" in the first 4 bytes of the file. */
+/* We use this to detect save files created by this program prior to the */
+/* common header format. */
+
+/* Routines to read and write a byte array from and to a save file */
+
+int read_array (
+	int	fd,
+	char	*buf,
+	unsigned long len,
+	unsigned long *sum)
+{
+	unsigned long i;
+	unsigned char *ubuf;
+
+	if ((unsigned long)_read (fd, buf, len) != len) return (FALSE);
+	ubuf = (unsigned char *) buf;
+	if (sum != NULL)
+		for (i = 0; i < len; i++)
+			*sum = (uint32_t) (*sum + ubuf[i]);
+	return (TRUE);
+}
+
+int write_array (
+	int	fd,
+	const char *buf,
+	unsigned long len,
+	unsigned long *sum)
+{
+	unsigned long i;
+	unsigned char *ubuf;
+
+	if (len == 0) return (TRUE);
+	if ((unsigned long)_write (fd, buf, len) != len) return (FALSE);
+	ubuf = (unsigned char *) buf;
+	if (sum != NULL)
+		for (i = 0; i < len; i++)
+			*sum = (uint32_t) (*sum + ubuf[i]);
+	return (TRUE);
+}
+
+#define CHECKSUM_OFFSET	48
+
+int read_checksum (
+	int	fd,
+	unsigned long *sum)
+{
+	_lseek (fd, CHECKSUM_OFFSET, SEEK_SET);
+	if (!read_long298 (fd, sum, NULL)) return (FALSE);
+	return (TRUE);
+}
+
+int write_checksum (
+	int	fd,
+	unsigned long sum)
+{
+	_lseek (fd, CHECKSUM_OFFSET, SEEK_SET);
+	if (!write_long298 (fd, sum, NULL)) return (FALSE);
+	return (TRUE);
+}
+
+int read_magicnum (
+	int	fd,
+	unsigned long magicnum)
+{
+	unsigned long filenum;
+
+/* Read the magic number from the first 4 bytes */
+
+	_lseek (fd, 0, SEEK_SET);
+	if (!read_long298 (fd, &filenum, NULL)) return (FALSE);
+
+/* Return TRUE if the magic number matches the caller's desired magic number */
+
+	return (filenum == magicnum);
+}
+
+/* Read the rest of the common header */
+
+int read_header (
+	int	fd,
+	unsigned long *version,
+	struct work_unit *w,
+	unsigned long *sum)
+{
+	double	k;
+	unsigned long b, n;
+	long	c;
+	char	pad;
+	char	stage[11];
+	double	pct_complete;
+	unsigned long trash_sum;
+
+/* Skip past the magic number in the first 4 bytes */
+
+	_lseek (fd, sizeof (uint32_t), SEEK_SET);
+
+/* Read the header */
+
+	if (!read_long298 (fd, version, NULL)) return (FALSE);
+	if (!read_double298 (fd, &k, NULL)) return (FALSE);
+	if (!read_long298 (fd, &b, NULL)) return (FALSE);
+	if (!read_long298 (fd, &n, NULL)) return (FALSE);
+	if (!read_slong (fd, &c, NULL)) return (FALSE);
+	if (!read_array (fd, stage, 11, NULL)) return (FALSE);
+	if (!read_array (fd, &pad, 1, NULL)) return (FALSE);
+	if (!read_double298 (fd, &pct_complete, NULL)) return (FALSE);
+	if (sum == NULL) sum = &trash_sum;
+//	_lseek (fd, CHECKSUM_OFFSET, SEEK_SET);
+        if (_read (fd, sum, sizeof (unsigned long)) != sizeof (unsigned long)) return (FALSE);
+        
+/* Validate the k,b,n,c values */
+
+	if (k != w->k || b != w->b || n != w->n || c != w->c) return (FALSE);
+
+/* Set the work unit's stage and pct_complete fields */
+
+	stage[10] = 0;
+	strcpy (w->stage, stage);
+	if (pct_complete < 0.0) pct_complete = 0.0;
+	if (pct_complete > 1.0) pct_complete = 1.0;
+	w->pct_complete = pct_complete;
+
+/* Return success */
+
+	return (TRUE);
+}
+
+int write_header (
+	int	fd,
+	unsigned long magicnum,
+	unsigned long version,
+	struct work_unit *w)
+{
+	char	pad = 0;
+	unsigned long sum = 0;
+
+	if (!write_long298 (fd, magicnum, NULL)) return (FALSE);
+	if (!write_long298 (fd, version, NULL)) return (FALSE);
+	if (!write_double298 (fd, w->k, NULL)) return (FALSE);
+	if (!write_long298 (fd, w->b, NULL)) return (FALSE);
+	if (!write_long298 (fd, w->n, NULL)) return (FALSE);
+	if (!write_slong (fd, w->c, NULL)) return (FALSE);
+	if (!write_array (fd, w->stage, 11, NULL)) return (FALSE);
+	if (!write_array (fd, &pad, 1, NULL)) return (FALSE);
+	if (!write_double298 (fd, w->pct_complete, NULL)) return (FALSE);
+//	if (!write_long298 (fd, sum, NULL)) return (FALSE);
+//	_lseek (fd, CHECKSUM_OFFSET, SEEK_SET);
+	if (_write (fd, &sum, sizeof (unsigned long)) != sizeof (unsigned long)) return (FALSE);
+	return (TRUE);
+}
+
+
+int read_gwnum298 (
+	int	fd,
+	gwhandle *gwdata,
+	gwnum	g,
+	unsigned long *sum)
+{
+	giant	tmp;
+	unsigned long i, len, giantlen, bytes;
+
+	if (!read_long298 (fd, &len, sum)) return (FALSE);
+	if (len == 0) return (FALSE);
+
+	giantlen = ((int) gwdata->bit_length >> 5) + 10;
+	if (len > giantlen) return (FALSE);
+	tmp = popg (&gwdata->gdata, giantlen);
+	if (tmp == NULL) return (FALSE);	// BUG - we should return some other error code
+						// otherwise caller will likely delete save file.
+
+	bytes = len * sizeof (uint32_t);
+	if ((unsigned long)_read (fd, tmp->n, bytes) != bytes) goto errexit;
+	if (len && tmp->n[len-1] == 0) goto errexit;
+	tmp->sign = len;
+	*sum = (uint32_t) (*sum + len);
+	for (i = 0; i < len; i++) *sum = (uint32_t) (*sum + tmp->n[i]);
+	gianttogw (gwdata, tmp, g);
+	pushg (&gwdata->gdata, 1);
+	return (TRUE);
+
+// Free memory and return failure
+
+errexit:
+	pushg (&gwdata->gdata, 1);
+	return (FALSE);
+}
+
+int write_gwnum298 (
+	int	fd,
+	gwhandle *gwdata,
+	gwnum	g,
+	unsigned long *sum)
+{
+	giant	tmp;
+	unsigned long i, len, bytes;
+
+	tmp = popg (&gwdata->gdata, ((int) gwdata->bit_length >> 5) + 10);
+	if (tmp == NULL) return (FALSE);
+	if (gwtogiant (gwdata, g, tmp)) goto err;
+	len = tmp->sign;
+	if (len == 0) goto err;
+	if (!write_long298 (fd, len, sum)) goto err;
+	bytes = len * sizeof (uint32_t);
+	if ((unsigned long)_write (fd, tmp->n, bytes) != bytes) goto err;
+	*sum = (uint32_t) (*sum + len);
+	for (i = 0; i < len; i++) *sum = (uint32_t) (*sum + tmp->n[i]);
+	pushg (&gwdata->gdata, 1);
+	return (TRUE);
+err:	pushg (&gwdata->gdata, 1);
+	return (FALSE);
 }
 
 int writeToFile (
@@ -1145,10 +2213,6 @@ int writeToFile (
 	if (! write_gwnum (gwdata, gdata, fd, x, &sum)) goto writeerr;
 	if (y != NULL && ! write_gwnum (gwdata, gdata, fd, y, &sum)) goto writeerr; 
 
-/* Write the checksum */
-
-	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
-
 /* Save the five timers */
 
 	for (i=0; i<5; i++) {
@@ -1169,6 +2233,10 @@ int writeToFile (
 			if (! write_double (fd, timers[i+5], &sum)) goto writeerr;	// save its status
 		}
 	}
+
+/* Write the checksum */
+
+	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
 
 	_commit (fd);
 	_close (fd);
@@ -1225,17 +2293,19 @@ int readFromFile (
 	if (! read_gwnum (gwdata, gdata, fd, x, &sum)) goto readerr;
 	if (y != NULL && ! read_gwnum (gwdata, gdata, fd, y, &sum)) goto readerr; 
 
-/* Read and compare the checksum */
-
-	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
-	if (i != sum) goto readerr;
 
 /* Read the five timers and their status */
 
 	for (i=0; i<5; i++) {
 		if (! read_double (fd, &timers[i], &sum)) goto readerr;
 		if (! read_double (fd, &timers[i+5], &sum)) goto readerr;
+		start_timer (i);	// and restart them! (J.P. 10/04/20)
 	}
+
+/* Read and compare the checksum */
+
+	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
+	if (i != sum) goto readerr;
 
 	_close (fd);
 	return (TRUE);
@@ -1305,10 +2375,6 @@ int writeToFileB (
 	if (! write_gwnum (gwdata, gdata, fd, x, &sum)) goto writeerr;
 	if (y != NULL && ! write_gwnum (gwdata, gdata, fd, y, &sum)) goto writeerr; 
 
-/* Write the checksum */
-
-	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
-
 /* Save the five timers */
 
 	for (i=0; i<5; i++) {
@@ -1329,6 +2395,10 @@ int writeToFileB (
 			if (! write_double (fd, timers[i+5], &sum)) goto writeerr;	// save its status
 		}
 	}
+
+/* Write the checksum */
+
+	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
 
 	_commit (fd);
 	_close (fd);
@@ -1393,17 +2463,18 @@ int readFromFileB (
 	if (! read_gwnum (gwdata, gdata, fd, x, &sum)) goto readerr;
 	if (y != NULL && ! read_gwnum (gwdata, gdata, fd, y, &sum)) goto readerr; 
 
-/* Read and compare the checksum */
-
-	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
-	if (i != sum) goto readerr;
-
 /* Read the five timers and their status */
 
 	for (i=0; i<5; i++) {
 		if (! read_double (fd, &timers[i], &sum)) goto readerr;
 		if (! read_double (fd, &timers[i+5], &sum)) goto readerr;
+		start_timer (i);	// and restart them! (J.P. 10/04/20)
 	}
+
+/* Read and compare the checksum */
+
+	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
+	if (i != sum) goto readerr;
 
 	_close (fd);
 	return (TRUE);
@@ -1469,10 +2540,6 @@ int gmwriteToFile (
 	if (! write_gwnum (gwdata, gdata, fd, x, &sum)) goto writeerr;
 	if (y != NULL && ! write_gwnum (gwdata, gdata, fd, y, &sum)) goto writeerr; 
 
-/* Write the checksum */
-
-	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
-
 /* Save the five timers */
 
 	for (i=0; i<5; i++) {
@@ -1493,6 +2560,10 @@ int gmwriteToFile (
 			if (! write_double (fd, timers[i+5], &sum)) goto writeerr;	// save its status
 		}
 	}
+
+/* Write the checksum */
+
+	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
 
 	_commit (fd);
 	_close (fd);
@@ -1553,17 +2624,18 @@ int gmreadFromFile (
 	if (! read_gwnum (gwdata, gdata, fd, x, &sum)) goto readerr;
 	if (y != NULL && ! read_gwnum (gwdata, gdata, fd, y, &sum)) goto readerr; 
 
-/* Read and compare the checksum */
-
-	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
-	if (i != sum) goto readerr;
-
 /* Read the five timers and their status */
 
 	for (i=0; i<5; i++) {
 		if (! read_double (fd, &timers[i], &sum)) goto readerr;
 		if (! read_double (fd, &timers[i+5], &sum)) goto readerr;
+		start_timer (i);	// and restart them! (J.P. 10/04/20)
 	}
+
+/* Read and compare the checksum */
+
+	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
+	if (i != sum) goto readerr;
 
 	_close (fd);
 	return (TRUE);
@@ -1637,10 +2709,6 @@ int LwriteToFile (					// To save a Lucas sequence matrix and its Discriminant
 	if (z != NULL && ! write_gwnum (gwdata, gdata, fd, z, &sum)) goto writeerr; 
 	if (t != NULL && ! write_gwnum (gwdata, gdata, fd, t, &sum)) goto writeerr; 
 
-/* Write the checksum */
-
-	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
-
 /* Save the five timers */
 
 	for (i=0; i<5; i++) {
@@ -1661,6 +2729,10 @@ int LwriteToFile (					// To save a Lucas sequence matrix and its Discriminant
 			if (! write_double (fd, timers[i+5], &sum)) goto writeerr;	// save its status
 		}
 	}
+
+/* Write the checksum */
+
+	if (_write (fd, &sum, sizeof (long)) != sizeof (long)) goto writeerr;
 
 	_commit (fd);
 	_close (fd);
@@ -1729,17 +2801,18 @@ int LreadFromFile (						// To restore a Lucas sequence matrix
 	if (z != NULL && ! read_gwnum (gwdata, gdata, fd, z, &sum)) goto readerr; 
 	if (t != NULL && ! read_gwnum (gwdata, gdata, fd, t, &sum)) goto readerr; 
 
-/* Read and compare the checksum */
-
-	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
-	if (i != sum) goto readerr;
-
 /* Read the five timers and their status */
 
 	for (i=0; i<5; i++) {
 		if (! read_double (fd, &timers[i], &sum)) goto readerr;
 		if (! read_double (fd, &timers[i+5], &sum)) goto readerr;
+		start_timer (i);	// and restart them! (J.P. 10/04/20)
 	}
+
+/* Read and compare the checksum */
+
+	if (_read (fd, &i, sizeof (long)) != sizeof (long)) goto readerr;
+	if (i != sum) goto readerr;
 
 	_close (fd);
 	return (TRUE);
@@ -1754,6 +2827,159 @@ readerr:
 error:
 	_unlink (filename);
 	return (FALSE);
+}
+
+/* Increment the error counter.  The error counter is one 32-bit field containing 5 values.  Prior to version 29.3, this was */
+/* a one-bit flag if this is a continuation from a save file that did not track error counts, a 7-bit count of errors that were */
+/* reproducible, a 8-bit count of ILLEGAL SUMOUTs or zeroed FFT data or corrupt units_bit, a 8-bit count of convolution errors */
+/* above 0.4, and a 8-bit count of SUMOUTs not close enough to SUMINPs. */
+/* NOTE:  The server considers an LL run clean if the error code is XXaaYY00 and XX = YY and aa is ignored.  That is, repeatable */
+/* round off errors and all ILLEGAL SUMOUTS are ignored. */
+/* In version 29.3, a.k.a. Wf in result lines, the 32-bit field changed.  See comments in the code below. */
+
+void inc_error_count (
+	int	type,
+	unsigned long *error_count)
+{
+	unsigned long addin, orin, maxval;
+
+	addin = orin = 0;
+	if (type == 0) addin = 1, maxval = 0xF;				// SUMINP != SUMOUT
+	else if (type == 4) addin = 1 << 4, maxval = 0x0F << 4;		// Jacobi error check
+	else if (type == 1) addin = 1 << 8, maxval = 0x3F << 8;		// Roundoff > 0.4
+	else if (type == 5) orin = 1 << 14;				// Zeroed FFT data
+	else if (type == 6) orin = 1 << 15;				// Units bit, counter, or other value corrupted
+	else if (type == 2) addin = 1 << 16, maxval = 0xF << 16;	// ILLEGAL SUMOUT
+	else if (type == 7) addin = 1 << 20, maxval = 0xF << 20;	// High reliability (Gerbicz or dblchk) PRP error
+	else if (type == 3) addin = 1 << 24, maxval = 0x3F << 24;	// Repeatable error
+
+	if (addin && (*error_count & maxval) != maxval) *error_count += addin;
+	*error_count |= orin;
+}
+
+/* Create a message if the non-repeatable error count is more than zero */
+/* Returns TRUE if the non-repeatable error count is more than zero. */
+
+int make_error_count_message (
+	unsigned long error_count,
+	int	message_type,		/* 1 = very small, 2 = one line, 3 = multi-line, 0x8000 = confidence always excellent */
+	char	*buf,
+	int	buflen)
+{
+	int	count_repeatable, count_suminp, count_roundoff, count_illegal_sumout, count_total;
+	int	count_jacobi, count_gerbicz, count_bad_errors;
+	int	force_high_confidence;
+	char	local_buf[400], counts_buf[200], confidence[25];
+
+/* Massage input argument */
+
+	force_high_confidence = message_type & 0x8000;
+	message_type = message_type & 0x7FFF;
+
+/* Parse the error counts variable */
+
+	count_repeatable = (error_count >> 24) & 0x3F;
+	count_illegal_sumout = (error_count >> 16) & 0xF;
+	count_roundoff = (error_count >> 8) & 0x3F;
+	count_jacobi = (error_count >> 4) & 0xF;
+	count_gerbicz = (error_count >> 20) & 0xF;
+	count_suminp = error_count & 0xF;
+
+/* Return if no hardware errors have occurred */
+
+	count_total = count_illegal_sumout + count_suminp + count_roundoff + count_jacobi + count_gerbicz;
+	if (count_total - count_repeatable == 0) return (FALSE);
+
+/* Format the error counts */
+
+	counts_buf[0] = 0;
+
+	if (message_type == 1) {
+		sprintf (counts_buf, ", errors: %d", count_total);
+	}
+
+	if (message_type == 2) {
+		sprintf (counts_buf, "%d error%s", count_total, count_total > 1 ? "s": "");
+		if (count_repeatable == 1) {
+			strcpy (local_buf, ", 1 was repeatable (not an error)");
+			strcat (counts_buf, local_buf);
+		} else if (count_repeatable > 1) {
+			sprintf (local_buf, ", %d%s were repeatable (not errors)",
+				 count_repeatable, count_repeatable == 0x3F ? " or more" : "");
+			strcat (counts_buf, local_buf);
+		}
+	}
+
+	if (message_type == 3) {
+		if (count_jacobi >= 1) {
+			sprintf (local_buf, "%d%s Jacobi error%s, ",
+				 count_jacobi, count_jacobi == 0xF ? " or more" : "", count_jacobi > 1 ? "s" : "");
+			strcat (counts_buf, local_buf);
+		}
+		if (count_gerbicz >= 1) {
+			sprintf (local_buf, "%d%s Gerbicz/double-check error%s, ",
+				 count_gerbicz, count_gerbicz == 0xF ? " or more" : "", count_gerbicz > 1 ? "s" : "");
+			strcat (counts_buf, local_buf);
+		}
+		if (count_roundoff >= 1) {
+			sprintf (local_buf, "%d%s ROUNDOFF > 0.4, ",
+				 count_roundoff, count_roundoff == 0x3F ? " or more" : "");
+			strcat (counts_buf, local_buf);
+		}
+		if (count_suminp >= 1) {
+			sprintf (local_buf, "%d%s SUM(INPUTS) != SUM(OUTPUTS), ",
+				 count_suminp, count_suminp == 0xF ? " or more" : "");
+			strcat (counts_buf, local_buf);
+		}
+		if (count_illegal_sumout >= 1) {
+			sprintf (local_buf, "%d%s ILLEGAL SUMOUT/bad FFT data, ",
+				 count_illegal_sumout, count_illegal_sumout == 0xF ? " or more" : "");
+			strcat (counts_buf, local_buf);
+		}
+		counts_buf[strlen(counts_buf)-2] = 0;
+		if (count_repeatable >= 1) {
+			if (count_repeatable == 1)
+				strcpy (local_buf, "of which 1 was repeatable (not a hardware error)");
+			else
+				sprintf (local_buf, "of which %d were repeatable (not hardware errors)", count_repeatable);
+			if (strlen (counts_buf) <= 40) strcat (counts_buf, " ");
+			else strcat (counts_buf, "\n");
+			strcat (counts_buf, local_buf);
+		}
+		strcat (counts_buf, ".\n");
+	}
+
+/* Guess our confidence in the end result */
+
+	count_bad_errors = count_jacobi + count_suminp + count_roundoff - count_repeatable;
+	if (force_high_confidence) count_bad_errors = 0;
+	strcpy (confidence, count_bad_errors == 0 ? "excellent" :
+			    count_bad_errors <= 3 ? "fair" :
+			    count_bad_errors <= 6 ? "poor" : "very poor");
+
+/* Put it all together to form our full message */
+
+	if (message_type == 1) {
+		sprintf (local_buf, ", %s, confidence: %s", counts_buf, confidence);
+	}
+	if (message_type == 2) {
+		if (count_jacobi || count_gerbicz) sprintf (local_buf, "Hardware errors!  %s.  Confidence in end result is %s.\n", counts_buf, confidence);
+		else sprintf (local_buf, "Possible hardware errors!  %s.  Confidence in end result is %s.\n", counts_buf, confidence);
+	}
+	if (message_type == 3) {
+		if (count_jacobi || count_gerbicz) strcpy (local_buf, "Hardware errors have occurred during the test!");
+		else strcpy (local_buf, "Possible hardware errors have occurred during the test!");
+		if (strlen (counts_buf) <= 25) strcat (local_buf, " ");
+		else strcat (local_buf, "\n");
+		strcat (local_buf, counts_buf);
+		sprintf (local_buf+strlen(local_buf), "Confidence in final result is %s.\n", confidence);
+	}
+
+/* Copy as much of our result as possible to the caller's buffer */
+
+	if ((int) strlen (local_buf) >= buflen) local_buf[buflen-1] = 0;
+	strcpy (buf, local_buf);
+	return (TRUE);
 }
 
 
@@ -1995,7 +3221,8 @@ int setupok (gwhandle *gwdata, int errcode)		// Test if the call to gwsetup is s
 }
 
 
-char res64[17]; /* VP : This variable has been made global */
+char res64[40]; /* VP : This variable has been made global */
+char alt_res64[40]; /* JP 01/07/20 : This variable has been made global */
 
 #ifndef X86_64
 
@@ -3043,14 +4270,14 @@ loop:	res = pfactor64 ();
 	if (FACHSW || FACMSW || FACLSW > 1) {
 		giant	f, x;
 
-		f = newgiant (100);
+		f = allocgiant (100);
 		itog ((int) FACHSW, f);
 		gshiftleft (32, f);
 		uladdg (FACMSW, f);
 		gshiftleft (32, f);
 		uladdg (FACLSW, f);
 
-		x = newgiant (100);
+		x = allocgiant (100);
 		itog (2, x);
 		powermod (x, p, f);
 		uladdg (1, x);
@@ -3672,6 +4899,355 @@ endfac:
 
 #endif
 
+/* Rotate a p-bit giant right shift_count bits.  Used to undo shifted FFT data. */
+
+int rotategp (				/* Return false if failed due to memory allocation error */
+	giant	v,				/* Giant to rotate right */
+	unsigned long p,		/* Exponent */
+	unsigned long shift_count	/* Number of bits to rotate right */
+	)
+{
+	giant	vlo, modulus, mvlo;
+
+
+/* If rotate count is zero, no work needed */
+
+	if (shift_count >= p)				// only to be careful...
+		shift_count %= p;				// 31/10/20
+
+	if (shift_count == 0) return (1);
+
+/* Convert current iteration to binary */
+
+	vlo = allocgiant ((p >> 4) + 5);		// JP 24/04/20
+	if (vlo == NULL) return (0);
+	mvlo = allocgiant ((p >> 4) + 5);		// JP 06/05/20
+	if (mvlo == NULL) return (0);
+	modulus = allocgiant ((p >> 4) + 5);	// JP 24/04/20
+	if (modulus == NULL) return (0);
+	dbltog (w->k, modulus);					// modulus is 2^p-1 (Mersenne),2^p+1 (Wagstaff or Gaussian Mersenne norm),k*2^p+1 Proth or k*2^p-1 Riesel
+	gshiftleft (p, modulus);
+	iaddg (w->c, modulus);
+	setone (vlo);
+	gshiftleft (shift_count, vlo);			// inverse of 2^shift_count modulo k*2^p+c
+	invg (modulus,vlo);
+	gtog (modulus, mvlo);
+	if ((w->c>0) && ((w->prp_residue_type==GMN_TYPE)?shift_count&2:shift_count&1))
+		subg (vlo, mvlo);					// change the sign if necessary
+	else
+		gtog (vlo, mvlo);
+	mulg (mvlo, v);							// restore unshifted v
+	modg (modulus, v);
+	free (vlo);
+	free (modulus);
+	free (mvlo);
+	return (1);
+}
+
+/* Format the ETA for output to the worker window */
+
+void formatETA (
+	double	howlong,		/* how long to complete (in seconds) */
+	char	*buf)
+{
+	double days, hours, minutes, seconds;
+	days = floor (howlong / 86400.0);  howlong -= days * 86400.0;
+	hours = floor (howlong / 3600.0);  howlong -= hours * 3600.0;
+	minutes = floor (howlong / 60.0);  howlong -= minutes * 60.0;
+	seconds = floor (howlong);
+	if (days >= 3.0)
+		sprintf (buf, ", ETA: %dd %02d:%02d", (int) days, (int) hours, (int) minutes);
+	else
+		sprintf (buf, ", ETA: %02d:%02d:%02d", (int) (days * 24.0 + hours), (int) minutes, (int) seconds);
+}
+
+/* Compare two (possibly shifted) gwnums for equality.  Used in PRP error-checking. */
+
+int areTwoPRPValsEqual (
+	gwhandle *gwdata,
+	unsigned long p,		/* Mersenne exponent (for shifting) */		
+	gwnum	val1,			/* Value #1 */
+	unsigned long units_bit1,	/* Shift count #1 */
+	gwnum	val2,			/* Value #2 */
+	unsigned long units_bit2	/* Shift count #2 */
+)
+{
+	giant	tmp1, tmp2;
+	int	diff, err_code1, err_code2;
+	tmp1 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+	err_code1 = gwtogiant (gwdata, val1, tmp1) || isZero (tmp1);
+	rotategp (tmp1, p, units_bit1);
+	tmp2 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+	err_code2 = gwtogiant (gwdata, val2, tmp2) || isZero (tmp2);
+	rotategp (tmp2, p, units_bit2);
+	diff = gcompg (tmp1, tmp2);
+	pushg (&gwdata->gdata, 2);
+	return (err_code1 == 0 && err_code2 == 0 && !diff);
+}
+
+/* multiplication or squaring  state to be written to / read from save files */
+
+struct program_state {
+	gwnum	x;			/* The current value in our left-to-right exponentiation */
+	gwnum	y;					/* used when some interim value is needed. */
+	unsigned long counter;		/* Current "iteration" counter */
+	unsigned long units_bit;	/* For shifting FFT data -- allows more robust double-checking */
+	unsigned long units_bit2;	/* Keep the shift count for y */
+	unsigned long error_count;	/* Count of any errors that have occurred during test */
+	unsigned int prp_base;		/* Fermat PRP base, default is 3 */
+	int	two_power_opt;			/* TRUE is power of two optimizations are enabled (N adjusted to create long run of squarings) */
+	int	residue_type;			/* Type of residue to generate (5 different residue types are supported) */
+	int	error_check_type;		/* 0=none, 1=Gerbicz, 2=double-checking */
+	int	state;					/* State variable see definitions below */
+	gwnum	alt_x;				/* When doing ERRCHK_DBLCHK, this is the alternate x value */
+								/* When doing ERRCHK_GERBICZ, this is the comparison checksum value being calculated */
+	unsigned long alt_units_bit;/* When doing ERRCHK_DBLCHK, this is the alternate shift count */
+	gwnum	u0;					/* Saved first value of the Gerbicz checksum function */
+	gwnum	d;					/* Last computed value of the Gerbicz checksum function */
+	unsigned long L;			/* Iterations between multiplies in computing Gerbicz checksum */
+	unsigned long start_counter;	/* Counter at start of current Gerbicz or double-check block */
+	unsigned long next_mul_counter;	/* Counter when next Gerbicz multiply takes place */
+	unsigned long end_counter;	/* Counter when current Gerbicz or double-check block ends */
+	giant gx;					/* x result of the test in giant form */
+	giant gy;					/* y result of the test in giant form */
+} ps;
+
+#define ERRCHK_NONE		0	/* No high-reliability error-checking */
+#define ERRCHK_GERBICZ	1	/* Gerbicz high-reliability error-checking -- very low overhead */
+#define ERRCHK_DBLCHK	2	/* Run test twice, comparing residues along the way. Highly-reliable, very expensive. */
+
+#define STATE_NORMAL				 0	/* Normal left-to-right exponentiation */
+#define STATE_DCHK_PASS1			10	/* Do squarings for a while, then rollback counter and switch to pass 2 */
+#define STATE_DCHK_PASS2			11	/* Do squarings for a while, compare vals, then switch back to pass 1 */
+#define STATE_GERB_START_BLOCK		22	/* Determine how many iters are in the next Gerbicz block */
+#define STATE_GERB_MID_BLOCK		23	/* Do squarings for L iterations */
+#define STATE_GERB_MID_BLOCK_MULT	24	/* Do checksum multiply after the L-th squaring (except last block) */
+#define STATE_GERB_END_BLOCK		25	/* After L^2 squarings, do alt squarings to compute 2nd Gerbicz compare value */
+#define STATE_GERB_END_BLOCK_MULT	26	/* After L alt squarings, do one last mul to compute checksum #2 */
+#define STATE_GERB_FINAL_MULT		27	/* Do one last mul to compute checksum #1 and then compare checksum values */
+
+/* Write intermediate PRP results to a file */
+/* The PRP save file format is: */
+/*	u32		magic number  (different for ll, p-1, prp, tf, ecm) */
+/*	u32		version number */
+/*	double		pct complete */
+/*	char(11)	stage */
+/*	char(1)		pad */
+/*	u32		checksum of following data */
+/*	u32		error_count */
+/*	u32		iteration counter */
+/*	u32		prp base (version number >= 2) */
+/*	u32		shift count (version number >= 2) */
+/*	u32		power-of-two optimization was used (version number >= 2) */
+/*	u32		residue type (version number >= 3) */
+/*	u32		error-check type (version number >= 3) */
+/*	u32		state (version number >= 3) */
+/*	u32		alternate shift count (version number >= 3) */
+/*	u32		L - iterations between Gerbicz multiplies (version number >= 3) */
+/*	u32		error-checking start counter (version number >= 3) */
+/*	u32		error-checking next Gerbicz multiply counter (version number >= 3) */
+/*	u32		error-checking end counter (version number >= 3) */
+/*	gwnum		FFT data for x (u32 len, array u32s) */
+/*	gwnum		FFT data for alt_x (u32 len, array u32s) (version number >= 3) */
+/*	gwnum		FFT data for u0 (u32 len, array u32s) (version number >= 3) */
+/*	gwnum		FFT data for d (u32 len, array u32s) (version number >= 3) */
+
+/* Prepare for writing save files */
+
+void writeSaveFileStateInit (
+	writeSaveFileState *state,
+	char	*filename,
+	int	num_special_save_files)
+{
+	strcpy (state->base_filename, filename);
+	state->num_ordinary_save_files = NUM_BACKUP_FILES;
+	state->num_special_save_files = num_special_save_files;
+	state->special = 0;			/* Init with "no ordinary files are special" */
+}
+
+int writeSaveFile (
+	gwhandle *gwdata,
+	writeSaveFileState *write_save_file_state,
+	struct work_unit *w,
+	struct program_state *ps)
+{
+	int	fd, i;
+	unsigned long sum = 0;
+
+/* Now save to the intermediate file */
+	fd = openWriteSaveFile (write_save_file_state);
+	if (fd < 0) return (FALSE);
+
+	if (!write_header (fd, PRP_MAGICNUM, PRP_VERSION, w)) goto err;
+
+	if (!write_long298 (fd, ps->error_count, &sum)) goto err;
+	if (!write_long298 (fd, ps->counter, &sum)) goto err;
+	if (!write_long298 (fd, ps->prp_base, &sum)) goto err;
+	if (!write_long298 (fd, ps->units_bit, &sum)) goto err;
+	if (!write_long298 (fd, ps->units_bit2, &sum)) goto err;
+	if (!write_long298 (fd, ps->two_power_opt, &sum)) goto err;
+	if (!write_long298 (fd, ps->residue_type, &sum)) goto err;
+	if (!write_long298 (fd, ps->error_check_type, &sum)) goto err;
+	if (!write_long298 (fd, ps->state, &sum)) goto err;
+	if (!write_long298 (fd, ps->alt_units_bit, &sum)) goto err;
+	if (!write_long298 (fd, ps->L, &sum)) goto err;
+	if (!write_long298 (fd, ps->start_counter, &sum)) goto err;
+	if (!write_long298 (fd, ps->next_mul_counter, &sum)) goto err;
+	if (!write_long298 (fd, ps->end_counter, &sum)) goto err;
+	if (!write_gwnum298 (fd, gwdata, ps->x, &sum)) goto err;
+	if (!write_gwnum298 (fd, gwdata, ps->y, &sum)) goto err;
+
+	if (ps->state != STATE_NORMAL && ps->state != STATE_GERB_MID_BLOCK && ps->state != STATE_GERB_MID_BLOCK_MULT) {
+		if (!write_gwnum298 (fd, gwdata, ps->alt_x, &sum)) goto err;
+	}
+
+	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
+	    ps->state != STATE_GERB_START_BLOCK && ps->state != STATE_GERB_FINAL_MULT) {
+		if (!write_gwnum298 (fd, gwdata, ps->u0, &sum)) goto err;
+	}
+
+	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
+	    ps->state != STATE_GERB_START_BLOCK) {
+		if (!write_gwnum298 (fd, gwdata, ps->d, &sum)) goto err;
+	}
+	
+/* Save the five timers */
+
+	for (i=0; i<5; i++) {
+		if (timers[i+5] != 0.0) {// if the timer was running
+			end_timer (i);			// update and save it
+			if (! write_double (fd, timers[i], (long*)&sum)) {
+				start_timer (i);	// and then, restart it, even if write is in error!
+				goto err;
+			}
+			if (! write_double (fd, timers[i+5], (long*)&sum)) { // save the timer status
+				start_timer (i);	// and then, restart it, even if write is in error!
+				goto err;
+			}
+			start_timer (i);	// and then, restart it!
+		}
+		else {
+			if (! write_double (fd, timers[i], (long*)&sum)) goto err;	// save the timer
+			if (! write_double (fd, timers[i+5], (long*)&sum)) goto err;	// save its status
+		}
+	}
+	
+	_lseek (fd, CHECKSUM_OFFSET, SEEK_SET);
+	if (_write (fd, &sum, sizeof (unsigned long)) != sizeof (unsigned long)) return (FALSE);
+
+	closeWriteSaveFile (write_save_file_state, fd);
+	return (TRUE);
+
+/* An error occured.  Delete the current file. */
+
+err:	deleteWriteSaveFile (write_save_file_state, fd);
+	return (FALSE);
+}
+
+/* Read the data portion of an intermediate PRP results file */
+
+int readPRPSaveFile (
+	gwhandle *gwdata,		/* Handle to gwnum */
+	char	*filename,		/* Save file name */
+	struct work_unit *w,		/* Work unit */
+	struct program_state *ps)		/* PRP state structure to read and fill in */
+{
+	int	fd, i;
+	unsigned long savefile_prp_base, sum, filesum, version;
+	fd = _open (filename, _O_BINARY | _O_RDONLY);
+	if (fd <= 0) return (FALSE);
+	if (!read_magicnum (fd, PRP_MAGICNUM)) goto err;
+	if (!read_header (fd, &version, w, &filesum)) goto err;
+	if (version == 0 || version > PRP_VERSION) goto err;
+
+	sum = 0;
+	if (!read_long298 (fd, &ps->error_count, &sum)) goto err;
+	if (!read_long298 (fd, &ps->counter, &sum)) goto err;
+
+	if (version <= 1) {
+		savefile_prp_base = 3;
+		ps->units_bit = 0;
+		ps->two_power_opt = FALSE;
+	} else {
+		unsigned long savefile_two_power_opt;
+		if (!read_long298 (fd, &savefile_prp_base, &sum)) goto err;
+		if (!read_long298 (fd, &ps->units_bit, &sum)) goto err;
+		if (!read_long298 (fd, &ps->units_bit2, &sum)) goto err;
+		if (!read_long298 (fd, &savefile_two_power_opt, &sum)) goto err;
+		ps->two_power_opt = savefile_two_power_opt;
+	}
+	if (savefile_prp_base != ps->prp_base) goto err;
+
+	if (version <= 2) {
+		ps->state = STATE_NORMAL;
+		ps->error_check_type = ERRCHK_NONE;
+	} else {
+		unsigned long savefile_state, savefile_residue_type, savefile_error_check_type;
+		// We might be able to handle some mismatched residue types, for now don't since this should never happen
+		if (!read_long298 (fd, &savefile_residue_type, &sum)) goto err;
+		if (savefile_residue_type != (unsigned long)ps->residue_type) goto err;
+		// We could handle some mismatched error check types by looking at the state
+		// variable, for now don't since this should never happen
+		if (!read_long298 (fd, &savefile_error_check_type, &sum)) goto err;
+		if (savefile_error_check_type != (unsigned long)ps->error_check_type) goto err;
+		if (!read_long298 (fd, &savefile_state, &sum)) goto err;
+		ps->state = savefile_state;
+		if (!read_long298 (fd, &ps->alt_units_bit, &sum)) goto err;
+		if (!read_long298 (fd, &ps->L, &sum)) goto err;
+		if (!read_long298 (fd, &ps->start_counter, &sum)) goto err;
+		if (!read_long298 (fd, &ps->next_mul_counter, &sum)) goto err;
+		if (!read_long298 (fd, &ps->end_counter, &sum)) goto err;
+	}
+
+	// In version 3, we did not delay the final multiply in calculation of checksum #1.
+	// We must ignore some save files because the version 3 and version 4 states are subtly different.
+	if (version == 3 && (ps->state == STATE_GERB_MID_BLOCK_MULT ||
+			     ps->state == STATE_GERB_END_BLOCK ||
+			     ps->state == STATE_GERB_END_BLOCK_MULT)) goto err;
+
+	// All PRP states wrote an x value
+	if (!read_gwnum298 (fd, gwdata, ps->x, &sum)) goto err;
+	if (!read_gwnum298 (fd, gwdata, ps->y, &sum)) goto err;
+
+	// In version 3, we only wrote x to the save file at Gerbicz start block.  In version 4, we write x and the
+	// identical alt_x.  There is added error protection by always having at least two gwnum values in memory.
+	if (version == 3 && ps->state == STATE_GERB_START_BLOCK) {
+		gwcopy (gwdata, ps->x, ps->alt_x);
+		ps->alt_units_bit = ps->units_bit;
+	}
+	else if (ps->state != STATE_NORMAL && ps->state != STATE_GERB_MID_BLOCK && ps->state != STATE_GERB_MID_BLOCK_MULT) {
+		if (!read_gwnum298 (fd, gwdata, ps->alt_x, &sum)) goto err;
+	}
+
+	// Most PRP Gerbicz states wrote a u0 value
+	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
+	    ps->state != STATE_GERB_START_BLOCK && ps->state != STATE_GERB_FINAL_MULT) {
+		if (!read_gwnum298 (fd, gwdata, ps->u0, &sum)) goto err;
+	}
+
+	// Most PRP Gerbicz states wrote a d value
+	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
+	    ps->state != STATE_GERB_START_BLOCK) {
+		if (!read_gwnum298 (fd, gwdata, ps->d, &sum)) goto err;
+	}
+	
+/* Read the five timers and their status, and restart them! */
+
+	for (i=0; i<5; i++) {
+		if (! read_double (fd, &timers[i], (long*)&sum)) goto err;
+		if (! read_double (fd, &timers[i+5], (long*)&sum)) goto err;
+		start_timer (i);
+	}
+
+	// Validate checksum and return
+	
+	if (filesum != sum) goto err;
+	_close (fd);
+	return (TRUE);
+err:	_close (fd);
+	return (FALSE);
+}
+
 #define BIT 1
 #define ITER 0
 
@@ -3787,13 +5363,14 @@ void	presieve (unsigned long ndp, unsigned long *t, unsigned long *ta, unsigned 
 	*pphi = phi;
 }
 
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#if defined (WIN32) || defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 
 int aprcltest (int prptest, int verbose)		// Primality test using compiled APRCL code
 {
 	int retcode;
 	mpz_t n1;
 	mpz_init (n1);
+
 	if (mpz_set_str (n1, greatbuf, 10) != 0)
 		return (6);								// Invalid numeric string...
 	if (prptest)
@@ -4239,7 +5816,7 @@ int gmpwftest (char *nstr, char *bstr)				// Wieferich test using external WF pr
 	return (exitcode);
 }
 
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 	STARTUPINFO wfstinfo;
 	PROCESS_INFORMATION wfprinfo;
 #else
@@ -4379,7 +5956,7 @@ int gmpSearchWieferich (char *sstart, char *sstop, char *sbase)
 		if (retcode == 2) {
 			clearline(100);
 			verbose = TRUE;				// To force a time stamp
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 			hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 			SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 			OutputBoth(lbuf);
@@ -4533,6 +6110,7 @@ int isexpdiv (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s\n", fft_desc);
 
@@ -4923,6 +6501,7 @@ int commonFrobeniusPRP (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, P = %ld, Q = %ld\n", fft_desc, P, Q);
 
@@ -5191,6 +6770,7 @@ Frobeniusresume:
 
 /* Output a message about the FFT length */
 
+		topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 		gwfft_description (gwdata, fft_desc);
 		sprintf (buf, "Using %s, Q = %ld\n", fft_desc, Q);
 
@@ -5421,7 +7001,7 @@ Frobeniusresume:
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -5505,6 +7085,1206 @@ error:
 	return (-1);
 }
 
+/* This code is adapted from George Woltman's prp one in Version 29.8 of Prime95 */
+/* Thanks to George's work, it was not difficult to implement it in LLR such as  */
+/* the Gerbicz error checking is now available by default for all base two tests */
+
+
+int GerbiczTest (
+	gwhandle *gwdata,
+	ghandle *gdata,
+	unsigned long a,
+	int	*res,
+	char *str,
+	struct work_unit *w)
+{
+	unsigned long explen, final_counter, iters, errchk, bit, init_units_bit = 0, init_alt_units_bit = 0; 
+	unsigned long restart_error_count = 0;		/* On a restart, use this error count rather than the one from a save file */
+	int	have_res2048;
+	unsigned long final_counter_y, max_counter, loopshift = 0, last_counter = 0xFFFFFFFF;	/* Iteration of last error */
+	long		restart_counter = -1;			/* On a restart, this specifies how far back to rollback save files */
+	giant	exp, tmp, tmp2, tmp3; 
+//	struct	program_state ps;
+	int		interim_counter_off_one, interim_mul, mul_final, PositiveResult;
+	int		first_iter_msg, echk, near_fft_limit, stopping; 
+	double	inverse_explen;
+	double	reallyminerr = 1.0; 
+	double	reallymaxerr = 0.0; 
+	double	allowable_maxerr, output_frequency, output_title_frequency;
+	char	string_rep[80];
+	char	filename[20], buf[sgkbufsize+256], 
+		fft_desc[256], res2048[513]; 
+	long	write_time = DISK_WRITE_TIME * 60; 
+	int	string_rep_truncated;
+	int	error_count_messages;
+//	readSaveFileState read_save_file_state; /* Manage savefile names during reading */
+	writeSaveFileState write_save_file_state; /* Manage savefile names during writing */
+
+/* Init program state */
+
+	memset (&ps, 0, sizeof (ps));
+	if (w->prp_base)
+		ps.prp_base = w->prp_base;
+	else
+		ps.prp_base = a;
+
+	if (w->prp_residue_type)
+		ps.residue_type = w->prp_residue_type;
+	else
+		ps.residue_type = IniGetInt (INI_FILE, "PRPResidueType", PRP_TYPE_COFACTOR);
+	if (w->known_factors == NULL && ps.residue_type == PRP_TYPE_COFACTOR)
+		ps.residue_type = PRP_TYPE_FERMAT;
+
+/* Set flag if we will perform power-of-two optimizations.  These optimizations reduce the number of mul-by-small constants */
+/* by computing a^(k*2^n) which gives us a long run of simple squarings.  These squarings let us do Gerbicz error checking. */
+
+	ps.two_power_opt = (!IniGetInt (INI_FILE, "PRPStraightForward", 0) && w->b == 2 &&
+			    (w->known_factors == NULL || ps.residue_type == PRP_TYPE_COFACTOR));
+
+	interim_counter_off_one = (ps.two_power_opt && w->k == 1.0 && w->c < 0);
+	interim_mul = (ps.two_power_opt && w->c < 0);
+
+
+/* Flag the PRP tests that require multiplying the final a^exp to account for c */
+
+	if (ps.two_power_opt && (ps.residue_type == PRP_TYPE_FERMAT || ps.residue_type == PRP_TYPE_COFACTOR))
+		mul_final = w->c - 1;
+	else if (ps.two_power_opt && ps.residue_type == PRP_TYPE_SPRP)
+		mul_final = (w->c - 1) / 2;
+	else
+		mul_final = 0;
+
+/* Determine what highly-reliable error-checking will be done (if any) */
+
+	errchk = IniGetInt (INI_FILE, "ErrorChecking", 1);
+	if (errchk == 0) ps.error_check_type = ERRCHK_NONE;
+	if (errchk == 1) ps.error_check_type = ps.two_power_opt ? ERRCHK_GERBICZ : ERRCHK_NONE;
+	if (errchk == 2) ps.error_check_type = ps.two_power_opt ? ERRCHK_GERBICZ : ERRCHK_DBLCHK;
+	if (errchk == 3) ps.error_check_type = ERRCHK_DBLCHK;
+
+/* Calculate the exponent we will use to do our left-to-right binary exponentiation */
+
+	if (ps.residue_type == GMN_TYPE) {
+		exp = allocgiant ((((unsigned long) (2*w->n * _log2 (w->b))) >> 4) + 5);
+		tmp = allocgiant ((((unsigned long) (2*w->n * _log2 (w->b))) >> 4) + 5);
+		tmp2 = allocgiant ((((unsigned long) (2*w->n * _log2 (w->b))) >> 4) + 5);
+	}
+	else {
+		exp = allocgiant ((((unsigned long) (w->n * _log2 (w->b))) >> 4) + 5);
+		tmp = allocgiant ((((unsigned long) (w->n * _log2 (w->b))) >> 4) + 5);
+		tmp2 = allocgiant ((((unsigned long) (w->n * _log2 (w->b))) >> 4) + 5);
+	}
+
+/* As a small optimization, base 2 numbers are computed as a^(k*2^n) or a^(k*2^(n-1)) mod N with the final result */
+/* multiplied by a^(c-1).  This eliminates tons of mul-by-consts at the expense of lots of bookkeepping headaches */
+/* and one squaring if k=1 and c<0. */
+
+	if (ps.two_power_opt) {
+		int	gerbicz_squarings;
+		if (ps.residue_type == PRP_TYPE_FERMAT ||
+		    ps.residue_type == PRP_TYPE_FERMAT_VAR ||
+		    ps.residue_type == PRP_TYPE_COFACTOR)
+			gerbicz_squarings = w->n;
+		else
+			gerbicz_squarings = w->n - 1;
+		ultog (2, exp);
+		power (exp, gerbicz_squarings);
+		if (w->k > 0.0)
+			dblmulg (w->k, exp);
+		else
+			mulg (gk, exp);
+	}
+
+/* PRP co-factor test.  Do a PRP test on k*b^n+c rather than (k*b^n+c)/known_factors. */
+
+	else if (ps.residue_type == PRP_TYPE_COFACTOR) {
+		ultog (w->b, exp);
+		power (exp, w->n);
+		if (w->k > 0.0)
+			dblmulg (w->k, exp);
+		else
+			mulg (gk, exp);
+		iaddg (w->c, exp);
+		iaddg (-1, exp);
+	}
+
+/* Standard PRP test.  Subtract 1 from N to compute a^(N-1) mod N */
+
+	else {
+		gtog (N, exp);
+		iaddg (-1, exp);
+	}
+
+/* Get the exact bit length of the binary exponent.  We will perform bitlen(exp)-1 squarings for the PRP test. */
+
+
+	explen = Nlen = bitlen (exp);
+	final_counter = explen - 1;
+	final_counter_y = (final_counter/2)-1;	// Warning : ps.counter starts from 0 !
+
+/* Allocate memory */
+
+	ps.x = gwalloc (gwdata);
+	ps.y = gwalloc (gwdata);
+	if (ps.error_check_type == ERRCHK_GERBICZ || ps.error_check_type == ERRCHK_DBLCHK)
+		ps.alt_x = gwalloc (gwdata);
+	if (ps.error_check_type == ERRCHK_GERBICZ) {
+		ps.u0 = gwalloc (gwdata);
+		ps.d = gwalloc (gwdata);
+	}
+
+/* Set the proper starting value and state if no save file was present */
+
+	if (ps.counter == 0) {
+		/* For base == 2 numbers, k == 1 and c == +1 or -1 we support FFT data shifting */
+		if (w->b == 2 && (w->k == 1.0) && (abs(w->c) == 1) && w->n > 1000 && IniGetInt (INI_FILE, "Shifting", 1)) {
+			// Generate a random initial shift count
+			srand ((unsigned) time (NULL));
+			init_units_bit = (rand () << 16) + rand ();
+			if (CPU_FLAGS & CPU_RDTSC) { uint32_t hi,lo; rdtsc(&hi,&lo); init_units_bit += lo; }
+			// Let user override random initial shift count
+			init_units_bit = IniGetInt (INI_FILE, "InitialShiftCount", init_units_bit);
+			// Initial shift count can't be larger than n-64 (the -64 avoids wraparound in setting intial value)
+			init_units_bit = init_units_bit % ((ps.residue_type == GMN_TYPE)?2*(w->n - 64):(w->n - 64));
+			tmp3 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+			ultog (ps.prp_base, tmp3);
+			gshiftleft (init_units_bit, tmp3);
+			ps.units_bit = init_units_bit;
+			gianttogw (gwdata, tmp3, ps.x);
+			pushg (&gwdata->gdata, 1);
+		} else {
+			ps.units_bit = ps.alt_units_bit = init_units_bit = 0;
+			dbltogw (gwdata, (double) ps.prp_base, ps.x);
+		}
+
+		gwcopy (gwdata, ps.x, ps.y);	// temporary...
+		ps.units_bit2 = 0;
+
+/* The easy state case is no high-reliability error-checking */
+
+		if (ps.error_check_type == ERRCHK_NONE) {
+			ps.state = STATE_NORMAL;
+			ps.start_counter = 0;			// Value not used
+			ps.end_counter = 0;				// Value not used
+			ps.alt_units_bit = ps.units_bit; // JP
+		}
+
+/* The next easiest case is double-the-work error-checking comparing residues at specified intervals */
+
+		else if (ps.error_check_type == ERRCHK_DBLCHK) {
+			ps.state = STATE_DCHK_PASS1;
+			ps.start_counter = 0;
+			ps.end_counter = IniGetInt (INI_FILE, "DoublecheckCompareInterval", 100000);
+			if (ps.end_counter > final_counter) ps.end_counter = final_counter;
+			if (ps.units_bit == 0) {
+				gwcopy (gwdata, ps.x, ps.alt_x);
+				ps.alt_units_bit = 0;
+			} else {
+				gwadd3 (gwdata, ps.x, ps.x, ps.alt_x);
+				ps.alt_units_bit = ps.units_bit + 1;
+				if (ps.alt_units_bit >= ((ps.residue_type == GMN_TYPE)?2*(w->n):w->n)) {
+					ps.alt_units_bit -= (ps.residue_type == GMN_TYPE)?2*(w->n):w->n;
+				}
+			}
+		}
+
+/* The final case of high-reliability error-checking is Gerbicz error checking, described below. */
+/* See http://mersenneforum.org/showthread.php?t=22471 for background information. */
+/* In a nutshell, if PRPing k*2^n+c we calculate (prp_base^k)^(2^n) which ends with a long string of squarings. */
+/* Let u[0] = (prp_base^k), our n squarings are defined as:
+	u[i]=u[0]^(2^i) mod mp, for i=0..n
+   We define a "checksum" function below, which is updated every L-th squaring:
+	d[t]=prod(i=0,t,u[L*i]) mod mp
+   The key idea is that the checksum function can be calculated two different ways, thus the two can be compared to detect an error:
+	d[t]=d[t-1]*u[L*t] mod mp		(checksum #1)
+	d[t]=u[0]*d[t-1]^(2^L) mod mp		(checksum #2)
+   The larger L we choose, the lower the error-checking overhead cost.  For L of 1000, we catch errors every 1 million iterations
+   with an overhead of just 0.2%. */
+/* For extra protection, we always keep two copies of the gwnum in memory.  If either one "goes bad" error checking will catch this. */
+
+		else if (ps.error_check_type == ERRCHK_GERBICZ) {
+			// Both STATE_DCHK_PASS1 and STATE_GERB_START_BLOCK expect alt_x to be a copy of x
+			gwcopy (gwdata, ps.x, ps.alt_x);
+			ps.alt_units_bit = ps.units_bit;
+			// We first compute (prp_base^k) by double-checking 
+			if (w->k != 1.0) {
+				ps.state = STATE_DCHK_PASS1;
+				ps.start_counter = 0;
+				if (w->k > 0.0)
+					ps.end_counter = (int) _log2 (w->k);
+				else
+					ps.end_counter = bitlen (gk);
+			} else {
+				ps.state = STATE_GERB_START_BLOCK;
+			}
+		}
+	}
+
+/* Init vars for Test/Status and CommunicateWithServer */
+
+	if (ps.residue_type == PROTH_TYPE || ps.residue_type == GMN_TYPE)
+		strcpy (w->stage, "Proth");
+	else
+		strcpy (w->stage, "PRP");
+	inverse_explen = 1.0 / (double) final_counter;
+	w->pct_complete = (double) ps.counter * inverse_explen;
+	calc_output_frequencies (gwdata, &output_frequency, &output_title_frequency);
+
+/* If we are near the maximum exponent this fft length can test, then we */
+/* will error check all iterations */
+
+	near_fft_limit = gwnear_fft_limit (gwdata, pcfftlim);
+
+
+/* Figure out the maximum round-off error we will allow.  By default this is 27/64 when near the FFT limit and 26/64 otherwise. */
+/* We've found that this default catches errors without raising too many spurious error messages.  We let the user override */
+/* this default for user "Never Odd Or Even" who tests exponents well beyond an FFT's limit.  He does his error checking by */
+/* running the first-test and double-check simultaneously. */
+
+	allowable_maxerr = IniGetFloat (INI_FILE, "MaxRoundoffError", (float) (near_fft_limit ? 0.421875 : 0.40625));
+
+/* Get setting for verbosity of hardware error messages.  Force output of "confidence is excellent" when error checking. */
+
+	error_count_messages = IniGetInt (INI_FILE, "ErrorCountMessages", 3);
+	if (ps.error_check_type != ERRCHK_NONE) error_count_messages |= 0x8000;
+
+/* Init filename */
+
+	tempFileName (filename, 'z', N);
+
+/* Init the write save file state.  This remembers which save files are Gerbicz-checked.  Do this initialization */
+/* before the restart for roundoff errors so that error recovery does not destroy thw write save file state. */
+
+	writeSaveFileStateInit (&write_save_file_state, filename, NUM_JACOBI_BACKUP_FILES);
+
+/* Get the current time */
+
+/* Format the string representation of the test number */
+
+	if (w->known_factors == NULL) {
+		strcpy (string_rep, /*gwmodulo_as_string (gwdata)*/str); // 02/07/20
+		string_rep_truncated = FALSE;
+	} else {
+		if (strchr (gwmodulo_as_string (gwdata), '^') == NULL)
+			strcpy (string_rep, gwmodulo_as_string (gwdata));
+		else
+			sprintf (string_rep, "(%s)", gwmodulo_as_string (gwdata));
+		if (strlen (w->known_factors) < 40) {
+			char	*p;
+			strcat (string_rep, "/");
+			strcat (string_rep, w->known_factors);
+			while ((p = strchr (string_rep, ',')) != NULL) *p = '/';
+			string_rep_truncated = FALSE;
+		} else {
+			strcat (string_rep, "/known_factors");
+			string_rep_truncated = TRUE;
+		}
+	}
+
+/* Optionally resume from save file and output a message */
+/* indicating we are resuming a test */
+
+	if (fileExists (filename) && readPRPSaveFile (gwdata, filename, w, &ps)) {
+		char	fmt_mask[80];
+		double	pct;
+
+		if (restart_counter < 0 || ps.counter <= (unsigned long) restart_counter)
+			first_iter_msg = TRUE;
+		bit = ps.counter+1;
+		pct = trunc_percent (bit * 100.0 / Nlen);
+		if (ps.residue_type == PROTH_TYPE || ps.residue_type == GMN_TYPE)
+			sprintf (fmt_mask,
+				"Resuming Proth prime test of %%s at bit %%ld [%%.%df%%%%]\n",
+				PRECISION);
+		else if (ps.residue_type == PRP_TYPE_SPRP)
+			sprintf (fmt_mask,
+				"Resuming Strong PRP test of %%s at bit %%ld [%%.%df%%%%]\n",
+				PRECISION);
+		else
+			sprintf (fmt_mask,
+				"Resuming Fermat PRP test of %%s at bit %%ld [%%.%df%%%%]\n",
+				PRECISION);
+		sprintf (buf, fmt_mask, string_rep, bit, pct);
+		OutputStr (buf);
+		if (verbose || restarting)
+			writeResults (buf);
+	}
+
+/* Otherwise, output a message indicating we are starting test */
+
+	else {
+		clear_timers ();	// Make all timers clean...
+		start_timer (2);
+		if (ps.residue_type == PROTH_TYPE || ps.residue_type == GMN_TYPE)
+			if (showdigits)
+				sprintf (buf, "Starting Proth prime test of %s (%lu decimal digits)\n", string_rep, nbdg);
+			else
+				sprintf (buf, "Starting Proth prime test of %s\n", string_rep);
+		else if (ps.residue_type == PRP_TYPE_SPRP)
+				sprintf (buf, "Starting Strong PRP test of %s\n", string_rep);
+		else
+				sprintf (buf, "Starting Fermat PRP test of %s\n", string_rep);
+		OutputStr (buf);
+		if (verbose || restarting)
+			writeResults (buf);
+		ps.counter = 0;
+		ps.error_count = 0;
+		first_iter_msg = TRUE;
+		bit = 1;
+	}
+
+	start_timer (0);	// Start global timer.
+	start_timer (1);	// Start loop timer
+
+/* Output a message about the FFT length and the Proth base. */
+
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
+	gwfft_description (gwdata, fft_desc);
+	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
+
+	OutputStr (buf);
+	if (verbose || restarting)
+		writeResults (buf);
+
+	ReplaceableLine (1);	/* Remember where replaceable line is */
+
+/* Get setting for verbosity of hardware error messages.  Force output of "confidence is excellent" when error checking. */
+
+	error_count_messages = IniGetInt (INI_FILE, "ErrorCountMessages", 3);
+	if (ps.error_check_type != ERRCHK_NONE) error_count_messages |= 0x8000;
+
+/* Do the Proth or PRP test */
+
+	gwsetmulbyconst (gwdata, a);
+	iters = 0;
+	if (ps.residue_type == GMN_TYPE) {
+		loopshift = (ps.counter >= final_counter_y) ? final_counter_y : 0;
+		max_counter = (ps.counter >= final_counter_y) ? final_counter : final_counter_y;
+	}
+	else {
+		max_counter = final_counter;
+		loopshift = 0;
+	}
+	while (ps.counter < final_counter) {
+		gwnum	x;			/* Pointer to number to square */
+		unsigned long *units_bit;	/* Pointer to units_bit to update */
+		int	saving, saving_highly_reliable, sending_residue, interim_residue, interim_file, stop_reason;
+		int	actual_frequency, have_to_multiply = 0;
+
+/* If this is the first iteration of a Gerbicz error-checking block, then */
+/* determine "L" -- the number of squarings between each Gerbicz multiplication */
+/* We end this Gerbicz block after L^2 iterations.  */
+/* If there aren't many iterations left, revert to simple double-checking. */
+
+		if (ps.state == STATE_GERB_START_BLOCK) {
+			int	iters_left = final_counter - ps.counter;
+			if (iters_left < 49) {
+				ps.state = STATE_DCHK_PASS1;
+				ps.start_counter = ps.counter;
+				ps.end_counter = final_counter;
+				if (ps.alt_units_bit) {
+					gwadd3 (gwdata, ps.alt_x, ps.alt_x, ps.alt_x);
+					ps.alt_units_bit = ps.alt_units_bit + 1;
+					if (ps.alt_units_bit >= ((ps.residue_type == GMN_TYPE)?2*(w->n):w->n)) {
+						ps.alt_units_bit -= (ps.residue_type == GMN_TYPE)?2*(w->n):w->n;
+					}
+				}
+			} else {
+				int	gerbicz_block_size;
+				double	adjustment;
+				ps.state = STATE_GERB_MID_BLOCK;
+				adjustment = IniGetFloat (INI_FILE, "PRPGerbiczCompareIntervalAdj", 1.0);
+				if (adjustment < 0.001 || adjustment > 1.0) adjustment = 0.5;
+				gerbicz_block_size = (int) (adjustment * IniGetInt (INI_FILE, "GerbiczCompareInterval", 1000000));
+				if (gerbicz_block_size < 25) gerbicz_block_size = 25;
+				if (gerbicz_block_size > iters_left) gerbicz_block_size = iters_left;
+				ps.L = (unsigned long) sqrt ((double) gerbicz_block_size);
+				ps.start_counter = ps.counter;
+				ps.next_mul_counter = ps.counter + ps.L;
+				ps.end_counter = ps.counter + ps.L * ps.L;
+				gwswap (ps.alt_x, ps.u0);		// Set u0 to a copy of x
+				gwcopy (gwdata, ps.x, ps.d);		// Set d[0] to a copy of x
+				if (IniGetInt (INI_FILE, "GerbiczVerbosity", 1) > 1) {
+					sprintf (buf, "Start Gerbicz block of size %ld at iteration %ld.\n", ps.L * ps.L, ps.start_counter+1);
+					OutputBoth (buf);
+				}
+			}
+		}
+
+/* Save if we are stopping, right after we pass an errored iteration, several iterations before retesting */
+/* an errored iteration so that we don't have to backtrack very far to do a gwsquare_carefully iteration */
+/* (we don't do the iteration immediately before because a save operation may change the FFT data and make */
+/* the error non-reproducible), and finally save if the save file timer has gone off. */
+
+		stop_reason = stopping = stopCheck ();
+		saving = stopping || (ps.counter == last_counter-8) || (ps.counter == last_counter);
+		saving_highly_reliable = FALSE;
+
+/* Round off error check the first and last 50 iterations, before writing a save file, near an FFT size's limit, */
+/* or check every iteration option is set, and every 128th iteration. */
+
+		echk = ERRCHK || ps.counter < 50 || ps.counter >= final_counter-50 || saving ||
+		       (ps.error_check_type == ERRCHK_NONE && (near_fft_limit || ((ps.counter & 127) == 0)));
+		gw_clear_maxerr (gwdata);
+
+/* Check if we should output residue to screen, or create an intermediate save file */
+
+		sending_residue = (ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_MID_BLOCK) &&
+				  ps.counter > 0 &&
+				  ((ps.counter+1-interim_counter_off_one) == 500000 ||
+				   ((ps.counter+1-interim_counter_off_one) % 5000000 == 0 && IniGetInt (INI_FILE, "SendInterimResidues", 1)));
+		interim_residue = INTERIM_RESIDUES &&
+				  (ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_MID_BLOCK) &&
+				  (ps.counter > 0 && (ps.counter+1-interim_counter_off_one) % INTERIM_RESIDUES == 0);
+		interim_file = INTERIM_FILES &&
+			       (ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS2 || ps.state == STATE_GERB_MID_BLOCK) &&
+			       (ps.counter > 0 && (ps.counter+1) % INTERIM_FILES == 0);
+
+/* Do one PRP or Proth iteration */
+
+		timers[1] = 0.0;
+		start_timer (1);
+
+/* If we are doing one of the Gerbicz multiplies (not a squaring), then handle that here */
+
+		if (ps.state == STATE_GERB_MID_BLOCK_MULT) {
+			gwstartnextfft (gwdata, 0);		/* Do not start next forward FFT */
+			gwsetnormroutine (gwdata, 0, 1, 0);	/* Always roundoff error check multiplies */
+			gwsafemul (gwdata, ps.x, ps.d);	/* "Safe" multiply that does not change ps.x */
+			x = ps.d;				/* Set pointer for checking roundoff errors, sumouts, etc. */
+		} else if (ps.state == STATE_GERB_END_BLOCK_MULT) {
+			gwstartnextfft (gwdata, 0);		/* Do not start next forward FFT */
+			gwsetnormroutine (gwdata, 0, 1, 0);	/* Always roundoff error check multiplies */
+			gwmul (gwdata, ps.u0, ps.alt_x);	/* Multiply to calc checksum #2.  u0 value can be destroyed. */
+			x = ps.alt_x;				/* Set pointer for checking roundoff errors, sumouts, etc. */
+		} else if (ps.state == STATE_GERB_FINAL_MULT) {
+			gwcopy (gwdata, ps.x, ps.u0);		// Copy x (before using it) for next Gerbicz block
+			gwstartnextfft (gwdata, 0);		/* Do not start next forward FFT */
+			gwsetnormroutine (gwdata, 0, 1, 0);	/* Always roundoff error check multiplies */
+			gwsafemul (gwdata, ps.u0, ps.d);	/* "Safe" multiply to compute final d[t] value (checksum #1) */
+			x = ps.d;				/* Set pointer for checking roundoff errors, sumouts, etc. */
+		}
+
+/* Otherwise, do a squaring iteration */
+
+		else {
+
+/* Use state to decide which number we are squaring */
+
+			if (ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_MID_BLOCK) {
+				x = ps.x;
+				units_bit = &ps.units_bit;
+			} else {			// (ps.state == STATE_DCHK_PASS2 || ps.state == STATE_GERB_END_BLOCK) {
+				x = ps.alt_x;
+				units_bit = &ps.alt_units_bit;
+			}
+
+/* Decide if we can start the next forward FFT.  This is faster, but leaves the result in an "unsavable-to-disk" state. */
+
+			gwstartnextfft (gwdata,
+					!saving && !maxerr_recovery_mode && ps.counter != ps.end_counter-1 &&
+					ps.counter > (35+loopshift) && ps.counter < (max_counter-35) &&
+					!sending_residue && !interim_residue && !interim_file);
+
+/* Process this bit.  Use square carefully the first and last 30 iterations. */
+/* This should avoid any pathological non-random bit pattterns.  Also square */
+/* carefully during an error recovery. This will protect us from roundoff */
+/* errors up to (1.0 - 0.40625). */
+
+			if (have_to_multiply = bitval (exp, final_counter-ps.counter-1)) {
+				gwsetnormroutine (gwdata, 0, echk, 1);
+			} else {
+				gwsetnormroutine (gwdata, 0, echk, 0);
+			}
+			if (maxerr_recovery_mode[6] && ps.counter == last_counter) {
+				gwsquare_carefully (gwdata, x);
+				maxerr_recovery_mode[6] = 0;
+				last_counter = 0xFFFFFFFF;
+				echk = 0;
+			} else if (ps.counter < (30+loopshift) || ps.counter >= (max_counter-30))
+				gwsquare_carefully (gwdata, x);
+			else
+				gwsquare (gwdata, x);
+
+			(*units_bit) <<= 1;
+			if ((*units_bit) >= ((ps.residue_type == GMN_TYPE)?2*(w->n):w->n)) {
+				(*units_bit) -= (ps.residue_type == GMN_TYPE)?2*(w->n):w->n;
+			}
+			if ((ps.residue_type == GMN_TYPE) && (ps.counter == final_counter_y)) {
+				gwcopy (gwdata, x, ps.y);
+				ps.units_bit2 = *units_bit;
+				loopshift = final_counter_y;
+				max_counter = final_counter;
+			}
+
+		}
+
+// introduce an error every random # iterations when debugging highly reliable error checking
+
+//#define INTRODUCE_ERRORS
+#ifdef INTRODUCE_ERRORS
+		if ((rand () & 0x7FFF) == 134)  // one out of 32768
+			*x += 5.0;
+#endif
+		
+/* End iteration timing and increase count of iterations completed */
+
+		end_timer (1);
+		timers[0] += timers[1];
+		iters++;
+
+/* Update min/max round-off error */
+
+		if (echk) {
+			if (ps.counter > 30 && gw_get_maxerr (gwdata) < reallyminerr) reallyminerr = gw_get_maxerr (gwdata);
+			if (gw_get_maxerr (gwdata) > reallymaxerr) reallymaxerr = gw_get_maxerr (gwdata);
+		}
+
+/* If the sum of the output values is an error (such as infinity) then raise an error. */
+/* This kind of error is apt to persist, so always restart from last save file. */
+
+		if (gw_test_illegal_sumout (gwdata)) {
+			sprintf (buf, ERRMSG0, ps.counter+1, final_counter, ERRMSG1A);
+			OutputBoth (buf);
+			inc_error_count (2, &ps.error_count);
+			last_counter = ps.counter;		/* create save files before and after this iteration */
+			restart_counter = -1;			/* rollback to any save file */
+			sleep5 = TRUE;
+			goto restart;
+		}
+
+/* Check for excessive roundoff error.  If round off is too large, repeat the iteration to see if this was */
+/* a hardware error.  If it was repeatable then repeat the iteration using a safer, slower method.  This can */
+/* happen when operating near the limit of an FFT.  NOTE: with the introduction of Gerbicz error-checking we */
+/* ignore some of these errors as the Gerbicz check will catch any problems later.  However, if the round off */
+/* error is really large, then results are certainly corrupt and we roll back immmediately. */
+
+		if (echk && gw_get_maxerr (gwdata) > allowable_maxerr) {
+			if (ps.counter == last_counter && gw_get_maxerr (gwdata) == last_maxerr[6]) {
+				OutputBoth (ERROK);
+				inc_error_count (3, &ps.error_count);
+				gw_clear_error (gwdata);
+				OutputBoth (ERRMSG5);
+				maxerr_recovery_mode[6] = 1;
+				restart_counter = ps.counter;		/* rollback to this iteration or earlier */
+				sleep5 = FALSE;
+				goto restart;
+			} else {
+				char	msg[100];
+				sprintf (msg, ERRMSG1C, gw_get_maxerr (gwdata), allowable_maxerr);
+				sprintf (buf, ERRMSG0, ps.counter+1, final_counter, msg);
+				OutputBoth (buf);
+				inc_error_count (1, &ps.error_count);
+				if (ps.error_check_type == ERRCHK_NONE ||
+				    gw_get_maxerr (gwdata) > IniGetFloat (INI_FILE, "RoundoffRollbackError", (float) 0.475)) {
+					last_counter = ps.counter;
+					last_maxerr[6] = gw_get_maxerr (gwdata);
+					restart_counter = ps.counter;		/* rollback to this iteration or earlier */
+					sleep5 = FALSE;
+					goto restart;
+				}
+			}
+		}
+
+/* Update counter, percentage complete */
+
+		ps.counter++;
+		w->pct_complete = (double) ps.counter * inverse_explen;
+		if (ps.error_check_type == ERRCHK_DBLCHK) {
+			unsigned long true_counter;
+			true_counter = ps.start_counter + ((ps.counter - ps.start_counter) >> 1);
+			if (ps.state == STATE_DCHK_PASS2) true_counter += ((ps.end_counter - ps.start_counter) >> 1);
+			w->pct_complete = (double) true_counter * inverse_explen;
+		}
+
+/* Output the title every so often */
+
+		actual_frequency = (int) (ITER_OUTPUT * output_title_frequency);
+		if (actual_frequency < 1) actual_frequency = 1;
+		if (ps.counter % actual_frequency == 0 || first_iter_msg) {
+			if ((ps.residue_type == PROTH_TYPE)||(ps.residue_type == GMN_TYPE))
+				sprintf (buf, "%.*f%% of Proth %s", (int) PRECISION, 100.0*trunc_percent (w->pct_complete), string_rep);
+			else if (ps.residue_type == PRP_TYPE_SPRP)
+				sprintf (buf, "%.*f%% of Strong PRP %s", (int) PRECISION, 100.0*trunc_percent (w->pct_complete), string_rep);
+			else
+				sprintf (buf, "%.*f%% of Fermat PRP %s", (int) PRECISION, 100.0*trunc_percent (w->pct_complete), string_rep);
+			title (buf);
+		}
+
+//		ReplaceableLine (2);	/* Replace line */ 
+
+/* Print a message every so often */
+
+		actual_frequency = (int) (ITER_OUTPUT * output_frequency);
+		if (actual_frequency < 1) actual_frequency = 1;
+		if ((ps.counter % actual_frequency == 0 && ps.state != STATE_GERB_MID_BLOCK_MULT &&
+		     ps.state != STATE_GERB_END_BLOCK && ps.state != STATE_GERB_END_BLOCK_MULT &&
+		     ps.state != STATE_GERB_FINAL_MULT) || first_iter_msg) {
+			sprintf (buf, "Iteration: %ld / %ld [%.*f%%]",
+				 ps.counter, final_counter, (int) PRECISION, 100.0*trunc_percent (w->pct_complete));
+			/* Append a short form total errors message */
+			if ((error_count_messages & 0xFF) == 1)
+				make_error_count_message (ps.error_count, error_count_messages, buf + strlen (buf),
+							  (int) (sizeof (buf) - strlen (buf)));
+			/* Truncate first message */
+			if (first_iter_msg) {
+				strcat (buf, ".\r");	// JP 17/04/20
+				clear_timer (0);
+				first_iter_msg = FALSE;
+			}
+			/* In v28.5 and later, format a consise message including the ETA */
+			else if (!CLASSIC_OUTPUT) {
+				double speed;
+				/* Append roundoff error */
+				if ((OUTPUT_ROUNDOFF || ERRCHK) && reallymaxerr >= 0.001) {
+					sprintf (buf+strlen(buf), ", roundoff: %5.3f", reallymaxerr);
+					if (!CUMULATIVE_ROUNDOFF) reallyminerr = 1.0, reallymaxerr = 0.0;
+				}
+				/* Append ms/iter */
+				speed = timer_value (0) / (double) iters;
+				sprintf (buf+strlen(buf), ", ms/iter: %6.3f", speed * 1000.0);
+				clear_timer (0);
+				iters = 0;
+				/* Append ETA */
+				formatETA ((final_counter - ps.counter) * speed, buf+strlen(buf));
+#if defined (_CONSOLE) || defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+				strcat (buf, "\r");
+#else
+				strcat (buf, "\n");
+#endif
+			}
+			/* Format the classic (pre-v28.5) message */
+			else {
+				/* Append optional roundoff message */
+				if (ERRCHK && ps.counter > 30) {
+					sprintf (buf+strlen(buf), ".  Round off: %10.10f to %10.10f", reallyminerr, reallymaxerr);
+					if (!CUMULATIVE_ROUNDOFF) reallyminerr = 1.0, reallymaxerr = 0.0;
+				}
+				if (CUMULATIVE_TIMING) {
+					strcat (buf, ".  Total time: ");
+					print_timer (0, TIMER_NL);
+				} else {
+					strcat (buf, ".  Per iteration time: ");
+					divide_timer (0, iters);
+					print_timer (0, TIMER_NL | TIMER_CLR);
+					iters = 0;
+				}
+			}
+
+			OutputStr (buf);
+
+
+/* Output a verbose message showing the error counts.  This way a user is likely to */
+/* notice a problem without reading the results.txt file. */
+
+			if ((error_count_messages & 0xFF) >= 2 &&
+			    make_error_count_message (ps.error_count, error_count_messages, buf, sizeof (buf)))
+				OutputStr (buf);
+		}
+
+		ReplaceableLine (2);	/* Replace line */ 
+
+/* Print a results file message every so often */
+
+		if ((ps.counter % ITER_OUTPUT_RES == 0 && ps.state != STATE_GERB_MID_BLOCK_MULT &&
+		     ps.state != STATE_GERB_END_BLOCK && ps.state != STATE_GERB_END_BLOCK_MULT &&
+		     ps.state != STATE_GERB_FINAL_MULT) || (NO_GUI && stop_reason)) {
+			sprintf (buf, "Iteration %ld / %ld\n", ps.counter, final_counter);
+			writeResults (buf);
+		}
+
+/* If double-checking, at end of pass 1 rollback counter and start computing alt_x. */
+/* If double-checking, at end of pass 2 compare values and move onto next block. */
+
+		if (ps.state == STATE_DCHK_PASS1) {
+			if (ps.counter < ps.end_counter)
+				;		// Do next iteration
+			else if (ps.counter == ps.end_counter) {	// Switch to alt_x computations
+				ps.state = STATE_DCHK_PASS2;
+				ps.counter = ps.start_counter;
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+		if (ps.state == STATE_DCHK_PASS2) {
+			if (ps.counter < ps.end_counter)
+				;		// Do next iteration
+			else if (ps.counter == ps.end_counter) {	// Switch to alt_x computations
+				if (!areTwoPRPValsEqual (gwdata, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.x, ps.units_bit, ps.alt_x, ps.alt_units_bit)) {
+					sprintf (buf, ERRMSG60, ps.start_counter);
+					OutputBoth (buf);
+					inc_error_count (7, &ps.error_count);
+					restart_counter = ps.start_counter;		/* rollback to this iteration */
+					sleep5 = FALSE;
+					goto restart;
+				}
+				/* If doing a full double-check, start next block of iterations */
+				if (ps.error_check_type == ERRCHK_DBLCHK) {
+					ps.state = STATE_DCHK_PASS1;
+					ps.start_counter = ps.counter;
+					ps.end_counter = ps.start_counter + IniGetInt (INI_FILE, "PRPDoublecheckCompareInterval", 100000);
+					if (ps.end_counter > final_counter) ps.end_counter = final_counter;
+				}
+				/* Otherwise, we're doing the first or last few iterations of a Gerbicz error-check. */
+				/* Set state to start next Gerbicz block (in case we just computed prp_base^k). */
+				else {
+					ps.state = STATE_GERB_START_BLOCK;
+				}
+				/* We've reached a verified iteration, create a save file and mark it highly reliable. */
+				/* But if there are less than 1000 iterations left on a reliable machine */
+				/* don't bother creating the save file. */
+				if (final_counter - ps.counter >= 1000 || ps.error_count > 0) {
+					saving = TRUE;
+					saving_highly_reliable = TRUE;
+				}
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+/* If Gerbicz error-checking, handle all the possible Gerbicz states.  See if this is an L-th iteration that needs */
+/* to do a checksum multiply.  Also check if this is the L^2-th iteration where we switch to an alternate method to */
+/* compute checksum #2. */
+/* NOTE: We do not need to worry about shift_counts in the checksum as both checksums will end up with the same shift count. */
+
+		// Just did a normal PRP squaring
+
+		if (ps.state == STATE_GERB_MID_BLOCK) {
+			if (ps.counter < ps.next_mul_counter)
+				;		// Do next iteration
+			else if (ps.counter == ps.end_counter) {	// Delay last checksum #1 multiply, start checksum #2 calculation
+				if (IniGetInt (INI_FILE, "GerbiczVerbosity", 1) > 1) OutputStr ("Start Gerbicz error check.\n");
+				// At end of Gerbicz block, switch to "L" squarings of alt_x to create Gerbicz checksum #2 value
+				gwcopy (gwdata, ps.d, ps.alt_x);	// Copy d[t-1] to alt_x
+				ps.state = STATE_GERB_END_BLOCK;	// Squaring alt_x state
+				ps.counter -= ps.L;			// L squarings
+			} else if (ps.counter == ps.next_mul_counter) {	// Do a checksum #1 multiply next
+				// Back counter up by one and do one multiply in the computation of Gerbicz checksum #1 value
+				ps.state = STATE_GERB_MID_BLOCK_MULT;
+				ps.counter -= 1;
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+		// Just did a a checksum #1 multiply at the end of a block of L normal squarings
+
+
+		else if (ps.state == STATE_GERB_MID_BLOCK_MULT) {
+			if (ps.counter < ps.end_counter) {		// In middle of Gerbicz block, do another "L" squarings
+				ps.state = STATE_GERB_MID_BLOCK;
+				ps.next_mul_counter += ps.L;
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+		// Just did a checksum #2 squaring
+		else if (ps.state == STATE_GERB_END_BLOCK) {
+			if (ps.counter < ps.end_counter)
+				;		// Do next iteration in computing checksum #2
+			else if (ps.counter == ps.end_counter) {	// Next do final multiply in computing checksum #2
+				ps.state = STATE_GERB_END_BLOCK_MULT;
+				ps.counter -= 1;
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+		// Just did the checksum #2 multiply at the end of L checksum #2 squarings
+		else if (ps.state == STATE_GERB_END_BLOCK_MULT) {
+			if (ps.counter == ps.end_counter) {		// Next do final multiply in computing checksum #1
+				ps.state = STATE_GERB_FINAL_MULT;
+				ps.counter -= 1;
+			} else {					// Can't happen
+				OutputBoth (ERRMSG9);
+				inc_error_count (6, &ps.error_count);
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = FALSE;
+				goto restart;
+			}
+		}
+
+		// Just did the final checksum #1 multiply which we delayed until checksum #2 completed
+		else if (ps.state == STATE_GERB_FINAL_MULT) {
+			double	gerbicz_block_size_adjustment;
+			// We adjust the compare interval size downward when errors occur and upwards when they dont.
+			// That way buggy machines will lose fewer iterations when rolling back.
+			gerbicz_block_size_adjustment = IniGetFloat (INI_FILE, "PRPGerbiczCompareIntervalAdj", 1.0);
+			if (gerbicz_block_size_adjustment < 0.001 || gerbicz_block_size_adjustment > 1.0) gerbicz_block_size_adjustment = 0.5;
+			// Compare alt_x, d (the two Gerbicz checksum values that must match)
+			if (!areTwoPRPValsEqual (gwdata, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.alt_x, 0, ps.d, 0)) {
+				sprintf (buf, ERRMSG70, ps.start_counter);
+				OutputBoth (buf);
+				gerbicz_block_size_adjustment *= 0.25;		/* This will halve next L */
+				if (gerbicz_block_size_adjustment < 0.001) gerbicz_block_size_adjustment = 0.001;
+				IniWriteFloat (INI_FILE, "PRPGerbiczCompareIntervalAdj", (float) gerbicz_block_size_adjustment);
+				inc_error_count (7, &ps.error_count);
+				restart_counter = ps.start_counter;		/* rollback to this iteration */
+				sleep5 = FALSE;
+				goto restart;
+			}
+			if (IniGetInt (INI_FILE, "GerbiczVerbosity", 1)) {
+				clearline(100);
+				sprintf (buf, "Gerbicz error check passed at iteration %ld.\r", ps.counter);
+				OutputStr (buf);
+			}
+			gerbicz_block_size_adjustment *= 1.0473;		/* 30 good blocks to double L */
+			if (gerbicz_block_size_adjustment > 1.0) gerbicz_block_size_adjustment = 1.0;
+			IniWriteFloat (INI_FILE, "PRPGerbiczCompareIntervalAdj", (float) gerbicz_block_size_adjustment);
+			/* Start next Gerbicz block.  Both x and alt_x must be identical at start of next block. */
+			ps.state = STATE_GERB_START_BLOCK;
+			gwswap (ps.alt_x, ps.u0);
+			ps.alt_units_bit = ps.units_bit;
+			/* We've reached a verified iteration, create a save file and mark it highly reliable. */
+			/* But if there are less than 1000 iterations left on a reliable machine, don't bother creating the save file. */
+			if (final_counter - ps.counter >= 1000 || gerbicz_block_size_adjustment < 1.0) {
+				saving = TRUE;
+				saving_highly_reliable = TRUE;
+			}
+		}
+
+/* Write results to a file every DISK_WRITE_TIME minutes */
+
+		if (saving) {
+			if (! writeSaveFile (gwdata, &write_save_file_state, w, &ps)) {
+				sprintf (buf, WRITEFILEERR, filename);
+				OutputBoth (buf);
+			}
+			// Mark save files that contain verified computations.  This will keep the save file
+			// for a longer period of time (i.e. will not be replaced by a save file that does
+			// not also contain verified computations).
+			if (saving_highly_reliable)
+				setWriteSaveFileSpecial (&write_save_file_state);
+			saving = FALSE;
+			saving_highly_reliable = FALSE;
+		}
+
+/* If an escape key was hit, write out the results and return */
+
+		if (stop_reason) {
+			stop_reason = FALSE;
+			if (ps.residue_type == PROTH_TYPE || ps.residue_type == GMN_TYPE)
+				sprintf (buf, "Stopping Proth prime test of %s at iteration %ld [%.*f%%]\n",
+					string_rep, ps.counter, (int) PRECISION, trunc_percent (100.0*w->pct_complete));
+			else if (ps.residue_type == PRP_TYPE_SPRP)
+				sprintf (buf, "Stopping Strong PRP test of %s at iteration %ld [%.*f%%]\n",
+					string_rep, ps.counter, (int) PRECISION, trunc_percent (100.0*w->pct_complete));
+				else
+				sprintf (buf, "Stopping Fermat PRP test of %s at iteration %ld [%.*f%%]\n",
+					string_rep, ps.counter, (int) PRECISION, trunc_percent (100.0*w->pct_complete));
+			clearline(100);
+			OutputStr (buf);
+			goto exit;
+		}
+
+/* Output the 64-bit residue at specified interims. */
+
+		if (interim_residue) {
+			tmp3 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+			if (gwtogiant (gwdata, x, tmp3)) {
+				pushg (&gwdata->gdata, 1);
+				OutputBoth (ERRMSG80);
+				inc_error_count (2, &ps.error_count);
+				last_counter = ps.counter;		/* create save files before and after this iteration */
+				restart_counter = -1;			/* rollback to any save file */
+				sleep5 = TRUE;
+				goto restart;
+			}
+			rotategp (tmp3, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, *units_bit);
+			if (interim_mul)
+				basemulg (tmp3, w, ps.prp_base, -1);
+			if (w->known_factors && ps.residue_type != PRP_TYPE_COFACTOR)
+				modg (N, tmp3);
+			if ((ps.residue_type == PROTH_TYPE)||(ps.residue_type == GMN_TYPE))
+				sprintf (buf, "%s interim Proth residue %08lX%08lX at iteration %ld\n",
+					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					ps.counter - interim_counter_off_one);
+			else if (ps.residue_type == PRP_TYPE_SPRP)
+				sprintf (buf, "%s interim Strong PRP residue %08lX%08lX at iteration %ld\n",
+					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					ps.counter - interim_counter_off_one);
+			else
+				sprintf (buf, "%s interim Fermat PRP residue %08lX%08lX at iteration %ld\n",
+					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					ps.counter - interim_counter_off_one);
+			OutputBoth (buf);
+			pushg (&gwdata->gdata, 1);
+		}
+
+/* Write a save file every INTERIM_FILES iterations. */
+
+		if (interim_file) {
+			char	interimfile[32];
+			writeSaveFileState state;
+			sprintf (interimfile, "%s.%03ld", filename, ps.counter / INTERIM_FILES);
+			writeSaveFileStateInit (&state, interimfile, 0);
+			state.num_ordinary_save_files = 99;
+			writeSaveFile (gwdata, &state, w, &ps);
+		}
+		bit++;
+	}
+
+/* Free up some memory */
+
+	gwfree (gwdata, ps.u0);
+	gwfree (gwdata, ps.d);
+
+/* Make sure PRP state is valid.  We cannot be in the middle of a double-check or in the middle of a Gerbicz block */
+
+	if (ps.state != STATE_NORMAL && ps.state != STATE_DCHK_PASS1 && ps.state != STATE_GERB_START_BLOCK) {
+		OutputBoth (ERRMSG90);
+		inc_error_count (6, &ps.error_count);
+		restart_counter = -1;			/* rollback to any save file */
+		sleep5 = FALSE;
+		goto restart;
+	}
+
+/* See if we've found a probable prime.  If not, format a 64-bit residue. */
+
+	if (gwtogiant (gwdata, ps.x, tmp)) {
+		OutputBoth (ERRMSG8);
+		inc_error_count (2, &ps.error_count);
+		restart_counter = -1;			/* rollback to any save file */
+		sleep5 = TRUE;
+		goto restart;
+	}
+
+	rotategp (tmp, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.units_bit);
+	if (mul_final)
+		basemulg (tmp, w, ps.prp_base, mul_final);
+	if (w->known_factors && ps.residue_type != PRP_TYPE_COFACTOR)
+		modg (N, tmp);
+	if (ps.residue_type != GMN_TYPE) {
+		PositiveResult = isPRPg (tmp, N, w, ps.prp_base, ps.residue_type);
+		if (!PositiveResult) {
+			if (ps.residue_type == PROTH_TYPE)
+				uladdg (1, tmp);	// to match with V3.8.23 Proth residue
+			sprintf (res64, "%08lX%08lX", (unsigned long) ((tmp->sign > 1) ? tmp->n[1] : 0), (unsigned long) tmp->n[0]);
+			have_res2048 = (tmp->sign > 64);
+			if (have_res2048) {
+				int i;
+				for (i = 63; i >= 0; i--) sprintf (res2048+504-i*8, "%08lX", (unsigned long) tmp->n[i]);
+			}
+		}
+	}
+
+/* If we are doing highly reliable error checking, then make sure the calculation of the final residue was error free! */
+/* Perform the same calculations above but use alt_x. */
+
+	if (ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_START_BLOCK) {
+		int	alt_match, alt_isProbablePrime;
+		if (gwtogiant (gwdata, ps.alt_x, tmp2)) {
+			OutputBoth (ERRMSG8);
+			inc_error_count (2, &ps.error_count);
+			restart_counter = -1;			/* rollback to any save file */
+			sleep5 = TRUE;
+			goto restart;
+		}
+		rotategp (tmp2, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.alt_units_bit);
+		if (mul_final)
+			basemulg (tmp2, w, ps.prp_base, mul_final);
+		if (w->known_factors && ps.residue_type != PRP_TYPE_COFACTOR)
+			modg (N, tmp2);
+		if (ps.residue_type != GMN_TYPE) {
+			alt_isProbablePrime = isPRPg (tmp2, N, w, ps.prp_base, ps.residue_type);
+			alt_match = (PositiveResult == alt_isProbablePrime);
+			if (alt_match && !alt_isProbablePrime) {
+				if (ps.residue_type == PROTH_TYPE)
+					uladdg (1, tmp2);	// to match with V3.8.23 Proth residue
+				sprintf (alt_res64, "%08lX%08lX", (unsigned long) ((tmp2->sign > 1) ? tmp2->n[1] : 0), (unsigned long) tmp2->n[0]);
+				alt_match = !strcmp (res64, alt_res64);
+			}
+		}
+		else {
+			alt_match = TRUE;	// Test only x == alt-x
+		}
+		if (!alt_match || (gcompg (tmp, tmp2)!=0)) {
+			OutputBoth (ERRMSG80);
+			inc_error_count (2, &ps.error_count);
+			restart_counter = -1;			/* rollback to any save file */
+			sleep5 = TRUE;
+			goto restart;
+		}
+		gwfree (gwdata, ps.alt_x);
+	}
+
+	if (ps.residue_type == GMN_TYPE) {
+		ps.gx = tmp;
+		if (gwtogiant (gwdata, ps.y, tmp2)) {
+			OutputBoth (ERRMSG8);
+			inc_error_count (2, &ps.error_count);
+			restart_counter = -1;			/* rollback to any save file */
+			sleep5 = TRUE;
+			goto restart;
+		}
+		rotategp (tmp2, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.units_bit2);
+		ps.gy = tmp2;
+
+	/* Delete the continuation files. */
+
+		unlinkSaveFiles (&write_save_file_state);
+	
+	}
+	else {
+
+		/* Print results */
+
+		if (PositiveResult) {
+			if (ps.residue_type == PROTH_TYPE)
+				sprintf (buf, "%s is prime", string_rep);
+			else	if (ps.residue_type == PRP_TYPE_SPRP) {
+				sprintf (buf, "%s is a Strong Probable prime", string_rep);
+				if (ps.prp_base != 3)
+					sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
+			}
+			else {
+				sprintf (buf, "%s is a Fermat Probable prime", string_rep);
+				if (ps.prp_base != 3)
+					sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
+			}
+
+			strcat (buf, "!");
+			sprintf (buf+strlen(buf), " (%lu decimal digits)", nbdg); 
+			*res = TRUE;
+		}
+		else {
+			sprintf (buf, "%s is not prime.  ", string_rep);
+			if (ps.prp_base != 3)
+				sprintf (buf+strlen(buf), "Base-%u ", ps.prp_base);
+			if (ps.residue_type == PROTH_TYPE)
+				sprintf (buf+strlen(buf), "Proth ");
+			else if (ps.residue_type != PRP_TYPE_FERMAT)
+				sprintf (buf+strlen(buf), "Type-%d ", ps.residue_type);
+			sprintf (buf+strlen(buf), "RES64: %s.", res64);
+			*res = FALSE;
+		}
+
+/* Print known factors */
+
+		if (string_rep_truncated) {
+			char	*bigbuf;
+			bigbuf = (char *) malloc (strlen (w->known_factors) + 100);
+			if (bigbuf != NULL) {
+				sprintf (bigbuf, "Known factors used for PRP test were: %s\n", w->known_factors);
+				OutputStr (bigbuf);
+				if ((PositiveResult && IniGetInt (INI_FILE, "OutputPrimes", 0)) ||
+			    (!PositiveResult && IniGetInt (INI_FILE, "OutputComposites", 0)))
+					writeResults (bigbuf);
+				free (bigbuf);
+			}
+		}
+
+	/* Delete the continuation files. */
+
+		unlinkSaveFiles (&write_save_file_state);
+	
+
+		clearline (100);
+
+		free (tmp);
+		free (tmp2);
+		gwfree (gwdata, ps.x);
+		gwfree (gwdata, ps.y);
+
+
+#if defined(WIN32) && !defined(_CONSOLE)
+
+		sprintf (buf+strlen(buf), "  Time : "); 
+		ReplaceableLine (2);	/* Replace line */ 
+
+#else
+
+		clearline(100);
+
+		if (*res) {
+#if defined (_CONSOLE)
+			hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
+			SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
+			OutputBoth(buf);
+			SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
+#else
+			OutputStr("\033[7m");
+			OutputBoth(buf);
+			OutputStr("\033[0m");
+#endif
+		}
+		else
+			OutputBoth(buf);
+
+		sprintf (buf, "  Time : "); 
+
+#endif
+
+/* Output the final timings */
+
+		end_timer (2);
+		write_timer (buf+strlen(buf), 2, TIMER_CLR | TIMER_NL); 
+		OutputBoth(buf);
+
+/* Cleanup and return */
+
+	}
+
+	IniWriteString(INI_FILE, "FFT_Increment", NULL);
+	lasterr_point = 0;
+	return (TRUE);
+
+/* An error occured, output a message saying we are restarting, sleep, */
+/* then try restarting at last save point. */
+
+restart:
+	if (sleep5) 
+		OutputBoth (ERRMSG2);
+	OutputBoth (ERRMSG3);
+
+/* Save the incremented error count to be used in the restart rather than the error count read from a save file */
+
+	restart_error_count = ps.error_count;
+
+
+/* Sleep five minutes before restarting */
+
+	if (sleep5 && ! SleepFive ()) {
+		return (FALSE);
+	}
+
+/* Return so that last continuation file is read in */
+
+	free (exp);
+	return (-1);;
+
+exit:
+	free (tmp);
+	free (tmp2);
+	gwfree (gwdata, ps.x);
+	gwfree (gwdata, ps.y);
+	free (exp);
+	*res = FALSE;		// To avoid credit message !
+	return (FALSE);
+}
+
 /* Test for a (strong) Fermat probable prime -- gwsetup has already been called. */
 
 int commonPRP (
@@ -5574,11 +8354,13 @@ int commonPRP (
 
 	else {
 		clear_timers ();	// Init. timers
-		if (showdigits)
-			sprintf (buf, "Starting probable prime test of %s (%lu decimal digits)\n", str, nbdg);
-		else
-			sprintf (buf, "Starting probable prime test of %s\n", str);
-		OutputStr (buf);
+ 		if(!usingDivPhi_m) {
+			if (showdigits)
+				sprintf (buf, "Starting probable prime test of %s (%lu decimal digits)\n", str, nbdg);
+			else
+				sprintf (buf, "Starting probable prime test of %s\n", str);
+			OutputStr (buf);
+  		}
 		if (verbose || restarting)
 			writeResults (buf);
 		bit = 1;
@@ -5593,6 +8375,7 @@ int commonPRP (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
@@ -5791,6 +8574,9 @@ int commonPRP (
 				sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 			else
 				sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
+ 			if (usingDivPhi_m)
+ 				sprintf (buf, "%s does not divide %lu^%s^%d-1", str, a, sgb, usingDivPhi_m);
+ 			else
 			if (IniGetInt (INI_FILE, "OldRes64", 1))
 				sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 			else
@@ -5801,6 +8587,8 @@ int commonPRP (
 				*res = FALSE;	/* Not a prime */
 				sprintf (buf, "%s is not prime, although base %lu-Fermat PSP!!", str, a);
 			}
+ 			else if (usingDivPhi_m)
+ 				sprintf (buf, "%s Divides %lu^%s^%d-1", str, a, sgb, usingDivPhi_m);
 			else
 				sprintf (buf, "%s is base %lu-Fermat PRP! (%lu decimal digits)", str, a, nbdg);
 		}
@@ -5832,7 +8620,7 @@ int commonPRP (
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -6016,6 +8804,7 @@ int commonCC1P (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
 
@@ -6212,7 +9001,7 @@ int commonCC1P (
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -6332,10 +9121,10 @@ int commonCC2P (
 	bits = bitlen (N);
 	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
-	exponent = newgiant ((bits >> 4) + 8);	// Allocate memory for exponent
-	tmp = newgiant ((bits >> 3) + 8);		// Allocate memory for tmp
-	tmp2 = newgiant ((bits >> 4) + 8);		// Allocate memory for tmp2
-	tmp3 = newgiant ((bits >> 4) + 8);		// Allocate memory for tmp3
+	exponent = allocgiant ((bits >> 4) + 8);	// Allocate memory for exponent
+	tmp = allocgiant ((bits >> 3) + 8);		// Allocate memory for tmp
+	tmp2 = allocgiant ((bits >> 4) + 8);		// Allocate memory for tmp2
+	tmp3 = allocgiant ((bits >> 4) + 8);		// Allocate memory for tmp3
 
 	gtog (N, exponent);
 	uladdg (1, exponent);					// exponent = modulus + 1
@@ -6395,6 +9184,7 @@ int commonCC2P (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, P);
 
@@ -6639,7 +9429,7 @@ int commonCC2P (
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -6746,7 +9536,21 @@ int fastIsPRP (
 		a = IniGetInt (INI_FILE, "FBase", 2);
 	else
 		a = IniGetInt (INI_FILE, "FBase", 3);
+ 	if (usingDivPhi_m) 
+		a = 2;
 
+	// init work_unit used by the Gerbicz code
+
+	w->k = k;
+	w->n = n;
+	w->b = b;
+	w->c = c;
+	w->prp_base = a;
+	w->prp_residue_type = strong? PRP_TYPE_SPRP : PRP_TYPE_FERMAT;
+	if (quotient) 
+		w->prp_residue_type = PRP_TYPE_COFACTOR;
+	else
+		w->known_factors = NULL;
 
 	do {
 restart:
@@ -6770,15 +9574,15 @@ restart:
 		}
 
 /* Do the PRP test */
-
-		retval = commonPRP (gwdata, gdata, a, res, str);
+		if (b == 2)
+			retval = GerbiczTest (gwdata, gdata, a, res, str, w);
+		else
+			retval = commonPRP (gwdata, gdata, a, res, str);
 		gwdone (gwdata);
 	} while (retval == -1);
 
 /* Clean up and return */
 
-//	if (retval == TRUE)		// If not stopped by user...
-//		IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	free (gwdata);
 	return (retval);
 }
@@ -7119,7 +9923,7 @@ int gwslowIsWieferich (
 	char	buf[sgkbufsize+256]; 
 	gwhandle *gwdata;
 	ghandle *gdata;
-//	M = newgiant ((bitlen (N) >> 3) + 8);
+//	M = allocgiant ((bitlen (N) >> 3) + 8);
 	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	gtog (N, M);
@@ -7229,7 +10033,7 @@ int	gmpisWieferich (
 		OutputBoth (buf);
 		OutputStr("\033[0m");
 #else
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -7269,6 +10073,15 @@ int slowIsPRP (
 		a = IniGetInt (INI_FILE, "FBase", 3);
 
 
+	// init work_unit used by the Gerbicz code
+
+	w->prp_base = a;
+	w->prp_residue_type = strong? PRP_TYPE_SPRP : PRP_TYPE_FERMAT;
+	if (quotient) 
+		w->prp_residue_type = PRP_TYPE_COFACTOR;
+	else
+		w->known_factors = NULL;
+
 	do {
 restart:
 		gwinit (gwdata);
@@ -7291,8 +10104,12 @@ restart:
 		}
 
 /* Do the PRP test */
-
-		retval = commonPRP (gwdata, gdata, a, res, str);
+		if (w->b == 2) {
+			retval = GerbiczTest (gwdata, gdata, a, res, str, w);
+		}
+		else {
+			retval = commonPRP (gwdata, gdata, a, res, str);
+		}
 		gwdone (gwdata);
 	} while (retval == -1);
 
@@ -7427,7 +10244,7 @@ int isProbablePrime (void)
 	giant	x;
 
 	if (isone (N)) return (FALSE);
-	x = newgiant (N->sign + 8);
+	x = allocgiant (N->sign + 8);
 	itog (IniGetInt (INI_FILE, "FBase", 3), x);
 	powermodg (x, N, N);
 	iaddg (-IniGetInt (INI_FILE, "FBase", 3), x);
@@ -7450,6 +10267,10 @@ int isPRPinternal (
 
 	if (abs(gb->sign) == 1)						// Test if the base is a small integer
 		smallbase = gb->n[0];
+	w->k = dk;
+	w->b = smallbase;
+	w->n = n;
+	w->c = incr;								// Transmit c to Gerbicz code!
 
 	tempFileName (filename, 'L', N);			// See if resuming a Lucas or Frobenius PRP test
 	fcontinue = fileExists (filename);
@@ -7539,6 +10360,7 @@ int isPRPinternal (
 #define ABCWFT		25				// Format used for Wieferich test
 #define ABCWFS		26				// Format used for Wieferich search
 #define ABCGPT		27				// Format used for General prime test (APRCL)
+#define ABCDP		28				// Format used for DivPhi()
 
 int IsPRP (							// General PRP test
 	unsigned long format, 
@@ -7555,7 +10377,14 @@ int IsPRP (							// General PRP test
 	int resaprcl;
 	double dk;
 	giant gd, gr;
+	gwhandle *gwdata;
+	ghandle *gdata;
 
+/* Setup the gwnum code. */
+
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);
+	gdata = &gwdata->gdata;
 	strong = IniGetInt (INI_FILE, (char*)"StrongFermat", 0);
 	fpart = 0.0;							// clear this value
 	if (abs(gb->sign) == 1)					// Test if the base is a small integer
@@ -7566,11 +10395,20 @@ int IsPRP (							// General PRP test
 			sprintf (str, "(%lu^%lu-1)/%lu", smallbase, n, smallbase-1);
 		else
 			sprintf (str, "(%s^%lu-1)/(%s-1)", sgb, n, sgb);
-		gk = newgiant (1);
+		gk = allocgiant (1);
 		setone (gk);
 	}
+ 	else if (format == ABCDP) {				// DivPhi
+ 		if (smallbase)
+ 			sprintf (str, "%s*%lu^%lu+1", sgk, smallbase, n);
+ 		else
+ 			sprintf (str, "%s*%s^%lu+1", sgk, sgb, n);
+		gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
+ 		ctog (sgk, gk);						// Convert k string to giant
+ 		strong = 0;
+ 	}
 	else if (!(format == ABCC || format == ABCK)) {
-		gk = newgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
+		gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
 		ctog (sgk, gk);						// Convert k string to giant
 		gshiftleft (shift, gk);				// Shift k multiplier if requested
 		gtoc (gk, sgk1, sgkbufsize);		// Updated k string
@@ -7579,13 +10417,21 @@ int IsPRP (							// General PRP test
 		}
 		else if (format != NPGAP) {			// Not MODE_AP
 			if (!strcmp(sgk1, "1"))
-				if (format == ABCVARAQS)
+				if (format == ABCVARAQS) {
+					char *p;
+					while ((p = strchr (sgd,'.'))!=NULL)
+						*p = '/';
 					sprintf (str, "(%s^%lu%c%d)/%s", sgb, n, incr < 0 ? '-' : '+', abs(incr), sgd);
+				}
 				else
 					sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
 			else
-				if (format == ABCVARAQS)
+				if (format == ABCVARAQS) {
+					char *p;
+					while ((p = strchr (sgd,'.'))!=NULL)
+						*p = '/';
 					sprintf (str, "(%s*%s^%lu%c%d)/%s", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr), sgd);
+				}
 				else
 					if ((n != 0) || (incr != 0))
 						sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
@@ -7600,7 +10446,7 @@ int IsPRP (							// General PRP test
 		}
 	}
 	else {
-		gk = newgiant ((n>>4)+8);
+		gk = allocgiant ((n>>4)+8);
 		setone (gk);						// Compute k multiplier
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
@@ -7615,7 +10461,7 @@ int IsPRP (							// General PRP test
 
 	if ((gformat == ABCDN) || (gformat == ABCDNG)) {// Compute gk = gb^(n-m)-1
 		bits = ndiff*bitlen (gb);
-		gk = newgiant ((bits >> 4) + 8);
+		gk = allocgiant ((bits >> 4) + 8);
 		gtog (gb, gk);
 		power (gk, ndiff);
 		iaddg (-1, gk);
@@ -7625,10 +10471,32 @@ int IsPRP (							// General PRP test
 	if (smallbase)
 		bits = (unsigned long) ((n * log((double) smallbase)) / log(2.0) + bitlen(gk));
 	else
-		bits = n * bitlen(gb) + bitlen(gk); 
-	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
+		bits = n * bitlen(gb) + bitlen(gk);
+	N =  allocgiant ((bits >> 4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
+
+ 	if (format == ABCDP) {
+ 		globalk = dk = (double)gk->n[0]; 
+ 		Fermat_only = TRUE;
+ 		for(usingDivPhi_m = n; usingDivPhi_m > 0; usingDivPhi_m--) {
+ 			sprintf (buf, "Starting test if %s divides Phi(%s^%d,2)\n", str, sgb, usingDivPhi_m);
+			OutputStr (buf);
+ 			gtog (gb, N);
+ 			power (N, usingDivPhi_m);
+ 			iaddg (1, N);
+ 			retval = isPRPinternal (str, dk, gb, n, incr, res);
+ 			if(!*res) break;
+ 		}
+ 		if(usingDivPhi_m<(int)n) {
+			sprintf(buf, "Conclusion: %s Divides Phi(%s^%d,2)\n", str, sgb, usingDivPhi_m+1);
+			OutputBoth (buf);
+		}
+ 		Fermat_only = usingDivPhi_m = FALSE;
+ 		free (N);
+ 		free (gk);
+ 		return retval;
+ 	}
 
 	gtog (gb, N);
 	power (N, n);
@@ -7659,29 +10527,53 @@ int IsPRP (							// General PRP test
 //		strong = FALSE;				// Do a simple Fermat PRP test (not strong).
 	}
 	else if (format == ABCVARAQS) {
-		gd = newgiant (strlen(sgd)/2 + 8);	// Allocate one byte per decimal digit + spares
-		gr = newgiant ((bits >> 4) + 8);	// Allocate memory for the remainder
-		ctog (sgd, gd);						// Convert divisor string to giant
-		gtog (N, gr);
-		modg (gd, gr);
-		if (!isZero(gr)) {
-			sprintf (buf, "%s is not an integer!\n", str);
-			OutputBoth (buf);
-			*res = FALSE;
-			free (gr);
-			free (gd);
-			free (N);
-			free (gk);
-			return TRUE;
+		char factor[sgkbufsize+256], *p, *p2;
+		gd = allocgiant (strlen(sgd)/2 + 8);	// Allocate one byte per decimal digit + spares
+		gr = allocgiant ((bits >> 4) + 8);	// Allocate memory for the remainder
+		p = sgd;
+		while (TRUE) {
+			strcpy (factor, p);
+			if ((p2 = strchr (p,'/'))!=NULL) {
+				p = &p2[1];
+				if ((p2 = strchr (factor,'/'))!=NULL)
+					*p2 = 0;
+			}
+			if (!isDigitString(factor)) {
+				sprintf (buf,"invalid digit string : %s\n", factor);
+				OutputBoth (buf);
+				*res = FALSE;
+				free (gr);
+				free (gd);
+				free (N);
+				free (gk);
+				return TRUE;
+			}
+			ctog (factor, gd);						// Convert divisor string to giant
+			gtog (N, gr);
+			modg (gd, gr);
+			if (!isZero(gr)) {
+				sprintf (buf, "%s is not an integer!\n", str);
+				OutputBoth (buf);
+				*res = FALSE;
+				free (gr);
+				free (gd);
+				free (N);
+				free (gk);
+				return TRUE;
+			}
+			else {
+				divg (gd, N);
+			}
+			if (p2 == NULL)
+				break;
 		}
-		else {
-			divg (gd, N);
-			quotient = TRUE;
-//			strong = FALSE;			// Do a simple Fermat PRP test (not strong).
-		}
+		w->prp_residue_type = PRP_TYPE_COFACTOR;
+		w->known_factors = sgd;
+		quotient = TRUE;
+//		strong = FALSE;			// Do a simple Fermat PRP test (not strong).
 	}
 
-	if ((nbdg = gnbdg(N, 10)) < 2000) {		// Attempt an APRCL test...
+	if ((nbdg = gnbdg(N, 10)) < 200) {		// Attempt an APRCL test...
 		start_timer(1);
 		if (nbdg > maxaprcl)
 			resaprcl = gaprcltest (N, 1, 0);	// Make only a Strong BPSW PRP test
@@ -7733,7 +10625,7 @@ int IsPRP (							// General PRP test
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -7777,7 +10669,6 @@ PRPCONTINUE:
 		}
 
 		globalk = dk;
-
 		retval = isPRPinternal (str, dk, gb, n, incr, res);
 		if (*res) {
 			if (klen > 1) {
@@ -7798,7 +10689,8 @@ PRPCONTINUE:
 		free (gd);
 	}
 	free (N);
-	free (gk);
+	if (gk!=NULL)
+		free (gk);
 	return retval;
 }
 
@@ -7822,7 +10714,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	if (abs(gb->sign) == 1)				// Test if the base is a small integer
 		smallbase = gb->n[0];
 
-	gk = newgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
+	gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgk, gk);						// Convert k string to giant
 	gshiftleft (shift, gk);				// Shift k multiplier if requested
 	gtoc (gk, sgk1, sgkbufsize);		// Updated k string
@@ -7840,7 +10732,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 		bits = (unsigned long) ((n * log((double) smallbase)) / log(2.0) + bitlen(gk));
 	else
 		bits = n * bitlen(gb) + bitlen(gk);
-	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
+	N =  allocgiant ((bits >> 4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -7849,7 +10741,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	mulg (gk, N);
 	iaddg (incr, N);
 
-	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+	if ((nbdg = gnbdg(N, 10)) < 200) {			// Attempt an APRCL test for this small number...
 		start_timer(1);
 			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
 		end_timer (1);
@@ -7895,7 +10787,7 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -8076,7 +10968,7 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 	double db;
 	giant b;
 	gbits = bitlen (gbase);
-	b = newgiant (2*abs(gbase->sign) + 8);
+	b = allocgiant (2*abs(gbase->sign) + 8);
 	for (i=0; i<30; i++) {
 		bpf[i]  = vpf[i] = 0;	// clean up
 		if (gbpc[i] != NULL) {
@@ -8101,14 +10993,14 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			vpf[i]++;			// compute the exponent of two
 			gshiftright (1, b);
 		}
-		gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+		gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 		gtog (gbase, gbpc[i]);
 		gshiftright (1, gbpc[i]);
 		i++;
 		if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
 			bpf[i] = b->n[0];
 			vpf[i] = 1;
-			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (gbase, gbpc[i]);
 			uldivg (b->n[0], gbpc[i]);
 			free (b);
@@ -8121,14 +11013,14 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			vpf[i]++;			// compute the exponent of three
 			uldivg (3, b);
 		}
-		gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+		gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 		gtog (gbase, gbpc[i]);
 		uldivg (3, gbpc[i]);
 		i++;
 		if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
 			bpf[i] = b->n[0];
 			vpf[i] = 1;
-			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (gbase, gbpc[i]);
 			uldivg (b->n[0], gbpc[i]);
 			free (b);
@@ -8156,14 +11048,14 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 				vpf[i]++;		// compute the exponent of p
 				uldivg (p, b);
 			}
-			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (gbase, gbpc[i]);
 			uldivg (p, gbpc[i]);
 			i++;
 			if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
 				bpf[i] = b->n[0];
 				vpf[i] = 1;
-				gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+				gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 				gtog (gbase, gbpc[i]);
 				uldivg (b->n[0], gbpc[i]);
 				free (b);
@@ -8177,14 +11069,14 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 				vpf[i]++;		// compute the exponent of p
 				uldivg (p, b);
 			}
-			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (gbase, gbpc[i]);
 			uldivg (p, gbpc[i]);
 			i++;
 			if ((b->sign == 1) &&  isPrime (b->n[0])) {	// b may be the last prime factor!
 				bpf[i] = b->n[0];
 				vpf[i] = 1;
-				gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+				gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 				gtog (gbase, gbpc[i]);
 				uldivg (b->n[0], gbpc[i]);
 				free (b);
@@ -8200,7 +11092,7 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 	else if (abs(b->sign) == 1) {		// The cofactor is a small integer prime !
 		bpf[i] = b->n[0];
 		vpf[i] = 1;
-		gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+		gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 		gtog (gbase, gbpc[i]);
 		uldivg (bpf[i], gbpc[i]);
 		free (b);
@@ -8208,10 +11100,10 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 	}
 	else {
 		bpf[i] = vpf[i] = 1;			// To signal a large integer cofactor
-		gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+		gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 		gtog (gbase, gbpc[i]);
 		divg (b, gbpc[i]);
-		gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
+		gbpf[i] = allocgiant (2*abs(gbase->sign) + 8);
 		if (bitlen(b) <= 40 || (gaprcltest (b, 0, 0) == 2)) {
 			gtog (b, gbpf[i]);			// The cofactor is prime !
 			free (b);
@@ -8223,10 +11115,10 @@ int findgbpf (giant gbase) {		// find all prime factors of a large integer base
 			divg (gbpf[i], gbpc[i]);
 			i++;
 			bpf[i] = vpf[i] = 1;			// To signal a large integer cofactor
-			gbpc[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpc[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (gbase, gbpc[i]);
 			divg (b, gbpc[i]);
-			gbpf[i] = newgiant (2*abs(gbase->sign) + 8);
+			gbpf[i] = allocgiant (2*abs(gbase->sign) + 8);
 			gtog (b, gbpf[i]);
 			free (b);
 			if ((bitlen(gbpf[i-1]) <= 40) && (bitlen(gbpf[i]) <= 40))
@@ -8364,6 +11256,7 @@ int Lucasequence (
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, P = %lu\n", fft_desc, P);
 
@@ -8977,20 +11870,25 @@ int plusminustest (
 	time_t	start_time, current_time;
 	double	reallyminerr = 1.0;
 	double	reallymaxerr = 0.0;
+
 	gwhandle *gwdata;
 	ghandle *gdata;
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);			// to be sure about giant usage...
+	gdata = &gwdata->gdata;
+
 	if ((gformat == ABCDN) || (gformat == ABCDNG)) {// Compute gk = gb^(n-m)-1
 		bits = ndiff*bitlen (gb);
-		gk = newgiant ((bits >> 4) + 8);
+		gk = allocgiant ((bits >> 4) + 8);
 		gtog (gb, gk);
 		power (gk, ndiff);
 		iaddg (-1, gk);
 		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n, incr < 0 ? '-' : '+', abs(incr));
 	}
 	else {
-		gk = newgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
+		gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
 		ctog (sgk, gk);						// Convert k string to giant
-		grem = newgiant (2*abs(gk->sign) + 8);	// place for mod (gk, gb)
+		grem = allocgiant (2*abs(gk->sign) + 8);	// place for mod (gk, gb)
 		gshiftleft (shift, gk);				// Shift k multiplier if requested
 		gtoc (gk, sgk1, sgkbufsize);		// Updated k string
 		if (!strcmp(sgk1, "1"))
@@ -9000,7 +11898,7 @@ int plusminustest (
 	}
 
 	bits = n * bitlen(gb) + bitlen(gk); 
-	N =  newgiant ((bits >> 4) + 8);		// Allocate memory for N
+	N =  allocgiant ((bits >> 4) + 8);		// Allocate memory for N
 
 //	Be sure the base does not divide the gk multiplier :
 
@@ -9044,7 +11942,7 @@ int plusminustest (
 
 	globalk = dk;
 
-	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+	if ((nbdg = gnbdg(N, 10)) < 200) {			// Attempt an APRCL test for this small number...
 		start_timer(1);
 			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
 		end_timer (1);
@@ -9090,7 +11988,7 @@ int plusminustest (
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -9245,7 +12143,6 @@ PLMCONTINUE:
 											// The Discriminant for the Morrison test
 	D = P*P-4;								// D = P^2 - 4*Q with Q = 1
 
-	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
  restart:
 
@@ -9257,10 +12154,10 @@ PLMCONTINUE:
 
 	*res = TRUE;
 
-	M = newgiant ((bits >> 4) + 8);		// Allocate memory for M
-	tmp = newgiant ((bits >> 4) + 8);	// Allocate memory for tmp
-	tmp2 =newgiant ((bits >> 4) + 8);	// Allocate memory for tmp2
-	tmp3 =newgiant ((bits >> 4) + 8);	// Allocate memory for tmp3
+	M = allocgiant ((bits >> 4) + 8);		// Allocate memory for M
+	tmp = allocgiant ((bits >> 4) + 8);	// Allocate memory for tmp
+	tmp2 =allocgiant ((bits >> 4) + 8);	// Allocate memory for tmp2
+	tmp3 =allocgiant ((bits >> 4) + 8);	// Allocate memory for tmp3
 	gtog (N, tmp);
 	ulsubg (1, tmp);					// tmp = N-1
 
@@ -9413,6 +12310,7 @@ PLMCONTINUE:
 
 /* Output a message about the FFT length */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s, a = %lu\n", fft_desc,a);
 
@@ -9847,7 +12745,7 @@ DoLucas:
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -9980,7 +12878,7 @@ int isLLRP (
 	gwhandle *gwdata;
 	ghandle *gdata;
 	gwnum	x, y; 
-	giant	tmp, gbinput; 
+	giant	tmp, gbinput;
 	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256],
 			sgk1[sgkbufsize], fft_desc[256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
@@ -9995,6 +12893,12 @@ int isLLRP (
 	unsigned long idk = 0;
 	giant gk1;
 // Lei end
+
+// init. gwnum code
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);
+	gdata = &gwdata->gdata;
+
 	if (!(format == ABCC || format == ABCK)) {
 // Lei
 		if (b_else != 1) {					// Compute the length of b_else^ninput
@@ -10007,7 +12911,7 @@ int isLLRP (
 // Lei end
 		if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
 			gksize = ndiff*(unsigned long)ceil(log ((double)binput)/log (2.0))+idk;// initial gksize
-			gk = newgiant ((gksize >> 4) + 8);		// Allocate space for gk
+			gk = allocgiant ((gksize >> 4) + 8);		// Allocate space for gk
 			ultog (binput, gk);
 			power (gk, ndiff);
 			iaddg (-1, gk);
@@ -10015,7 +12919,7 @@ int isLLRP (
 		}
 		else {
 			gksize = 8*strlen(sgk) + idk;		// J. P. Initial gksize
-			gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
+			gk = allocgiant ((gksize >> 4) + 8);	// Allocate space for gk
 			ctog (sgk, gk);						// Convert k string to giant
 		}
 
@@ -10032,12 +12936,11 @@ int isLLRP (
 
 // Lei
 		if (b_else != 1) {					// Compute the big multiplier
-			gk1 = newgiant ((gksize>>4) + 8);
+			gk1 = allocgiant ((gksize>>4) + 8);
 			ultog (b_else, gk1);		
 			power (gk1, ninput);
 			mulg (gk1, gk);
 			free (gk1);
-// J.P. shadow   gtoc (gk, sgk1, sgkbufsize);  // Updated k string
 		}
 // Lei end
 
@@ -10051,7 +12954,6 @@ int isLLRP (
 		}
 		else {
 			strcpy (sgk1, sgk);
-//	J.P. shadow		if (b_else == 1) strcpy (sgk1, sgk);	// Lei
 		}
 		if ((format != ABCDN) && (format != ABCDNG)) {
 			if (b_else != 1)	// Lei, J.P.
@@ -10069,7 +12971,7 @@ int isLLRP (
 		}
 	}
 	else {
-		gk = newgiant ((n>>4)+8);
+		gk = allocgiant ((n>>4)+8);
 		setone (gk);						// Compute k multiplier
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
@@ -10083,8 +12985,16 @@ int isLLRP (
 	}
 
 	klen = bitlen(gk);					// Bit length ok k multiplier
+	if (klen > 53 || generic) {	// we must use generic reduction. 12/06/20
+		dk = 0.0;
+	}
+	else {						// we can use DWT ; compute the multiplier as a double
+		dk = (double)gk->n[0];
+		if (gk->sign > 1)
+			dk += 4294967296.0*(double)gk->n[1];
+	}
 	bits = n + klen;					// Bit length of N
-	N =  newgiant ((bits >> 4) + 8);	// Allocate memory for N
+	N =  allocgiant ((bits >> 4) + 8);	// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -10097,10 +13007,9 @@ int isLLRP (
 	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
 
 	globalk = dk;
-
-	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+	if ((nbdg = gnbdg(N, 10)) < 200) {			// Attempt an APRCL test for this small number...
 		start_timer(1);
-			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
+		resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
 		end_timer (1);
 		if (resaprcl == 10) {
 			sprintf (buf,"%s is not prime. (Trial divisions)", str);
@@ -10144,7 +13053,7 @@ int isLLRP (
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -10181,16 +13090,15 @@ LLRCONTINUE:
 			sprintf(buf, "%s > 2^%lu, so we can only do a PRP test for %s.\n", sgk, n, str);
 	    OutputBoth(buf);
 // Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
 		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
-		gbinput = newgiant (2);
+		gbinput = allocgiant (2);
 		gbinput->sign = 1;
-		gbinput->n[0] = binput;
+		gbinput->n[0] = 2;
 		fpart = (1.0-(double)klen/Nlen)*100.0;
-		retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
+		retval = isPRPinternal (str, dk, gbinput, n, -1, res);
 // Lei end
 		if (res) {
 			sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
@@ -10204,30 +13112,36 @@ LLRCONTINUE:
 		free(N);
 		return retval;
 	}
-// Lei
-//	J.P. shadow sprintf (buf, "Should try prp?\n");
-//	J.P. shadow OutputStr (buf);
-// Lei end
 
-	if (!IniGetInt(INI_FILE, "Verify", 0) && !IniGetInt(INI_FILE, "PRPdone", 0) && (Nlen/klen < 10.0)) {
-								// We have better to do ad first a PRP test.
+	if ((v1 = gen_v1(gk, n, general, eps2, debug)) < 0) {
+		if (v1 == -1)
+			sprintf (buf, "Cannot compute V1 to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
+		else
+			sprintf (buf, "%s has a small factor : %d !!\n", str, abs(v1));
+		OutputBoth (buf); 
+		free(gk);
+		free(N);
+		*res = FALSE;
+		return(TRUE);
+	}
+
+	if (!IniGetInt(INI_FILE, "Verify", 0) && !IniGetInt(INI_FILE, "PRPdone", 0) && ((Nlen/klen < 10.0) || IniGetInt (INI_FILE, "ErrorChecking", 1))) {
+								// We have better to do ad first a Gerbicz PRP test.
 // Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, -1, res);
 		strcpy (buf, str);
 		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu-1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');     // Number N to test, as a string
 		Fermat_only = TRUE;
-		gbinput = newgiant (2);
+		gbinput = allocgiant (2);
 		gbinput->sign = 1;
-		gbinput->n[0] = binput;
+		gbinput->n[0] = 2;
 		fpart = 0.0;
-		retval = isPRPinternal (str, dk, gbinput, ninput, -1, res);
+		retval = isPRPinternal (str, dk, gbinput, n, -1, res);
 		free(gbinput);
 		Fermat_only = FALSE;
 // Lei end
-
 		if (!*res) {
 			free(gk);
 			free(N);
@@ -10237,11 +13151,6 @@ LLRCONTINUE:
 		strcpy (str, buf);	// Lei
 	}
 
-// Lei
-//	J.P. shadow sprintf (buf, "Can I get here?\n");
-//	J.P. shadow OutputStr (buf);
-// Lei end
-
 
 	if(abs(gk->sign) == 1) {	// k is a "small" integer
 	    k = gk->n[0];
@@ -10249,8 +13158,6 @@ LLRCONTINUE:
 	else {
 		k = 0;					// to indicate that k is a big integer
 	}
-
-	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
 restart: 
 
@@ -10273,6 +13180,8 @@ restart:
 			*res = FALSE;
 			return FALSE;
 		}
+		w->k = dk;
+		w->n = ninput;
 	}
 	else {
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
@@ -10359,20 +13268,21 @@ restart:
 				OutputBoth(buf);
 			else
 				OutputStr(buf);
-                        if (showdigits)
-                                sprintf (buf, "Starting Lucas Lehmer prime test of %s (%lu decimal digits)\n", str, nbdg);
-                        else
-                                sprintf (buf, "Starting Lucas Lehmer prime test of %s\n", str);
-                        if (verbose)
-                            OutputBoth(buf);
-                        else
-                            OutputStr (buf); 
+			if (showdigits)
+				sprintf (buf, "Starting Lucas Lehmer prime test of %s (%lu decimal digits)\n", str, nbdg);
+			else
+				sprintf (buf, "Starting Lucas Lehmer prime test of %s\n", str);
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf); 
+			topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "%s\n", fft_desc);
-                        if (verbose)
-                            OutputBoth(buf);
-                        else
-                            OutputStr (buf); 
+			if (verbose)
+				OutputBoth(buf);
+			else
+				OutputStr (buf); 
 			v1 = 4;
 			dbltogw (gwdata, (double) v1, x);
 			clear_timers ();		// Init. timers
@@ -10381,26 +13291,7 @@ restart:
 			time (&start_time); 
 			goto MERSENNE;
 	    }
-
 	    filename[0] = 'u';
-	    if ((v1 = gen_v1(gk, n, general, eps2, debug)) < 0) {
-			if (v1 == -1)
-				sprintf (buf, "Cannot compute V1 to test %s...\nThis is surprising, please, let me know that!!\nMy E-mail is jpenne@free.fr\n", str);
-			else
-				sprintf (buf, "%s has a small factor : %d !!\n", str, abs(v1));
-			OutputBoth (buf); 
-			pushg (gdata, 1); 
-			free(gk);
-			free(N);
-			gwfree (gwdata, x); 
-			gwfree (gwdata, y);
-			gwdone(gwdata);
-			*res = FALSE;
-			end_timer (1); 
-			free (gwdata);
-			return(TRUE);
-	    }
-
 	    if (fileExists (filename) && readFromFile (gwdata, gdata, filename, &j, x, y)) { 
 			char	fmt_mask[80]; 
 			double	pct; 
@@ -10440,6 +13331,7 @@ restart:
 				if (verbose || restarting)
 					writeResults (buf);
 			}
+			topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 			gwfft_description (gwdata, fft_desc);
 			sprintf (buf, "Using %s\n", fft_desc);
 
@@ -10702,6 +13594,7 @@ MERSENNE:
 
 	ReplaceableLine (1);	/* Remember where replacable line is */  
 	iters = 0; 
+
 	gwsetaddin (gwdata, -2);
 
 	while (j<last) { 
@@ -10709,7 +13602,6 @@ MERSENNE:
 /* Error check the first and last 50 iterations, before writing an */ 
 /* intermediate file (either user-requested stop or a */ 
 /* 30 minute interval expired), and every 128th iteration. */ 
-
 		stopping = stopCheck (); 
 		echk = stopping || ERRCHK || (j <= 50) || (j >= last - 50) || gwnear_fft_limit (gwdata, pcfftlim); 
 		if (((j & 127) == 0) || (j == 1) || (j == (lasterr_point-1))) {
@@ -10735,6 +13627,7 @@ MERSENNE:
 			gwsquare_carefully (gwdata, x);
 			care = TRUE;
 		}
+
 		if (debug && (j < 30))
 			writeresidue (gwdata, x, N, tmp, buf, str, j, ITER);
 		CHECK_IF_ANY_ERROR(x, j, last, 6)
@@ -10844,7 +13737,8 @@ MERSENNE:
 
 	clearline (100);
 
-	gwtogiant (gwdata, x, tmp); 
+	gwtogiant (gwdata, x, tmp);
+
 	if (!isZero (tmp)) { 
 		*res = FALSE;				/* Not a prime */ 
 		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
@@ -10870,7 +13764,7 @@ MERSENNE:
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -10976,7 +13870,7 @@ int isLLRW (
 	char str[sgkbufsize+256], sgk1[sgkbufsize]; 
 
 	gksize = strlen(sgk);
-	gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
+	gk = allocgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgk, gk);						// Convert k string to giant
 
 	if (shift > 0) {
@@ -10989,7 +13883,7 @@ int isLLRW (
 	sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
 
 	bits = n + bitlen(gk);				// Bit length of N
-	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
+	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -10997,7 +13891,7 @@ int isLLRW (
 	gshiftleft (n, N);
 	mulg (gk, N); 
 	iaddg (-1, N);
-	M = newgiant ((bitlen (N) >> 3) + 8);
+	M = allocgiant ((bitlen (N) >> 3) + 8);
 	retval = gwslowIsWieferich (str, res, TRUE);
 	free (M);
 	free (gk);
@@ -11018,7 +13912,7 @@ int isProthW (
 	char	str[sgkbufsize+256], sgk1[sgkbufsize]; 
 
 	gksize = strlen(sgk);
-	gk = newgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
+	gk = allocgiant ((gksize>>1) + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgk, gk);						// Convert k string to giant
 
 	if (shift > 0) {
@@ -11031,7 +13925,7 @@ int isProthW (
 	sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
 
 	bits = n + bitlen(gk);				// Bit length of N
-	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
+	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
 
@@ -11039,7 +13933,7 @@ int isProthW (
 	gshiftleft (n, N);
 	mulg (gk, N); 
 	iaddg (1, N);
-	M = newgiant ((bitlen (N) >> 3) + 8);
+	M = allocgiant ((bitlen (N) >> 3) + 8);
 
 	retval =  gwslowIsWieferich (str, res, TRUE);
 
@@ -11060,21 +13954,17 @@ int isProthP (
 	unsigned long shift,
 	int	*res) 
 { 
-	unsigned long iters, gksize; 
+	unsigned long gksize; 
 	unsigned long p; 
-	unsigned long bit, bits; 
+	unsigned long bits; 
 	long	a, retval;
 	gwhandle *gwdata;
 	ghandle *gdata;
-	gwnum	x; 
-	giant	tmp, tmp2, gbinput; 
-	char	filename[20], buf[sgkbufsize+256], 
-		str[sgkbufsize+256], fft_desc[256], sgk1[sgkbufsize]; 
+	giant	gbinput; 
+	char	buf[sgkbufsize+256], 
+		str[sgkbufsize+256], sgk1[sgkbufsize]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int	resaprcl, echk, saving, stopping, inc = +1; 
-	time_t	start_time, current_time; 
-	double	reallyminerr = 1.0; 
-	double	reallymaxerr = 0.0; 
+	int	resaprcl, inc = +1; 
 	double dk;
 
 // Lei
@@ -11082,6 +13972,11 @@ int isProthP (
 	unsigned long idk = 0;
 	giant gk1;
 // Lei end
+
+// init. gwnum code
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);
+	gdata = &gwdata->gdata;
 
 // Lei
 	if (b_else != 1) {					// Compute the length of b_else^ninput
@@ -11094,7 +13989,7 @@ int isProthP (
 // Lei end
 	if ((format == ABCDN) || (format == ABCDNG)) {	// Compute gk = gb^(n-m)-1
 		gksize = ndiff*(unsigned long)ceil(log ((double)binput)/log (2.0))+idk;// initial gksize
-		gk = newgiant ((gksize >> 4) + 8);	// Allocate space for gk
+		gk = allocgiant ((gksize >> 4) + 8);	// Allocate space for gk
 		ultog (binput, gk);
 		power (gk, ndiff);
 		iaddg (-1, gk);
@@ -11102,7 +13997,7 @@ int isProthP (
 	}
 	else {
 		gksize = 8*strlen(sgk) + idk;		// J. P. Initial gksize
-		gk = newgiant ((gksize >> 4)  + 8);	// Allocate space for gk
+		gk = allocgiant ((gksize >> 4)  + 8);	// Allocate space for gk
 		ctog (sgk, gk);						// Convert k string to giant
 	}
 	klen = bitlen(gk);					// Length of initial k multiplier
@@ -11117,7 +14012,7 @@ int isProthP (
 
 // Lei
 	if (b_else != 1) {					// Compute the big multiplier
-		gk1 = newgiant ((gksize>>1) + 8);
+		gk1 = allocgiant ((gksize>>1) + 8);
 		ultog (b_else, gk1);
 		power (gk1, ninput);
 		mulg (gk1, gk);
@@ -11145,9 +14040,10 @@ int isProthP (
 
 
 	bits = n + bitlen(gk);				// Bit length of N
-	N =  newgiant ((bits>>4) + 8);		// Allocate memory for N
+	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
 
 //	Compute the number we are testing.
+
 	setone (N);
 	gshiftleft (n, N);
 	mulg (gk, N); 
@@ -11163,7 +14059,16 @@ int isProthP (
 	Nlen = bitlen (N); 
 	klen = bitlen(gk);
 
-	if ((nbdg = gnbdg(N, 10)) < 100) {			// Attempt an APRCL test for this small number...
+	if (klen > 53 || generic) {			// we must use generic reduction
+		dk = 0.0;
+	}
+	else {								// we can use DWT, compute k as a double
+		dk = (double)gk->n[0];
+		if (gk->sign > 1)
+			dk += 4294967296.0*(double)gk->n[1];
+	}
+
+	if ((nbdg = gnbdg(N, 10)) < 200) {			// Attempt an APRCL test for this small number...
 		start_timer(1);
 			resaprcl = gaprcltest (N, 0, 0);	// Primality test silently done
 		end_timer (1);
@@ -11209,7 +14114,7 @@ int isProthP (
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -11248,16 +14153,15 @@ PRCONTINUE:
 	    OutputBoth(buf);
 
 // Lei
-// Lei shadow   retval = isPRPinternal (str, dk, 2, n, 1, res);
 		if ((format == ABCDN) || (format == ABCDNG))
 			sprintf (str, "%lu^%lu-%lu^%lu+1", binput, ninput+ndiff, binput, ninput);
 		else
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');     // Number N to test, as a string
-		gbinput = newgiant (2);
+		gbinput = allocgiant (2);
 		gbinput->sign = 1;
-		gbinput->n[0] = binput;
+		gbinput->n[0] = 2;
 		fpart = (1.0-(double)klen/Nlen)*100.0;
-		retval = isPRPinternal (str, dk, gbinput, ninput, 1, res);
+		retval = isPRPinternal (str, dk, gbinput, n, 1, res);
 // Lei end
 		if (res) {
 			sprintf (buf, "(Factorized part = %4.2f%%)\n", fpart);
@@ -11290,9 +14194,7 @@ if ((a = genProthBase(gk, (uint32_t)n)) < 0) {
 	return(TRUE);
 }
 
-	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
-restart:
 
 	nbdg = gnbdg (N, 10);	// Compute the number of decimal digits of the tested number.
 	gwinit (gwdata);
@@ -11303,394 +14205,68 @@ restart:
 
 	p = Nlen; 
 
-	*res = TRUE;						/* Assume it is a prime */ 
+//	*res = TRUE;						/* Assume it is a prime */ 
+	w->k = dk;		// init work_unit for the Gerbicz test.
+	w->n = n;
+	w->b = 2;
+	w->c = 1;
+	w->prp_base = a;
+	w->prp_residue_type = PROTH_TYPE;
 
-	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
-	if (dk >= 1.0) {					// Setup the DWT mode
-		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) {
-			free(gk);
-			free(N);
-			free(gwdata);
-			*res = FALSE;
-			return FALSE;
-		}
-	}
-	else {								// Setup the generic mode
-		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
-			free(gk);
-			free(N);
-			free(gwdata);
-			*res = FALSE;
-			return FALSE;
-		}
-	}
+	do {
+restart:
+		if (dk == 0.0) {			// generic modular reduction needed...
+			gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
+			if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
+				free(gk);
+				free(N);
+				free(gwdata);
+				*res = FALSE;
+				return FALSE;
+			}
 
 //	Restart with next FFT length if we are too near the limit...
 
-	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
-		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		gwdone (gwdata);
-		goto restart;
-	}
-
-/* Init tmp = (N-1)/2 to compute a^(N-1)/2 mod N */
-
-	tmp = popg(gdata, (Nlen >> 5) + 4);
-	tmp2 = popg(gdata, (Nlen >> 5) + 4);
-	gtog (N, tmp);
-	iaddg (-1, tmp);
-	gshiftright (1, tmp);
-	Nlen = bitlen (tmp);
-
-/* Init filename */
-
-	tempFileName (filename, 'z', N);
-
-/* Get the current time */
-/* Allocate memory */
-
-	x = gwalloc (gwdata);
-
-/* Optionally resume from save file and output a message */
-/* indicating we are resuming a test */
-
-	if (fileExists (filename) && readFromFile (gwdata, gdata, filename, &bit, x, NULL)) {
-		char	fmt_mask[80];
-		double	pct;
-		pct = trunc_percent (bit * 100.0 / Nlen);
-		sprintf (fmt_mask,
-			 "Resuming Proth prime test of %%s at bit %%ld [%%.%df%%%%]\n",
-			 PRECISION);
-		sprintf (buf, fmt_mask, str, bit, pct);
-		OutputStr (buf);
-		if (verbose || restarting)
-			writeResults (buf);
-	}
-
-/* Otherwise, output a message indicating we are starting test */
-
-	else {
-		clear_timers ();	// Make all timers clean...
-		if (setuponly) {
-			if (gwdata->FFTLEN != OLDFFTLEN) {
-				OutputBoth (str); 
-				OutputBoth (" : "); 
+			if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+				OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+				IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+				gwdone (gwdata);
+				goto restart;
 			}
-		}
+		}			// end dk == 0.0
 		else {
-			if (showdigits)
-				sprintf (buf, "Starting Proth prime test of %s (%lu decimal digits)\n", str, nbdg);
-			else
-				sprintf (buf, "Starting Proth prime test of %s\n", str);
-			OutputStr (buf);
-			if (verbose || restarting)
-				writeResults (buf);
-		}
-		bit = 1;
-		dbltogw (gwdata, (double) a, x);
-	}
+restart2:
+			gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
+			if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) {
+				free(gk);
+				free(N);
+				free(gwdata);
+				*res = FALSE;
+				return FALSE;
+			}
 
-	start_timer (0);	// Start loop timer.
-	start_timer (1);	// Start global timer
-	time (&start_time);	// Start intermediate file saving time
+//		Restart with next FFT length if we are too near the limit...
 
-/* Output a message about the FFT length and the Proth base. */
-
-	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
-
-	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
-		OutputStr (buf);
-	}
-	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
-	if (setuponly) {
-		stopping = stopCheck (); 
-		if (gwdata->FFTLEN != OLDFFTLEN) {
-			writeResults (buf);
-			OLDFFTLEN = gwdata->FFTLEN;
-		}
-		pushg(gdata, 2);
-		free(gk);
-		free(N);
-		gwfree (gwdata, x);
-		gwdone (gwdata);
-		*res = FALSE;
-		free (gwdata);
-		return (!stopping);
-	}
-	else if (verbose || restarting) {
-		writeResults (buf);
-	}
-	ReplaceableLine (1);	/* Remember where replaceable line is */
+			if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+				OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+				IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+				gwdone (gwdata);
+				goto restart2;
+			}
+		}	// end dk != 0.0 (not generic reduction mode)
 
 /* Do the Proth test */
 
-	gwsetmulbyconst (gwdata, a);
-	iters = 0;
-	if (debug)
-		writeresidue (gwdata, x, N, tmp2, buf, str, 0, BIT);
-	while (bit < Nlen) {
+			retval = GerbiczTest (gwdata, gdata, a, res, str, w);
+			gwdone (gwdata);
+	} while (retval == -1);
 
-/* Error check the first and last 50 iterations, before writing an */
-/* intermediate file (either user-requested stop or a */
-/* 30 minute interval expired), and every 128th iteration. */
+/* Clean up and return */
 
-		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= 50) || (bit >= Nlen-50) || gwnear_fft_limit (gwdata, pcfftlim);
-		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
-			echk = 1;
-			time (&current_time);
-			saving = ((current_time - start_time > write_time) || (bit == 1) || (bit == (lasterr_point-1)));
-		} else
-			saving = 0;
-
-/* Process this bit */
-
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && !((interimFiles && (bit+1) % interimFiles == 0)) &&
-			!(interimResidues && ((bit+1) % interimResidues < 2)) && 
-			(bit >= 30) && (bit < Nlen-31) && !maxerr_recovery_mode[6]);
-
-		if (bitval (tmp, Nlen-bit-1)) {
-			gwsetnormroutine (gwdata, 0, echk, 1);
-		} else {
-			gwsetnormroutine (gwdata, 0, echk, 0);
-		}
-		if ((bit > 30) && (bit < Nlen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
-			gwsquare (gwdata, x);
-			care = FALSE;
-		}
-		else {
-			gwsquare_carefully (gwdata, x);
-			care = TRUE;
-		}
-		if (debug && (bit < 50))
-			writeresidue (gwdata, x, N, tmp2, buf, str, bit, BIT);
-		CHECK_IF_ANY_ERROR (x, (bit), Nlen, 6);
-
-/* That iteration succeeded, bump counters */
-
-		if (bit == lasterr_point)
-			saving = 1;					// Be sure to restart after this recovery iteration!
-		bit++;
-		iters++;
-
-/* Print a message every so often */
-
-		if (bit % ITER_OUTPUT == 0) {
-			char	fmt_mask[80];
-			double	pct;
-			pct = trunc_percent (bit * 100.0 / Nlen);
-			if (strlen (str) < 40) {
-				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION);
-				sprintf (buf, fmt_mask, pct, str);
-			}
-			else {
-				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
-				sprintf (buf, fmt_mask, pct, Nlen);
-			}
-			title (buf);
-			ReplaceableLine (2);	/* Replace line */
-			sprintf (fmt_mask,
-				 "%%s, bit: %%ld / %%ld [%%.%df%%%%]",
-				 PRECISION);
-			sprintf (buf, fmt_mask, str, bit, Nlen, pct);
-			OutputStr (buf);
-			if (ERRCHK && bit > 30) {
-				OutputStr (".  Round off: ");
-				sprintf (buf, "%10.10f", reallyminerr);
-				OutputStr (buf);
-				sprintf (buf, " to %10.10f", reallymaxerr);
-				OutputStr (buf);
-			}
-			end_timer (0);
-			if (CUMULATIVE_TIMING) {
-				OutputStr (".  Time thusfar: ");
-			} else {
-				OutputStr (".  Time per bit: ");
-				divide_timer (0, iters);
-				iters = 0;
-			}
-			print_timer (0, TIMER_NL | TIMER_OPT_CLR);
-			start_timer (0);
-		}
-
-/* Print a results file message every so often */
-
-		if (bit % ITER_OUTPUT_RES == 0 || (NO_GUI && stopping)) {
-			sprintf (buf, "Bit %ld / %ld\n", bit, Nlen);
-			writeResults (buf);
-		}
-
-/* Write results to a file every DISK_WRITE_TIME minutes */
-/* On error, retry in 10 minutes (it could be a temporary */
-/* disk-full situation) */
-
-		if (saving || stopping) {
-			write_time = DISK_WRITE_TIME * 60;
-			saving = FALSE;
-			if (! writeToFile (gwdata, gdata, filename, bit, x, NULL)) {
-				sprintf (buf, WRITEFILEERR, filename);
-				OutputBoth (buf);
-				if (write_time > 600) write_time = 600;
-			}
-			time (&start_time);
-
-/* If an escape key was hit, write out the results and return */
-
-			if (stopping) {
-				pushg(gdata, 2);
-				free(gk);
-				free(N);
-				gwfree (gwdata, x);
-				gwdone (gwdata);
-				*res = FALSE;		// To avoid credit message !
-				free (gwdata);
-				return (FALSE);
-			}
-		}
-
-/* Output the 64-bit residue at specified interims.  Also output the */
-/* residues for the next iteration so that we can compare our */
-/* residues to programs that start counter at zero or one. */
-
-		if (interimResidues && bit % interimResidues < 2)
-			writeresidue (gwdata, x, N, tmp2, buf, str, bit, BIT);
-
-/* Write a save file every "interimFiles" iterations. */
-
-		if (interimFiles && bit % interimFiles == 0) {
-			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03lu",
-				 filename, bit / interimFiles);
-			if (! writeToFile (gwdata, gdata, interimfile, bit, x, NULL)) {
-				sprintf (buf, WRITEFILEERR, interimfile);
-				OutputBoth (buf);
-			}
-		}
-	}
-
-/* See if we've found a Proth prime.  If not, format a 64-bit residue. */
-
-	clearline (100);
-
-	gwtogiant (gwdata, x, tmp);		// The modulo reduction is done here
-	iaddg (1, tmp);					// Compute the (unnormalized) residue
-
-	if (gcompg (N, tmp) != 0) {
-		*res = FALSE;				/* Not a prime */
-		if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-			sprintf (res64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
-		else
-			sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
-
-	}
-
-	pushg(gdata, 2);
-	free(gk);
-	free(N);
-	gwfree (gwdata, x);
-
-
-/* Print results.  Do not change the format of this line as Jim Fougeron of */
-/* PFGW fame automates his QA scripts by parsing this line. */
-
-	if (*res)
-		sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg); 
-	else
-		sprintf (buf, "%s is not prime.  Proth RES64: %s", str, res64);
-
-#if defined(WIN32) && !defined(_CONSOLE)
-
-	sprintf (buf+strlen(buf), "  Time : "); 
-	ReplaceableLine (2);	/* Replace line */ 
-
-#else
-
-	clearline(100);
-
-	if (*res) {
-#ifdef _CONSOLE
-		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
-		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
-		OutputBoth(buf);
-		SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
-#else
-		OutputStr("\033[7m");
-		OutputBoth(buf);
-		OutputStr("\033[0m");
-#endif
-	}
-	else
-		OutputBoth(buf);
-
-	sprintf (buf, "  Time : "); 
-
-#endif
-
-/* Output the final timings */
-
-	end_timer (1);
-	write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
-	OutputBoth(buf);
-
-/* Cleanup and return */
-
-	gwdone (gwdata);
-	_unlink (filename);
-	IniWriteString(INI_FILE, "FFT_Increment", NULL);
-	lasterr_point = 0;
-	free (gwdata);
-	return (TRUE);
-
-/* An error occured, sleep if required, then try restarting at last save point. */
-
-error:
-	pushg(gdata, 2);
-	gwfree (gwdata, x);
-	*res = FALSE;
-
-	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
-		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
-		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
-		aborted = TRUE;
-		sprintf (buf, ERRMSG5, checknumber, str);
-		OutputBoth (buf);
-		free(gk);
-		free(N);
-		_unlink (filename);
-		gwdone (gwdata);
+		free (gk);
+		free (N);
 		free (gwdata);
-		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
-			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
-			return (FALSE);
-		}
-		else
-			return (TRUE);
-	}
-
-	gwdone (gwdata);
-
-/* Output a message saying we are restarting */
-
-	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
-
-/* Sleep five minutes before restarting */
-
-	if (sleep5 && ! SleepFive ()) {
-		free (gwdata);
-		return (FALSE);
-	}
-
-/* Restart */
-
-	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
-		if (nbfftinc == maxfftinc)
-			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
-	}
-	goto restart;
+		return (retval);
 } 
 
 #define LOWFACTORLIMIT 10000	// To factor lower exponent candidates is not useful...
@@ -11741,11 +14317,11 @@ Compute a such Jacobi(a, N) = -1; // (the Proth base)
 x = a;
 
 for (i=1; i<=p-1; i++) {		// This main loop implies only squarings modulo 2^(2*p) + 1, which is optimal!
-	x = x*x modulo M;
-	if (x == (p-1)/2) y = x;
+	x = x*x modulo M;			// One iteration of the Proth algorithm
+	if (i == (p-1)/2) y = x;	// Keep this interim value of x
 }
 
-// We have now x = a^(2^(n-1)) modulo M and y = a^(2^((n-1)/2)) modulo M.
+// We have now x = a^(2^(p-1)) modulo M and y = a^(2^((p-1)/2)) modulo M.
 // To do the Proth test, we need now to compute R = a^(N-1)/2 nodulo N;
 // But, (N-1)/2 = 2^(p-1) + (sign)*2^((p-1)/2), which shows us how to complete :
 
@@ -11760,7 +14336,7 @@ else if (sign == -1)
 		printf("N is not prime.");
 
 // The PRP test on N'/5 is slightly more complicated :
-// We need to test if a^(N'/5) == a modulo N'/5, which implies a^N' = a^5 modulo N'/5 and finally :
+// We need to test if a^(N'/5) == a modulo N'/5, which implies a^N' == a^5 modulo N'/5 and finally :
 // R' = a^(N'-1] = a^4 modulo N'/5 (a and N'/5 beeing co-prime).
 // But, N'-1 = 2*[2^(p-1) - (sign)*2^((p-1)/2)], so :
 
@@ -11770,7 +14346,7 @@ else if (sign == -1)
 	R' = x*x*y*y;		// all computed modulo N'/5
 		
 	if (R' == a^4 modulo N'/5)
-		printf("N'/5 is a-PRP!");
+		printf("N'/5 is a^4-PRP!");
 	else
 		printf("N'/5 is not prime.");
 
@@ -11784,6 +14360,13 @@ Also, there is an option to do factoring only jobs.
 
 Jean Penné, March 30 2006
 
+New :
+
+Now, both Gerbicz error checking and random initial shift on the Proth base
+	are used for these tests!
+
+Jean Penné, June 24 2020
+
 ****************************************************************************************************************/
 
 int isGMNP ( 
@@ -11791,21 +14374,25 @@ int isGMNP (
 	unsigned long n,
 	int	*res) 
 { 
-	unsigned long nbdg1, nbdg2, iters; 
-	unsigned long ubx, uby, atemp, abits = 0; 
-	uint32_t hi, lo;
-	unsigned long bit, bits, explen, expx, expy, loopshift, howfar = 0; 
+	unsigned long nbdg1, nbdg2; 
+	unsigned long abits = 0; 
+	unsigned long bits, howfar = 0; 
 	gwhandle *gwdata;
 	ghandle *gdata;
-	gwnum	x, y; 
-	giant	tmp, tmp2, tmp3, apow4; 
-	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256], strp[sgkbufsize+256], fft_desc[256]; 
+	giant	tmp, tmp2, apow4; 
+	char	filename[20], buf[sgkbufsize+256], str[sgkbufsize+256], strp[sgkbufsize+256]; 
 	long	write_time = DISK_WRITE_TIME * 60; 
-	int	echk, saving, stopping, sign, fisok = 0, fres = 0, fhandle = 0, inc = +1, resaprcl1 = 0, resaprcl2 = 0; 
-	time_t	start_time, current_time; 
+	int		sign, fisok = 0, fres = 0, fhandle = 0, inc = +1, resaprcl1 = 0, resaprcl2 = 0; 
+	int		retval;
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
 	double dk;
+
+//	init. gwnum code
+
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);
+	gdata = &gwdata->gdata;
 
 	if ((!facto && !isPrime (n)) || n == 2) {
 		sprintf (buf, "Gaussian-Mersenne prime test not done because %lu is not an odd prime.\n", n); 
@@ -11819,14 +14406,14 @@ int isGMNP (
 	sprintf (strp, "(2^%lu%c%s+1)/5",  n, (sign) ? '-' : '+', sgk);	// Number N' to test, as a string
 
 	bits = 2*n;							// Bit length of M = N*N'
-	M = newgiant ((bits>>4) + 8);		// Allocate memory for M = N*N'
-	N = newgiant ((bits>>5) + 8);		// Allocate memory for N
-	NP = newgiant ((bits>>5) + 8);		// Allocate memory for N'
-	gk = newgiant ((bits>>5) + 8);		// Allocate memory for gk
-	testn =  newgiant ((bits>>3) + 16);	// For factoring
-	testnp = newgiant ((bits>>3) + 16);
-	testf  = newgiant (100);
-	testx  = newgiant (100);
+	M = allocgiant ((bits>>4) + 8);		// Allocate memory for M = N*N'
+	N = allocgiant ((bits>>5) + 8);		// Allocate memory for N
+	NP = allocgiant ((bits>>5) + 8);		// Allocate memory for N'
+	gk = allocgiant ((bits>>5) + 8);		// Allocate memory for gk
+	testn =  allocgiant ((bits>>3) + 16);	// For factoring
+	testnp = allocgiant ((bits>>3) + 16);
+	testf  = allocgiant (100);
+	testx  = allocgiant (100);
 
 //	gk is the multiplier when N is written as gk*2^exponent + 1
 //	N = 2^n + s*2^((n+1)/2) + 1 = (2^((n-1)/2) + s)*2^((n+1)/2) + 1
@@ -11855,7 +14442,7 @@ int isGMNP (
 		addg (M, NP);				// N' = 2^n + 2^((n+1)/2) + 1
 	}
 
-	uldivg ((uint32_t)5, NP);					// NP = N'/5
+	uldivg ((uint32_t)5, NP);		// NP = N'/5
 	setone (M);
 	gshiftleft (2*n, M);			// M  = 2^(2*n)
 	iaddg (1, M);					// M  = N*N' = 2^(2*n) + 1
@@ -11863,6 +14450,8 @@ int isGMNP (
 	Nlen = 2*n+1; 
 	nbdg1 = gnbdg (N, 10);			// Size of the two candidates
 	nbdg2 = gnbdg (NP, 10);
+
+	res1 = res2 = 0;			// Clear the results...		
 
 	if (!facto && (nbdg1 < 2000) && (nbdg2 < 2000)) {
 		a = 0;						// N and NP are small numbers, so we may make APRCL tests...
@@ -11891,7 +14480,7 @@ int isGMNP (
 			}
 			if (res1) {
 #if !defined(WIN32) || defined(_CONSOLE)
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 				hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 				SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 				OutputBoth(buf);
@@ -11955,7 +14544,7 @@ int isGMNP (
 		clearline(100);
 
 		if (res2) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -11970,8 +14559,8 @@ int isGMNP (
 			OutputBoth(buf);
 
 		sprintf (buf, "  Time : "); 
-
 #endif
+
 
 /* Output the final timings for APRCL test */
 
@@ -11993,10 +14582,13 @@ int isGMNP (
 
 		return (TRUE); 
 	}
+	else {
+		resaprcl1 = resaprcl2 = 0;
+	}
 
 COFCONTINUE:
 
-	res1 = res2 = 1;				// Assume N and NP are prime...
+//	res1 = res2 = 1;				// Assume N and NP are prime...
 
 #ifndef X86_64
 
@@ -12172,12 +14764,12 @@ COFCONTINUE:
 
 // Test if we are resuming a prime test or doing setup only.
 
-	if (setuponly || IniGetInt(INI_FILE, "Verify", 0))
-		goto primetest;
+	if (setuponly||IniGetInt(INI_FILE, "Verify", 0)||IniGetInt(INI_FILE, "Noprefactoring", 0))
+		goto resume;
 
 	tempFileName (filename, 'z', N);
 	if (fileExists (filename))
-		goto primetest;
+		goto resume;
 
 #ifndef X86_64
 
@@ -12314,6 +14906,12 @@ COFCONTINUE:
 
 #endif
 
+goto primetest;
+
+resume:
+
+resaprcl1 = resaprcl2 = 0;
+
 primetest:
 
  	dk = 1.0;						// k == 1 for the modulo N*N'
@@ -12340,415 +14938,76 @@ primetest:
 		return(TRUE);
 	}
 
-
-	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
-
-restart:
-
-//	nbdg = gnbdg (N, 10); // Compute the number of decimal digits of the tested number.
-
-	gwinit (gwdata);
-	gdata = &gwdata->gdata;
- 	gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
-
-	gwsetmaxmulbyconst (gwdata, a);
-
-/* Assume intermediate results of the length of N*N'. */ 
-
-	*res = TRUE;						/* Assume it is a prime */ 
-
-	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
-	if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
-		*res = res1 = res2 = FALSE;
-		free(gk);
-		free(N);
-		free(NP);
-		free(M);
-		free(testn);
-		free(testnp);
-		free(testf);
-		free(testx);
-		free(gwdata);
-		return FALSE;
-	}
-
-
-//	Restart with next FFT length if we are too near the limit...
-
-	if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
-		OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
-		IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
-		gwdone (gwdata);
-		goto restart;
-	}
-
-	expx = n-1;
-	expy = expx/2;
-
 /* More initializations... */
 
-	tmp = popg(gdata, (Nlen >> 4) + 8);
-	tmp2 = popg(gdata, (Nlen >> 4) + 8);
-	tmp3 = popg(gdata, (Nlen >> 4) + 8);
-	apow4 = popg(gdata, 16);
+	tmp = allocgiant((Nlen >> 4) + 8);
+	tmp2 = allocgiant((Nlen >> 4) + 8);
+	apow4 = allocgiant(16);
 	itog (a, apow4);
 	imulg (a, apow4);
 	imulg (a, apow4);
 	imulg (a, apow4);
 
-/* Init filename */
+	*res = TRUE;						/* Assume it is a prime */ 
 
-	tempFileName (filename, 'z', N);
+	w->prp_residue_type = GMN_TYPE;
+	w->known_factors = NULL;
+	w->k = dk;
+	w->n = n;
+	w->b = 2;
+	w->c = 1;
 
-/* Get the current time */
-/* Allocate memory */
+	do {
 
-	x = gwalloc (gwdata);
-	y = gwalloc (gwdata);
+restart:
 
-/* Optionally resume from save file and output a message */
-/* indicating we are resuming a test */
+		gwinit (gwdata);
+		gdata = &gwdata->gdata;
+ 		gwset_num_threads (gwdata, IniGetInt(INI_FILE, "ThreadsPerTest", 1));
 
-/* ubx and uby are the current units bit positions, in x and y, respectively.*/
+		gwsetmaxmulbyconst (gwdata, a);
 
-	if (fileExists (filename) && gmreadFromFile (gwdata, gdata, filename, &bit, &ubx, &uby, x, y)) {
-		char	fmt_mask[80];
-		double	pct;
-		pct = trunc_percent (bit * 100.0 / expx);
-		sprintf (fmt_mask,
-			 "Resuming Proth prime test of %%s at bit %%ld [%%.%df%%%%]\n",
-			 PRECISION);
-		sprintf (buf, fmt_mask, str, bit, pct);
-		OutputStr (buf);
-		if (verbose || restarting)
-			writeResults (buf);
-	}
 
-/* Otherwise, output a message indicating we are starting test */
+/* Assume intermediate results of the length of N*N'. */ 
 
-	else {
-		clear_timers ();		// Init. timers
-		if (setuponly) {
-			if (gwdata->FFTLEN != OLDFFTLEN) {
-				OutputBoth (str); 
-				OutputBoth (" : "); 
-			}
-		}
-		else {
-			if (showdigits)
-				sprintf (buf, "Starting Proth prime test of %s (%lu decimal digits)\n", str, nbdg1);
-			else
-				sprintf (buf, "Starting Proth prime test of %s\n", str);
-			OutputStr (buf);
-			if (verbose || restarting)
-				writeResults (buf);
+		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
+		if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
+			*res = res1 = res2 = FALSE;
+			free(gk);
+			free(N);
+			free(NP);
+			free(M);
+			free(testn);
+			free(testnp);
+			free(testf);
+			free(testx);
+			free(gwdata);
+			return FALSE;
 		}
 
-		bit = 1;
 
-/* Compute a random shift for the initial value */
+//	Restart with next FFT length if we are too near the limit...
 
-		srand ((unsigned int) time (NULL));
-		ubx = (rand() << 16) + rand();
-		if (CPU_FLAGS & CPU_RDTSC) { rdtsc(&hi, &lo); ubx += lo; }
-		atemp = a;
-		while (atemp) {						// Compute the bit length of the Proth base a
-			atemp >>= 1;
-			abits++;
-		}
-		ubx = ubx % (bits-abits);			// Be sure that the shift is not too large...
-		uby = 0;
-
-
-/* Compute the left shifted initial value */
-
-		itog (a, tmp3);
-		gshiftleft (ubx, tmp3);
-
-		gianttogw (gwdata, tmp3, x);
-		gianttogw (gwdata, M, y);
-	}
-
-	start_timer (0);
-	start_timer (1);
-	time (&start_time);		// Get current time
-
-/* Output a message about the FFT length and the Proth base. */
-
-	gwfft_description (gwdata, fft_desc);
-	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
-
-	if (!setuponly || (gwdata->FFTLEN != OLDFFTLEN)) {
-		OutputStr (buf);
-	}
-	sprintf (buf, "Using %s, a = %lu\n", fft_desc, a);
-	if (setuponly) {
-		stopping = stopCheck (); 
-		if (gwdata->FFTLEN != OLDFFTLEN) {
-			writeResults (buf);
-			OLDFFTLEN = gwdata->FFTLEN;
-		}
-		pushg(gdata, 4);
-		free(gk);
-		free(N);
-		free(NP);
-		free(M);
-		free(testn);
-		free(testnp);
-		free(testf);
-		free(testx);
-		gwfree (gwdata, x);
-		gwfree (gwdata, y);
-		gwdone (gwdata);
-		*res = res1 = res2 = FALSE;
-		free (gwdata);
-		return (!stopping);
-	}
-	else if (verbose || restarting) {
-		writeResults (buf);
-	}
-	ReplaceableLine (1);	/* Remember where replaceable line is */
-
-/* Init the title */
-
-	title ("G.M.N. prime test in progress...");
-
-/* Do the Proth test */
-
-	iters = 0;
-	loopshift = (bit >= expy) ? expy : 0;
-	explen = (bit >= expy) ? expx : expy;
-	while (bit <= expx) {
-
-/* Error check the first and last 50 iterations, before writing an */
-/* intermediate file (either user-requested stop or a */
-/* 30 minute interval expired), and every 128th iteration. */
-
-		stopping = stopCheck ();
-		echk = stopping || ERRCHK || (bit <= (50+loopshift)) || (bit >= explen-50) || gwnear_fft_limit (gwdata, pcfftlim);
-		if (((bit & 127) == 0) || (bit == 1) || (bit == (lasterr_point-1))) {
-			echk = 1;
-			time (&current_time);
-			saving = ((current_time - start_time > write_time) || (bit == 1) || (bit == (lasterr_point-1)));
-		} else
-			saving = 0;
-
-/* Process this bit */
-
-		gwstartnextfft (gwdata, postfft && !debug && !stopping && !saving && bit != lasterr_point && !((interimFiles && (bit+1) % interimFiles == 0)) &&
-			!(interimResidues && ((bit+1) % interimResidues < 2)) && 
-			(bit >= (30+loopshift)) && (bit < explen-31) && !maxerr_recovery_mode[6]);
-
-
-		gwsetnormroutine (gwdata, 0, echk, 0);
-		if ((bit > (30+loopshift)) && (bit < explen-30) && ((bit != lasterr_point) || !maxerr_recovery_mode[6])) {
-			gwsquare (gwdata, x);
-			care = FALSE;
-		}
-		else {
-			gwsquare_carefully (gwdata, x);
-			care = TRUE;
+		if (nextifnear && gwnear_fft_limit (gwdata, pcfftlim)) {
+			OutputBoth ("Current FFT beeing too near the limit, next FFT length is forced...\n");
+			IniWriteInt(INI_FILE, "FFT_Increment", IniGetInt(INI_FILE, "FFT_Increment", 0) + 1);
+			gwdone (gwdata);
+			goto restart;
 		}
 
-		ubx <<= 1;
-		if (ubx >= bits) ubx -= bits;		// Compute the doubled shift modulo 2*n
+		retval = GerbiczTest (gwdata, gdata, a, res, str, w);
 
-		if (bit == expy) {
-			gwcopy (gwdata, x, y);
-			uby = ubx;
-			loopshift = expy;
-			explen = expx;
-		}
+	}	while (retval == -1);
 
-		CHECK_IF_ANY_ERROR (x, (bit), explen, 6);
-
-/* That iteration succeeded, bump counters */
-
-		if (bit == lasterr_point)
-			saving = 1;					// Be sure to restart after this recovery iteration!
-		bit++;
-		iters++;
-
-/* Print a message every so often */
-
-		if (bit % ITER_OUTPUT == 0) {
-			char	fmt_mask[80];
-			double	pct;
-			pct = trunc_percent (bit * 100.0 / expx);
-			if (strlen (str) < 40) {
-				sprintf (fmt_mask, "%%.%df%%%% of %%s", PRECISION);
-				sprintf (buf, fmt_mask, pct, str);
-			}
-			else {
-				sprintf (fmt_mask, "%%.%df%%%% of %%ld", PRECISION);
-				sprintf (buf, fmt_mask, pct, explen);
-			}
-			title (buf);
-			ReplaceableLine (2);	/* Replace line */
-			sprintf (fmt_mask,
-				 "%%s, bit: %%ld / %%ld [%%.%df%%%%]",
-				 PRECISION);
-			sprintf (buf, fmt_mask, str, bit, expx, pct);
-			OutputStr (buf);
-			if (ERRCHK && bit > 30) {
-				OutputStr (".  Round off: ");
-				sprintf (buf, "%10.10f", reallyminerr);
-				OutputStr (buf);
-				sprintf (buf, " to %10.10f", reallymaxerr);
-				OutputStr (buf);
-			}
-			end_timer (0);
-			if (CUMULATIVE_TIMING) {
-				OutputStr (".  Time thusfar: ");
-			} else {
-				OutputStr (".  Time per bit: ");
-				divide_timer (0, iters);
-				iters = 0;
-			}
-			print_timer (0, TIMER_NL | TIMER_OPT_CLR);
-			start_timer (0);
-		}
-
-/* Print a results file message every so often */
-
-		if (bit % ITER_OUTPUT_RES == 0 || (NO_GUI && stopping)) {
-			sprintf (buf, "Bit %ld / %ld\n", bit, explen);
-			writeResults (buf);
-		}
-
-/* Write results to a file every DISK_WRITE_TIME minutes */
-/* On error, retry in 10 minutes (it could be a temporary */
-/* disk-full situation) */
-
-		if (saving || stopping) {
-			write_time = DISK_WRITE_TIME * 60;
-			saving = FALSE;
-			if (! gmwriteToFile (gwdata, gdata, filename, bit, ubx, uby, x, y)) {
-				sprintf (buf, WRITEFILEERR, filename);
-				OutputBoth (buf);
-				if (write_time > 600) write_time = 600;
-			}
-			time (&start_time);
-
-
-/* If an escape key was hit, write out the results and return */
-
-			if (stopping) {
-				pushg(gdata, 4);
-				free(gk);
-				free(N);
-				free(NP);
-				free(M);
-				free(testn);
-				free(testnp);
-				free(testf);
-				free(testx);
-				gwfree (gwdata, x);
-				gwfree (gwdata, y);
-				gwdone (gwdata);
-				*res = res1 = res2 = FALSE;
-				free (gwdata);
-				return (FALSE);
-			}
-		}
-
-/* Output the 64-bit residue at specified interims.  Also output the */
-/* residues for the next iteration so that we can compare our */
-/* residues to programs that start counter at zero or one. */
-
-		if (interimResidues && bit >= expy && bit % interimResidues < 2) {
-
-			setone (tmp3);					// Restore the value of x from the shifted one.
-			gshiftleft (ubx, tmp3);
-			invg (M,tmp3);
-			gtog (M, testn);
-			if (ubx&2)						// View if a sign change on x is necessary.
-				subg (tmp3, testn);
-			else
-				gtog (tmp3, testn);
-
-			gwtogiant (gwdata, x, tmp3);	// The modulo reduction is done here
-			mulg (tmp3, testn);
-			specialmodg (gwdata, testn);
-
-			setone (tmp3);					// Restore the value of y from the shifted one.
-			gshiftleft (uby, tmp3);
-			invg (M,tmp3);
-			gtog (M, testnp);
-			if (uby&2)						// View if a sign change on y is necessary.
-				subg (tmp3, testnp);
-			else
-				gtog (tmp3, testnp);
-			gwtogiant (gwdata, y, tmp3);	// The modulo reduction is done here
-			mulg (tmp3, testnp);
-			specialmodg (gwdata, testnp);
-			gtog (testn, tmp);
-			gtog (testnp, tmp2);
-
-			if (sign) {
-				mulg (tmp2, tmp);
-				modg (N, tmp);
-				iaddg (1, tmp);				// Compute the (unnormalized) residue
-			}
-			else {
-				invg (N, tmp2);
-				mulg (tmp2, tmp);
-				modg (N, tmp);
-				iaddg (1, tmp);
-			}
-			if (abs(tmp->sign) < 2)		// make a 32 bit residue correct !!
-				sprintf (buf, 
-				 "GM%lu interim residue %08lX%08lX at iteration %lu\n",
-				 n, (unsigned long)0, (unsigned long)tmp->n[0], bit);
-			else
-				sprintf (buf, 
-				 "GM%lu interim residue %08lX%08lX at iteration %lu\n",
-				 n, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
-			OutputBoth (buf);
-		}
-
-/* Write a save file every "interimFiles" iterations. */
-
-		if (interimFiles && bit % interimFiles == 0) {
-			char	interimfile[20];
-			sprintf (interimfile, "%.8s.%03lu",
-				 filename, bit / interimFiles);
-			if (! gmwriteToFile (gwdata, gdata, interimfile, bit, ubx, uby, x, y)) {
-				sprintf (buf, WRITEFILEERR, interimfile);
-				OutputBoth (buf);
-			}
-		}
-	}
+	if (retval == FALSE)
+		goto EXIT;
 
 	clearline (100);
 
-	setone (tmp3);					// Restore the value of x from the shifted one.
-	gshiftleft (ubx, tmp3);
-	invg (M,tmp3);
-	gtog (M, testn);
-	if (ubx&2)						// View if a sign change on x is necessary.
-		subg (tmp3, testn);
-	else
-		gtog (tmp3, testn);
-
-	gwtogiant (gwdata, x, tmp3);	// The modulo reduction is done here
-	mulg (tmp3, testn);
-	specialmodg (gwdata, testn);
-
-	setone (tmp3);					// Restore the value of y from the shifted one.
-	gshiftleft (uby, tmp3);
-	invg (M,tmp3);
-	gtog (M, testnp);
-	if (uby&2)						// View if a sign change on y is necessary.
-		subg (tmp3, testnp);
-	else
-		gtog (tmp3, testnp);
-	gwtogiant (gwdata, y, tmp3);	// The modulo reduction is done here
-	mulg (tmp3, testnp);
-	specialmodg (gwdata, testnp);
-	gtog (testn, tmp);
-	gtog (testnp, tmp2);
-
+	gtog (ps.gx, tmp);
+	specialmodg (gwdata, tmp);
+	gtog (ps.gy, tmp2);
+	specialmodg (gwdata, tmp2);
 	if (sign) {
 		mulg (tmp2, tmp);
 		modg (N, tmp);
@@ -12771,13 +15030,16 @@ restart:
 			else
 				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		}
+		else {
+			res1 = TRUE;
+		}
 
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
 
 		if (res1) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 			sprintf (buf, "%s is prime! (%lu decimal digits)", str, nbdg1);
 #else
 			if ((resaprcl2 != 1) && (resaprcl2 != 2))
@@ -12795,7 +15057,6 @@ restart:
 
 #if defined(WIN32) && !defined(_CONSOLE)
 
-		ReplaceableLine (2);	/* Replace line */ 
 		if ((resaprcl2 != 1) && (resaprcl2 != 2))
 			OutputBoth (buf);				// Avoid a double display...
 
@@ -12805,7 +15066,8 @@ restart:
 
 		if (res1) {
 			if ((resaprcl2 != 1) && (resaprcl2 != 2)) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
+				hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 				SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 				OutputBoth(buf);			// Avoid a double display...
 				SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
@@ -12817,17 +15079,20 @@ restart:
 #endif
 			}
 		}
-		else
-		if ((resaprcl2 != 1) && (resaprcl2 != 2))
-			OutputBoth(buf);				// Avoid a double display...
+		else {
+			if ((resaprcl2 != 1) && (resaprcl2 != 2))
+				OutputBoth(buf);				// Avoid a double display...
+		}
 
 		if ((resaprcl2 != 1) && (resaprcl2 != 2))
 			sprintf (buf, "  Time : "); 	// Avoid a double display...
 
 #endif
 	}									// End Exclude...
-	gtog (testn, tmp);
-	gtog (testnp, tmp2);
+	gtog (ps.gx, tmp);
+	specialmodg (gwdata, tmp);
+	gtog (ps.gy, tmp2);
+	specialmodg (gwdata, tmp2);
 
 	if (sign) {
 		mulg (tmp, tmp);
@@ -12857,12 +15122,12 @@ restart:
 			else
 				sprintf (res64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		}
+		else
+			res2 = TRUE;
 
 
 /* Print results.  Do not change the format of this line as Jim Fougeron of */
 /* PFGW fame automates his QA scripts by parsing this line. */
-
-//		nbdg = gnbdg (NP, 10); // Compute the number of decimal digits of the tested number.
 
 
 		if (res2)
@@ -12877,7 +15142,7 @@ restart:
 #else
 
 		if (res2) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -12901,8 +15166,8 @@ restart:
 /* Output the final timings */
 
 	if (!(resaprcl1 == 2) || !((resaprcl2 == 2) || (resaprcl2 == 1))) {
-		end_timer (1);
-		write_timer (buf+strlen(buf), 1, TIMER_CLR | TIMER_NL); 
+		end_timer (2);
+		write_timer (buf+strlen(buf), 2, TIMER_CLR | TIMER_NL); 
 		OutputBoth (buf);
 		if (res2 && (resaprcl2 != 1) && (resaprcl2 != 2) && (nbdg2 < primolimit))
 			MakePrimoInput (NP, strp);
@@ -12912,8 +15177,13 @@ restart:
 
 /* Cleanup and return */
 
+	free(ps.gx);
+	free(ps.gy);
 
-	pushg(gdata, 4);
+EXIT:
+	free(tmp);
+	free(tmp2);
+	free(apow4);
 	free(gk);
 	free(N);
 	free(NP);
@@ -12922,69 +15192,13 @@ restart:
 	free(testnp);
 	free(testf);
 	free(testx);
-	gwfree (gwdata, x);
-	gwfree (gwdata, y);
 	gwdone (gwdata);
-	_unlink (filename);
 	IniWriteString(INI_FILE, "FFT_Increment", NULL);
 	lasterr_point = 0;
 	free (gwdata);
-	return (TRUE);
-
-/* An error occured, sleep if required, then try restarting at last save point. */
-
-error:
-	pushg(gdata, 4);
-	gwfree (gwdata, x);
-	gwfree (gwdata, y);
-	if ((abonillsum && gw_test_illegal_sumout(gwdata)) || 
-		(abonmismatch && gw_test_mismatched_sums (gwdata)) || 
-		(abonroundoff && gw_get_maxerr(gwdata) > maxroundoff)) {	// Abort...
-		aborted = TRUE;
-		sprintf (buf, ERRMSG5, checknumber, str);
-		OutputBoth (buf);
-		*res = res1 = res2 = FALSE;
-		free(gk);
-		free(N);
-		free(NP);
-		free(M);
-		free(testn);
-		free(testnp);
-		free(testf);
-		free(testx);
-		_unlink (filename);
-		gwdone (gwdata);
-		free (gwdata);
-		if(IniGetInt(INI_FILE, "StopOnAbort", 0)) {
-			IniWriteInt (INI_FILE, "PgenLine", IniGetInt(INI_FILE, "PgenLine", 0) + 1);	// Point on the next line
-			return (FALSE);
-		}
-		else
-			return (TRUE);
-	}
-
-/* Output a message saying we are restarting */
-
-	if (sleep5) OutputBoth (ERRMSG2);
-	OutputBoth (ERRMSG3);
-
-/* Sleep five minutes before restarting */
-
-	if (sleep5 && ! SleepFive ()) {
-		free (gwdata);
-		*res = res1 = res2 = FALSE;
-		return (FALSE);
-	}
-
-/* Restart */
-
-	if (will_try_larger_fft) {
-		IniWriteInt(INI_FILE, "FFT_Increment", nbfftinc = (IniGetInt(INI_FILE, "FFT_Increment", 0) + 1));
-		if (nbfftinc == maxfftinc)
-			abonroundoff = TRUE;	// Don't accept any more Roundoff error.
-	}
-	goto restart;
+	return (retval);
 } 
+
 
 /************************************** Strong Fermat PRP test code for Wagstaff numbers ************************************
 
@@ -13013,6 +15227,10 @@ int isWSPRP (
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
 
+	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
+	gwinit (gwdata);
+	gdata = &gwdata->gdata;
+
 	if ((!facto && !isPrime (n)) || n == 2) {
 		sprintf (buf, "(2^%lu+1)/3 SPRP test not done because %lu is not an odd prime.\n", n, n); 
 		OutputBoth (buf); 
@@ -13022,11 +15240,11 @@ int isWSPRP (
 
 	bits = n;							// Bit length of NP
 	Nlen = bits + 1;					// for read/write intermediate files
-	M = newgiant ((bits>>4) + 8);		// Allocate memory for M
-	NP = newgiant ((bits>>4) + 8);		// Allocate memory for NP
-	testn =  newgiant ((bits>>3) + 16);	// For factoring
-	testf  = newgiant (100);
-	testx  = newgiant (100);
+	M = allocgiant ((bits>>4) + 8);		// Allocate memory for M
+	NP = allocgiant ((bits>>4) + 8);		// Allocate memory for NP
+	testn =  allocgiant ((bits>>3) + 16);	// For factoring
+	testf  = allocgiant (100);
+	testx  = allocgiant (100);
 
 //	Compute the numbers we are testing or using.
 
@@ -13036,7 +15254,7 @@ int isWSPRP (
 	gtog (M, NP);					// NP  = 2^n + 1
 	uldivg (3, NP);					// NP  = (2^n + 1)/3
 
-	if (!facto && ((nbdg = gnbdg(NP, 10)) < 2000)) {	// Attempt an APRCL test...
+	if (!facto && ((nbdg = gnbdg(NP, 10)) < 200)) {	// Attempt an APRCL test...
 		start_timer(1);
 		if (nbdg > maxaprcl)
 			resaprcl = gaprcltest (NP, 1, 0);			// Make only a Strong BPSW PRP test
@@ -13087,7 +15305,7 @@ int isWSPRP (
 		clearline(100);
 
 		if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -13242,7 +15460,6 @@ WSTFCONTINUE:
 
 process:
 
-	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 
 restart:
 
@@ -13255,7 +15472,7 @@ restart:
 	globalk = 1.0;
 
 	if (dovrbareix) {						// Compute the seed for the Vrba-Reix test
-		gx0 =  newgiant ((bits >> 4) + 8);	// Allocate memory for gx0
+		gx0 =  allocgiant ((bits >> 4) + 8);	// Allocate memory for gx0
 		gtog (NP, gx0);						// gx0 = NP
 		uladdg (3, gx0);					// gx0 = N+3
 		gshiftright (1, gx0);				// gx0 = (N+3)/2 = 3/2 mod N = 3*2^(-1) mod N
@@ -13391,6 +15608,7 @@ restart:
 
 /* Output a message about the FFT length. */
 
+	topology_print_children (hwloc_get_root_obj (hwloc_topology), 0);
 	gwfft_description (gwdata, fft_desc);
 	sprintf (buf, "Using %s\n", fft_desc);
 
@@ -13690,7 +15908,7 @@ restart:
 	clearline(100);
 
 	if (*res) {
-#ifdef _CONSOLE
+#if defined (_CONSOLE)
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 		SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 		OutputBoth(buf);
@@ -13804,6 +16022,7 @@ error:
 	goto restart;
 }
 
+
 static unsigned __int64 li, smallbase, smallk, lastfactor;
 
 int ispoweroftwo (
@@ -13864,7 +16083,7 @@ int process_num (
 	if (format == ABCSP)				// Do the PRP test of a Wagstaff number
 		return (isWSPRP (sgk, n, res));
 
-	gb = newgiant (strlen(sgb)/2 + 8);	// Allocate one byte per decimal digit + spares
+	gb = allocgiant (strlen(sgb)/2 + 8);	// Allocate one byte per decimal digit + spares
 	ctog (sgb, gb);						// Convert b string to giant
 	if (gb->sign == 1) {				// Test if the base is a small integer...
 		binput = base = gb->n[0];		// Then, get the base in an unsigned long
@@ -13892,15 +16111,11 @@ int process_num (
 
 		globalb = base;					// Keep the base of the candidate in a global
 
-//	Replaced by Lei :
-//		if (base == 2 && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1))) {
-//			if (incr == -1)
-//				retval = isLLRP (format, sgk, n, shift, res);
-//			else
-//				retval = isProthP (format, sgk, n, shift, res);
-//		}
-
 // Lei mod
+ 		if (format == ABCDP) {
+			retval = IsPRP (format, sgk, sgb, gb, n, incr, shift, res);
+			free (gb); return (retval);
+		}
 		if (((base == 2) || (superPRP == 0)) && !IniGetInt (INI_FILE, "ForcePRP", 0) && ((incr == -1) || (incr == +1)) && (format != ABCVARAQS)) {
 			if (incr == -1)
 				retval = IniGetInt(INI_FILE, "TestW", 0) ? isLLRW (format, sgk, n, shift, res) : isLLRP (format, sgk, b_else, n, binput, ninput, shift, res);
@@ -13916,9 +16131,7 @@ int process_num (
 		(format != ABCRU) && (format != ABCGRU))
 			retval = plusminustest (sgk, sgb, gb, n, incr, shift, res);
 		else  {
-//			Fermat_only = TRUE;     // JP 30/01/17
 			retval = IsPRP (format, sgk, sgb, gb, n, incr, shift, res);
-//			Fermat_only = FALSE;    // JP 30/01/17
 		}
 		free (gb);
 		return (retval);
@@ -14100,6 +16313,9 @@ OPENFILE :
 				else if (!strcmp (pinput, ckstring)) {
 					format = ABCK;
 				}
+ 				else if (!strcmp (pinput, dpstring)) {
+ 					format = ABCDP;
+ 				}
 				else if (!strcmp (pinput, repustring)) {
 					format = ABCRU;
 				}
@@ -14732,7 +16948,7 @@ OPENFILE :
 						OutputBoth (buff);
 						OutputStr("\033[0m");
 #else
-#if defined _CONSOLE
+#if defined (_CONSOLE)
 						hConsole = GetStdHandle(STD_OUTPUT_HANDLE);	// Access to Console attributes
 						SetConsoleTextAttribute(hConsole, BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED);
 						OutputBoth(buff);
@@ -15110,6 +17326,17 @@ OPENFILE :
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
+ 				else if (format == ABCDP)	{	// DivPhi, k, b, n specified on each input line
+ 					if (sscanf (buff+begline, "%s %s %lu", sgk, sgb, &n) != 3)
+ 						continue;				// Skip invalid line
+ 					if (!isDigitString(sgk))
+ 						continue;				// Skip invalid line
+ 					if (!isDigitString (sgb))
+ 						continue;				// Skip invalid line
+ 					incr = 1;
+ 					if (! process_num (format, sgk, sgb, n, 1, 0, &res))
+ 						goto done;
+ 				}
 				else if (format == ABCGRU)	{	// Generalized Repunits, b, n, are the two parameters
 					if (sscanf (buff+begline, "%s %lu", sgb, &n) != 2)
 						continue;				// Skip invalid line
@@ -15219,8 +17446,8 @@ OPENFILE :
 						continue;				// Skip invalid line
 					if (!isDigitString (sgb))
 						continue;				// Skip invalid line
-					if (!isDigitString(sgd))
-						continue;				// Skip invalid line
+//					if (!isDigitString(sgd))
+//						continue;				// Skip invalid line
 					if (rising_ns && !rising_ks && (n <= last_processed_n))
 						continue;				// Skip already processed n's
 					if (rising_ks && !rising_ns && (digitstrcmp (sgk, last_processed_k) <= 0))

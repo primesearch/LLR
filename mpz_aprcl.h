@@ -19,8 +19,8 @@
 
 #ifndef HAVE_U64_T
 #define HAVE_U64_T
-typedef long long s64_t;
-typedef unsigned long long u64_t;
+typedef __int64 s64_t;
+typedef unsigned __int64 u64_t;
 #endif
 
 #include "jacobi_sum.h"

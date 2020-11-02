@@ -5,7 +5,7 @@ D = ./macllr
 ENVP= MACOSX_DEPLOYMENT_TARGET=10.4
 
 CC = gcc
-CFLAGS = -I. -I./gwnum -O2 -arch i386 -mmacosx-version-min=10.4 -march=prescott
+CFLAGS = -I./include -I. -I./gwnum -O2 -arch i386 -mmacosx-version-min=10.4 -march=prescott
 
 CPP = g++
 CPPFLAGS = -I. -I./gwnum -O2 -arch i386 -mmacosx-version-min=10.4 -march=prescott

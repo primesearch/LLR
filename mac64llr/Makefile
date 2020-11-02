@@ -3,9 +3,9 @@
 ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 
 CC = gcc
-LFLAGS = -Wl -arch x86_64 -mmacosx-version-min=10.5
+LFLAGS = -m64 -Wl,-no_pie -mmacosx-version-min=10.5 
 LIBMAC = ../gwnum/amd64/release/gwnum.a
-LIBS   = $(LIBMAC) ./libgmp.a -lm -lstdc++
+LIBS   = $(LIBMAC) ./libgmp.a ./libhwloc.a -lm -lstdc++
 LIBS2  = $(LIBMAC) ./libgmp.a -lm -lstdc++ -static
 
 COMPOBJS = lprime.o lmenu.o

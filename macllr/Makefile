@@ -5,7 +5,7 @@ ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 CC = gcc
 LFLAGS = -Wl -mmacosx-version-min=10.5 -arch i386
 LIBMAC = ../gwnum/release/gwnum.a
-LIBS   = $(LIBMAC) ./libgmp.a -lm -lstdc++
+LIBS   = $(LIBMAC) ./libgmp.a -lm ./libhwloc.a -lstdc++
 LIBS2  = $(LIBMAC) ./libgmp.a -lm -lstdc++ -static
 
 FACTOROBJ = factor32p.o factor32lp.o

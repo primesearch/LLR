@@ -3,7 +3,7 @@
 D = ./linux64llr
 
 CC = gcc
-CFLAGS = -I. -I./gwnum -DX86_64 -O2
+CFLAGS = -I./include -I. -I./gwnum -DX86_64 -O2
 
 CPP = g++
 CPPFLAGS = -I. -I./gwnum -DX86_64 -O2

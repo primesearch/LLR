@@ -42,7 +42,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O2 /I "..\..\gwnum" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
+# ADD CPP /nologo /G5 /MT /W3 /GX /Zi /O2 /I "../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /YX /FD /c
 # ADD BASE RSC /l 0x40c /d "NDEBUG"
 # ADD RSC /l 0x40c /d "NDEBUG"
 BSC32=bscmake.exe
@@ -96,6 +96,10 @@ SOURCE=..\lprime.c
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=..\gmp.h
+# End Source File
 # End Group
 # Begin Group "Resource Files"
 
@@ -112,6 +116,14 @@ SOURCE=.\factor32lp.obj
 # Begin Source File
 
 SOURCE=..\gwnum\gwnum.lib
+# End Source File
+# Begin Source File
+
+SOURCE=.\libhwloc.lib
+# End Source File
+# Begin Source File
+
+SOURCE=.\gmp.lib
 # End Source File
 # End Target
 # End Project

@@ -70,13 +70,13 @@ void Sleep (long);
 #include <time.h>
 #include <assert.h>
 extern int NO_GUI;
-/* #if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
-#include "gwrename.h"
-#endif */
+
 #include "./gwnum/cpuid.h"
 #include "./gwnum/giants.h"
 #include "./gwnum/gwnum.h"
 #include "./gwnum/gwcommon.h"
+#include "./common.h"
+#include <hwloc.h>
 #include "Llr.h"
 
 /* Global variables */

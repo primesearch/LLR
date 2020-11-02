@@ -1,6 +1,23 @@
 
-		Welcome to LLR program Version 3.8.23 !
+		Welcome to LLR program Version 3.8.24 !
 
+0) What is new in this version :
+
+  No much new feature, but some improvements related to reliability and speed.
+  - I implemented the patch sent to me Serge Batalov, and the new ABC Format :
+  ABC DivPhi($a*$b^$c+1) may be used to do these tests.
+  - By default, all tests on base two numbers use Gerbicz error checking.
+  This is the case for PRP Fermat and SPRP tests as in Prime95 or Mprime,
+  but also for the deterministic prime tests of Proth numbers.
+  LLR tests on Riesel numbers are only done after a positive Fermat PRP result.
+  Moreover, for b==2 and k==+1, a random shift on the Proth/PRP base is done.
+  It is especially interesting for the prime test of Gaussian Mersenne norms.
+  - The hwloc library is now linked with the program and may be used.
+  - -oCpuSupportsAVX512F=0 option is supported, as required by some users.
+  - I compiled GNU gmp6.1.0 on Windows 32 bits VC6.0, so, this library is now
+  linked on this Windows platform, which allows to do APRCL tests without the
+  need of an external binary... 
+  
 
 1) Main features :
 

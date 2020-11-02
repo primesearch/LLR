@@ -294,11 +294,13 @@ void CPrime95Doc::OnAffinity()
 void CPrime95Doc::OnCpu() 
 {
 	CCpuDlg dlg;
-	char	buf[512];
+	char	buf[4096];
 
-	getCpuDescription (buf, 0);
-	dlg.m_cpu_info = buf;
-	if (dlg.DoModal () == IDOK) {
+	getCpuDescription (buf, 1);
+	if (!IniGetInt (INI_FILE, "OutputTopology", 0)) {
+		dlg.m_cpu_info = buf;
+		if (dlg.DoModal () == IDOK) {
+		}
 	}
 }
 
@@ -618,6 +620,7 @@ int escapeCheck ()
 void CPrime95Doc::title (
 	char	*str)
 {
+	int i;
 	char buf[80];
 	CWinApp* pApp = AfxGetApp();
 //static	int was_iconic = TRUE;
@@ -635,6 +638,9 @@ void CPrime95Doc::title (
 			was_iconic = FALSE;
 		}
 		else			// Update title on opened window!! J.P. 10/03/2008 */
+			for (i=0;i<80;i++)
+				if (buf[i]=='^')
+					buf[i] = (char)0x88;// For Windows extended ASCII...
 			pApp->m_pMainWnd->SetWindowText (buf);
 	}
 }

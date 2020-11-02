@@ -470,7 +470,7 @@ typedef __mpq_struct *mpq_ptr;
 
 #if defined (__cplusplus)
 extern "C" {
-using std::FILE;
+//using std::FILE;
 #endif
 
 #define mp_set_memory_functions __gmp_set_memory_functions

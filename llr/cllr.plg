@@ -6,14 +6,14 @@
 --------------------Configuration: cllr - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPFA.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPA.tmp" with contents
 [
-/nologo /MT /W3 /GX /Zi /O2 /I "..\..\gwnum" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllr___Win32_Release/cllr.pch" /YX /Fo"cllr___Win32_Release/" /Fd"cllr___Win32_Release/" /FD /c 
-"I:\D\Jean\LLR\llr38nrsc\lmenu.c"
-"I:\D\Jean\LLR\llr38nrsc\lprime.c"
+/nologo /G5 /MT /W3 /GX /Zi /O2 /I "../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllr___Win32_Release/cllr.pch" /YX /Fo"cllr___Win32_Release/" /Fd"cllr___Win32_Release/" /FD /c 
+"I:\D\Jean\LLR\llr38osrc\lmenu.c"
+"I:\D\Jean\LLR\llr38osrc\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPFA.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPFB.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPA.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPB.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllr___Win32_Release/cllr.pdb" /machine:I386 /nodefaultlib:"LIBC" /out:"cllr___Win32_Release/cllr.exe" 
 .\cllr___Win32_Release\lmenu.obj
@@ -21,8 +21,10 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPFB.tmp" with cont
 .\factor32p.obj
 .\factor32lp.obj
 ..\gwnum\gwnum.lib
+.\libhwloc.lib
+.\gmp.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPFB.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPB.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c

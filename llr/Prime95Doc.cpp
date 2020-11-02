@@ -5,6 +5,7 @@
 #include "MainFrm.h"
 #include "Prime95.h"
 #include "Prime95Doc.h"
+#include <hwloc.h>
 
 #include <direct.h>
 #include "math.h"
@@ -305,11 +306,13 @@ void CPrime95Doc::OnAffinity()
 void CPrime95Doc::OnCpu() 
 {
 	CCpuDlg dlg;
-	char	buf[512];
+	char	buf[4096];
 
-	getCpuDescription (buf, 0);
-	dlg.m_cpu_info = buf;
-	if (dlg.DoModal () == IDOK) {
+	getCpuDescription (buf, 1);
+	if (!IniGetInt (INI_FILE, "OutputTopology", 0)) {
+		dlg.m_cpu_info = buf;
+		if (dlg.DoModal () == IDOK) {
+		}
 	}
 }
 
@@ -524,13 +527,17 @@ void CPrime95Doc::ReplaceableLine (
 // CPrime95Doc public routines
 
 #define PORT	1
+#include "gmp.h"
 #include "giants.h"
 #include "llr.h"
 #include "gwcommon.h"
+#include "common.h"
+#include "mpz_aprcl.c"
 #include "jacobi.c"
 #include "kronecker.c"
 #include "Qfields.c"
 #include "factor.c"
+#include "md5.c"
 #include "llr.c"
 #include "llr95.c"
 
@@ -565,6 +572,13 @@ UINT threadDispatch (
 
 	switch (thread_pkt.op) {
 	case OP_CONTINUE:
+
+		/* Allocate a work unit structure */
+
+		w = (struct work_unit *) malloc (sizeof (struct work_unit));
+//		if (w == NULL) goto nomem;
+		memset (w, 0, sizeof (struct work_unit));
+
 		primeContinue ();
 		break;
 	}

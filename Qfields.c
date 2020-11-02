@@ -6,7 +6,7 @@
 #define  ULONG unsigned long
 #define MAXULONG 0xFFFFFF00
 
-void trace(int);
+void trace(unsigned long);
 
 EXTERNC ULONG gcd (ULONG, ULONG);
 extern unsigned long globalb;

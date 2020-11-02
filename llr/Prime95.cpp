@@ -351,6 +351,7 @@ simple_mutex:	 	g_hMutexInst = CreateMutex (
 
 	if (NTSERVICENAME[0] && NTSERVICENAME[15] == '-')
 		named_ini_files = atoi (&NTSERVICENAME[16]);
+
 	nameIniFiles (named_ini_files);
 	readIniFiles ();
 

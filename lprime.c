@@ -79,9 +79,10 @@ int SINGLETEST = 0;
 #include "kronecker.c"
 #include "Qfields.c"
 #include "factor.c"
-#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+//#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 #include "mpz_aprcl.c"
-#endif
+//#endif
+#include "md5.c"
 #include "Llr.c"
 
 /* Signal handlers */
@@ -307,11 +308,15 @@ int main (
 			break;
 
 
-/* -Q - Test a single k*b^n+c or b^n-b^m+c number */
+/* -Q - Test a single k*b^n+c or b^n-b^m+c or (k*b^n+c)/d number */
 
 		case 'Q':
 		case 'q':
-			if (!isdigit(*p))				// must begin with digits...
+			if (*p == '(') {				// must begin with digits or (
+				quotient = TRUE;
+				p++;
+			}
+			if (!isdigit(*p))				// must be digits,now...
 				goto errexpr;
 			p2 = multiplier;				// get the expected multiplier
 			while (isdigit(*p))				// copy the digits
@@ -355,27 +360,34 @@ NOMULTIPLIER:
 			while (isdigit(*p))				// copy the c value
 				*p2++ = *p++; 
 			*p2 = '\0';
-			if ((*p != '\0') && ((addin[0] != '-') || (*p != '^')))	// must be end of string or diffnum...
-				goto errexpr;
 			dnflag = ' ';					// restore the dnflag
-			if (*p++ != '\0') {
-				if (strcmp (base, addin+1))	// The second base must be the same...
+			if ((*p == ')') && (*(p+1) == '/')) {	// get the divisor(s)
+				quotient = TRUE;
+				p += 2;
+				strcpy (divisors, p);		// and that is all...
+			}
+			else {
+				if ((*p != '\0') && ((addin[0] != '-') || (*p != '^')))	// must be end of string or diffnum...
 					goto errexpr;
-				if (!isdigit(*p))				// must be digits...
-					goto errexpr;
-				p2 = exponent2;					// get the exponent
-				while (isdigit(*p))				// copy the digits
-					*p2++ = *p++;
-				*p2 = '\0';
-				if (*p != '+' && *p != '-')		// must be plus or minus
-					goto errexpr;
-				dnflag = *p;					// dnflag = sign
-				p2 = addin;
-				*p2++ = *p++;					// copy the sign
-				if (!isdigit(*p))
-					goto errexpr;
-				while (isdigit(*p))				// copy the c value
-					*p2++ = *p++; 
+				if (*p++ != '\0') {
+					if (strcmp (base, addin+1))	// The second base must be the same...
+						goto errexpr;
+					if (!isdigit(*p))				// must be digits...
+						goto errexpr;
+					p2 = exponent2;					// get the exponent
+					while (isdigit(*p))				// copy the digits
+						*p2++ = *p++;
+					*p2 = '\0';
+					if (*p != '+' && *p != '-')		// must be plus or minus
+						goto errexpr;
+					dnflag = *p;					// dnflag = sign
+					p2 = addin;
+					*p2++ = *p++;					// copy the sign
+					if (!isdigit(*p))
+						goto errexpr;
+					while (isdigit(*p))				// copy the c value
+						*p2++ = *p++; 
+				}
 			}
 			*p2 = '\0';
 DIGITSONLY:
@@ -385,8 +397,14 @@ DIGITSONLY:
 				fprintf (in, "%s %s %s %s\n", base, exponent, exponent2, addin);
 			}
 			else {
-				fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
-				fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
+				if (quotient) {
+					fprintf (in, "ABC ($a*$b^$c$d)/$e\n");// write ABC header and data
+					fprintf (in, "%s %s %s %s %s\n", multiplier, base, exponent, addin, divisors);
+				}
+				else {
+					fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
+					fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
+				}
 			}
 			fclose (in);
 			strcpy (m_pgen_input, "$temp.npg");
@@ -465,11 +483,13 @@ DIGITSONLY:
 
 #endif
 
+
 /* Determine the names of the INI files */
 /* Read the INI files */
 
 	nameIniFiles (named_ini_files);
-	readIniFiles ();
+
+        readIniFiles ();
 
 // Copy the options in the init. file
 
@@ -514,12 +534,12 @@ DIGITSONLY:
 /* Bring up the main menu */
 
 	if (MENUING)
-		main_menu ();
-
+            main_menu ();
+        
 /* Continue testing the range */
 
 	else
-		linuxContinue ("Another llr is already running!\n");
+            linuxContinue ("Another llr is already running!\n");
 
 /* All done */
 
@@ -553,8 +573,20 @@ errexpr:	printf ("Invalid expression in command line.\n");
 }
 
 void title (char *msg)
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 {
 }
+#else
+{
+	char buf[80];
+	int i;
+	sprintf (buf, "title %s", msg);
+	for (i=0;i<80;i++)
+		if (buf[i]=='^')
+			buf[i] = (char)0x88;	// For Windows extended ASCII...
+	system (buf);
+}
+#endif
 
 void flashWindowAndBeep (unsigned long n)
 {
@@ -694,6 +726,13 @@ void linuxContinue (
 ok:	IniWriteInt (INI_FILE, "Pid", my_pid);
 
 #endif
+
+/* Allocate a work unit structure */
+
+	w = (struct work_unit *) malloc (sizeof (struct work_unit));
+//	if (w == NULL) goto nomem;
+	memset (w, 0, sizeof (struct work_unit));
+
 	completed = primeContinue ();
 	IniWriteInt (INI_FILE, "Pid", 0);
 	_unlink ("$temp.npg");

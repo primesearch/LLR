@@ -3,8 +3,8 @@
 CC = gcc
 LFLAGS =
 LIBELF = ../gwnum/gwnum.a
-LIBS   = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread
-LIBS2  = $(LIBELF) ./libgmp.a -lm -lstdc++ -lpthread -static
+LIBS   = $(LIBELF) ./libgmp.a ./libhwloc.a -lm -lstdc++ -lpthread
+LIBS2  = $(LIBELF) ./libgmp.a ./libhwloc.a -lm -lstdc++ -lpthread -static
 
 FACTOROBJ = factor32p.o factor32lp.o
 COMPOBJS = lprime.o lmenu.o
