@@ -1,5 +1,5 @@
 
-		Welcome to LLR program Version 3.8.24 !
+		Welcome to LLR program Version 4.0.0 !
 
 0) What is new in this version :
 
@@ -10,7 +10,7 @@
   This is the case for PRP Fermat and SPRP tests as in Prime95 or Mprime,
   but also for the deterministic prime tests of Proth numbers.
   LLR tests on Riesel numbers are only done after a positive Fermat PRP result.
-  Moreover, for b==2 and k==+1, a random shift on the Proth/PRP base is done.
+  Also, if b==2, k==+1 and abs(c)==1, a random shift on the PRP base is done.
   It is especially interesting for the prime test of Gaussian Mersenne norms.
   - The hwloc library is now linked with the program and may be used.
   - -oCpuSupportsAVX512F=0 option is supported, as required by some users.
@@ -39,7 +39,7 @@
   code is no more available. This affects only the Gaussian-Mersenne norm and
   Wagstaff tests, for which the prefactoring must be done using a 32bit program.
 
-  This version uses the last release version (29.8) of George Woltman's Gwnum
+  This version uses the last release version (30.6) of George Woltman's Gwnum
   library, to do fast multiplications and squarings of large integers modulo N.
   A multithreading AVX bug due to misuse of the POSTFFT feature by LLR is
   fixed (28/01/18).

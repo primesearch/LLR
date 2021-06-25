@@ -4,7 +4,7 @@
 | This file contains various utility routines that may be used by gwnum
 | routines, prime95, or other consumers of gwnum.
 | 
-|  Copyright 2004-2019 Mersenne Research, Inc.  All rights reserved.
+|  Copyright 2004-2020 Mersenne Research, Inc.  All rights reserved.
 +---------------------------------------------------------------------*/
 
 /* Include files */
@@ -94,7 +94,6 @@ void aligned_free (
 //*******************************************************
 
 #define TWO_MEGABYTES	2*1024*1024
-#define round_up_to_multiple_of(a,b)	(((a)+(b)-1) & ~(b-1))
 
 static int large_pages_are_supported = 0;
 #if defined (_WIN32)
@@ -270,7 +269,7 @@ int gettimeofday (
 {
 	// This magic number is the number of 100 nanosecond intervals since January 1, 1601 (UTC)
 	// until 00:00:00 January 1, 1970 
-	static const uint64_t EPOCH = ((uint64_t) 116444736000000000U/*LL*/);
+	static const uint64_t EPOCH = ((uint64_t) 116444736000000000ULL);
 
 	SYSTEMTIME  system_time;
 	FILETIME    file_time;

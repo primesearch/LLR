@@ -57,6 +57,7 @@ char	prline[80];
 
 /* function prototypes */
 
+void		gwpgcdg (giant g1, giant g2);
 void		ell_even(giant x1, giant z1, giant x2, giant z2, giant An,
 						giant Ad, giant N);
 void		ell_odd(giant x1, giant z1, giant x2, giant z2, giant xor,
@@ -532,7 +533,8 @@ void gfact (
 			if((j%100) == 0)
 			{
 				dot();
-				gcdg(N, gg);
+//				gcdg(N, gg);
+				gwpgcdg(N, gg);
 				if (!isone(gg))
 					break;
 			}
@@ -551,7 +553,8 @@ void gfact (
 			mulg(t3, gg);
 			modg(N, gg);
 		}
-		gcdg(N, gg);
+//		gcdg(N, gg);
+		gwpgcdg(N, gg);
 
 		if ((gcompg(N,gg) != 0) && (!isone(gg)))
 		{				// gg != N and gg != 1
@@ -602,12 +605,14 @@ void gfact (
 			if (j % 100 == 0)
 			{
 				dot();
-				gcdg(N, gg);
+//				gcdg(N, gg);
+				gwpgcdg(N, gg);
 				if	(!isone(gg))
 					break;
 			}
 		}
-		gcdg(N, gg);
+//		gcdg(N, gg);
+		gwpgcdg(N, gg);
 		if ((gcompg(N,gg) != 0) && (!isone(gg)))
 		{				// gg != N and gg != 1
 			gtog (gg, DV);	// divisor candidate
@@ -712,7 +717,8 @@ void gfact (
 		count = 0;
 
 		gtog(zr, gg);
-		gcdg(N, gg);
+//		gcdg(N, gg);
+		gwpgcdg(N, gg);
 		if ((!isone(gg))&&(bitlen(gg)>limitbits))
 		{				// gg != 1 and not too small
 			gtog(gg, DV);	// divisor candidate
@@ -810,7 +816,8 @@ void gfact (
 			gtog(zs, zb[0]);
 		}
 
-		gcdg(N, gg);
+//		gcdg(N, gg);
+		gwpgcdg(N, gg);
 		if((!isone(gg))&&(bitlen(gg)>limitbits))
 		{				// gg != 1 and not too small
 			gtog(gg, DV);	// divisor candidate

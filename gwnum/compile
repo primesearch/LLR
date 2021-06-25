@@ -6,9 +6,9 @@
 # objconv comes courtesy of Agner Fog.  Download available at
 # http://www.agner.org/optimize/#objconv
 
-masm=uasm32 /c -coff
-#masm=uasm32 /c -Fl -coff
-#masm=uasm32 /c -Fl -Sf -Sa -Sg -coff
+masm=uasm64 /c -coff -safeseh
+#masm=uasm64 /c -Fl -coff -safeseh
+#masm=uasm64 /c -Fl -Sf -Sa -Sg -coff -safeseh
 #masm=ml /c /coff
 #masm=ml /c /coff /Fl /Sf /Sa
 
@@ -26,7 +26,7 @@ all:	gwnumd.lib gwnum.lib linux\gwnum.a macosx\gwnum.a release\ecmstag1.obj debu
 # Make libraries out of the object files
 
 gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwtables.obj debug\gwthread.obj debug\gwini.obj debug\gwbench.obj debug\gwutil.obj \
-	    debug\gwdbldbl.obj debug\giants.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
+	    debug\gwdbldbl.obj debug\giants.obj debug\radix.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj mult2aux.obj \
 	    mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj hyperhlp.obj \
 	    xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \
 	    hg_blend.obj hg_core.obj hg_p4.obj hg_p4tp.obj hg_k8.obj hg_k10.obj \
@@ -45,8 +45,8 @@ gwnumd.lib: debug\cpuid.obj debug\gwnum.obj debug\gwtables.obj debug\gwthread.ob
     lib /OUT:gwnumd.lib debug\*.obj *.obj
 
 gwnum.lib: release\cpuid.obj release\gwnum.obj release\gwtables.obj release\gwthread.obj release\gwini.obj release\gwbench.obj \
-	   release\gwutil.obj release\gwdbldbl.obj release\giants.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj mult2a.obj \
-	   mult2aux.obj mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj hyperhlp.obj \
+	   release\gwutil.obj release\gwdbldbl.obj release\giants.obj release\radix.obj mult.obj mult1.obj mult1aux.obj mult2.obj mult2p.obj \
+	   mult2a.obj mult2aux.obj mult3.obj mult3p.obj mult3a.obj mult3ap.obj mult4.obj mult4p.obj gianthlp.obj cpuidhlp.obj hyperhlp.obj \
 	   xmult1ax.obj xmult2.obj xmult2a_core.obj xmult2a_k8.obj xmult2ax.obj xmult3.obj xmult3a_core.obj xmult3a_k8.obj xmult3ax.obj \
 	   hg_blend.obj hg_core.obj hg_p4.obj hg_p4tp.obj hg_k8.obj hg_k10.obj \
 	   r4_core.obj r4_p4.obj r4_p4tp.obj r4_k8.obj r4_k10.obj \
@@ -133,11 +133,11 @@ release\cpuid.obj: cpuid.c cpuid.h
 debug\cpuid.obj: cpuid.c cpuid.h
     $(cld) /Fodebug\cpuid.obj cpuid.c
 
-release\gwnum.obj: gwnum.c gwnum.h
-    $(cl) /Forelease\gwnum.obj gwnum.c
+release\gwnum.obj: gwnumVC6.c gwnum.h
+    $(cl) /Forelease\gwnum.obj gwnumVC6.c
 
-debug\gwnum.obj: gwnum.c gwnum.h
-    $(cld) /Fodebug\gwnum.obj gwnum.c
+debug\gwnum.obj: gwnumVC6.c gwnum.h
+    $(cld) /Fodebug\gwnum.obj gwnumVC6.c
 
 release\gwtables.obj: gwtables.c gwnum.h
     $(cl) /Forelease\gwtables.obj gwtables.c
@@ -163,17 +163,17 @@ release\gwbench.obj: gwbench.c gwbench.h gwnum.h
 debug\gwbench.obj: gwbench.c gwbench.h gwnum.h
     $(cld) /I..\sqlite-amalgamation-3180000 /Fodebug\gwbench.obj gwbench.c
 
-release\gwutil.obj: gwutil.c gwutil.h
-    $(cl) /Forelease\gwutil.obj gwutil.c
+release\gwutil.obj: gwutilVC6.c gwutil.h
+    $(cl) /Forelease\gwutil.obj gwutilVC6.c
 
-debug\gwutil.obj: gwutil.c gwutil.h
-    $(cld) /Fodebug\gwutil.obj gwutil.c
+debug\gwutil.obj: gwutilVC6.c gwutil.h
+    $(cld) /Fodebug\gwutil.obj gwutilVC6.c
 
-release\gwdbldbl.obj: gwdbldbl.cpp gwdbldbl.h
-    $(cl) /I..\qd /Forelease\gwdbldbl.obj gwdbldbl.cpp
+release\gwdbldbl.obj: gwdbldblVC6.cpp gwdbldbl.h
+    $(cl) /I..\qd /Forelease\gwdbldbl.obj gwdbldblVC6.cpp
 
-debug\gwdbldbl.obj: gwdbldbl.cpp gwdbldbl.h
-    $(cldo) /I..\qd /Fodebug\gwdbldbl.obj gwdbldbl.cpp
+debug\gwdbldbl.obj: gwdbldblVC6.cpp gwdbldbl.h
+    $(cldo) /I..\qd /Fodebug\gwdbldbl.obj gwdbldblVC6.cpp
 
 release\giants.obj: giants.c giants.h
     $(cl) /Forelease\giants.obj giants.c
@@ -181,8 +181,14 @@ release\giants.obj: giants.c giants.h
 debug\giants.obj: giants.c giants.h
     $(cldo) /Fodebug\giants.obj giants.c
 
+release\radix.obj: radixVC6.c radix.h gwnum.h
+    $(cl) /Forelease\radix.obj radixVC6.c
+
+debug\radix.obj: radixVC6.c radix.h gwnum.h
+    $(cld) /Fodebug\radix.obj radixVC6.c
+
 release\ecmstag1.obj: ecmstag1.c gwnum.h
-    $(cl) /Forelease\ecmstag1.obj ecmstag1.c
+    $(cl)  /Ic:\gmp32 /Forelease\ecmstag1.obj ecmstag1.c
 
 debug\ecmstag1.obj: ecmstag1.c gwnum.h
-    $(cld) /Fodebug\ecmstag1.obj ecmstag1.c
+    $(cld) /Ic:\gmp32 /Fodebug\ecmstag1.obj ecmstag1.c
