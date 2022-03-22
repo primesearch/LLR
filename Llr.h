@@ -3,8 +3,8 @@
 
 /* Constants */
 
-#define LLR_VERSION		"4.0.0"
-#define LLR_VERSIONC	4,0,0
+#define LLR_VERSION		"4.0.1"
+#define LLR_VERSIONC	4,0,1
 
 /* Global variables */
 

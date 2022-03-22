@@ -1,0 +1,2 @@
+21181*2^35+1 is not prime. (APRCL test)  Time : 0.493 ms.
+21181*2^36+1 is not prime. (APRCL test)  Time : 0.250 ms.

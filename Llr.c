@@ -7984,6 +7984,13 @@ int GerbiczTest (
 					string_rep, ps.counter, (int) PRECISION, trunc_percent (100.0*w->pct_complete));
 			clearline(100);
 			OutputStr (buf);
+                        if (ps.error_check_type == ERRCHK_GERBICZ || ps.error_check_type == ERRCHK_DBLCHK) {    // 12/02/22
+                            gwfree (gwdata, ps.alt_x);
+                        }
+                        if (ps.error_check_type == ERRCHK_GERBICZ) {    // 12/02/22
+                            gwfree(gwdata, ps.u0);
+                            gwfree(gwdata, ps.d);
+                        }
 			goto exit;
 		}
 
@@ -8195,6 +8202,7 @@ int GerbiczTest (
 		free (tmp2);
 		gwfree (gwdata, ps.x);
 		gwfree (gwdata, ps.y);
+                free (exp); // this missing free caused a memory leak... 12/02/22
 
 
 #if defined(WIN32) && !defined(_CONSOLE)
@@ -10604,7 +10612,8 @@ int IsPRP (							// General PRP test
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
 		else if (resaprcl == 0)
-			goto PRPCONTINUE;					// Continue the PRP test to get the residue...
+// BUG!			goto PRPCONTINUE;	// Continue the PRP test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", str);
 		else if (resaprcl == 1)
 			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", str, nbdg);
 		else if (resaprcl == 2)
@@ -10768,7 +10777,8 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
 		else if (resaprcl == 0) {
-			goto CCPCONTINUE;					// Continue the CCP test to get the residue...
+// BUG!			goto CCPCONTINUE;	// Continue the CCP test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", str);
 		}
 		else if (resaprcl == 2)
 			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
@@ -11937,7 +11947,8 @@ int plusminustest (
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
 		else if (resaprcl == 0) {
-			goto PLMCONTINUE;					// Continue the PLM test to get the residue...
+// BUG!			goto PLMCONTINUE; // Continue the PLM test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", str);
 		}
 		else if (resaprcl == 2)
 			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
@@ -12996,7 +13007,8 @@ int isLLRP (
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
 		else if (resaprcl == 0) {
-			goto LLRCONTINUE;					// Continue the LLR test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", str);
+// BUG!			goto LLRCONTINUE;  // Continue the LLR test to get the residue...
 		}
 		else if (resaprcl == 2)
 			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
@@ -13008,7 +13020,7 @@ int isLLRP (
 				OutputBoth(buf);
 			else
 				OutputStr (buf);
-			goto LLRCONTINUE;					// Continue the LLR test
+			goto LLRCONTINUE;    // Continue the LLR test
 		}
 		else {
 			if (resaprcl == 9)
@@ -13019,7 +13031,7 @@ int isLLRP (
 				OutputBoth(buf);
 			else
 				OutputStr (buf);
-			goto LLRCONTINUE;					// Continue the LLR test
+			goto LLRCONTINUE;    // Continue the LLR test
 		}
 		*res = ((resaprcl == 2)||(resaprcl == 12));
 
@@ -14062,7 +14074,8 @@ int isProthP (
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", str, nbdg);
 		else if (resaprcl == 0) {
-			goto PRCONTINUE;					// Continue the PROTH test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", str);
+// BUG!			goto PRCONTINUE;	// Continue the PROTH test to get the residue...
 		}
 		else if (resaprcl == 2)
 			sprintf (buf,"%s is prime! (%lu decimal digits, APRCL test)", str, nbdg);
@@ -14074,7 +14087,7 @@ int isProthP (
 				OutputBoth(buf);
 			else
 				OutputStr (buf);
-			goto PRCONTINUE;					// Continue the PROTH test
+			goto PRCONTINUE;	// Continue the PROTH test
 		}
 		else {
 			if (resaprcl == 9)
@@ -14085,7 +14098,7 @@ int isProthP (
 				OutputBoth(buf);
 			else
 				OutputStr (buf);
-			goto PRCONTINUE;					// Continue the PROTH test
+			goto PRCONTINUE;	// Continue the PROTH test
 		}
 		*res = ((resaprcl == 2)||(resaprcl == 12));
 
@@ -14501,7 +14514,7 @@ int isGMNP (
 			if (nbdg1 < 100)
 				sprintf (buf,"%s is not prime. (APRCL test)", strp);
 			else if ((N->sign > 1)||(NP->sign > 1))
-				goto COFCONTINUE;				// Continue the PRP test to get the residue...
+			goto COFCONTINUE;// Continue the PRP test 	to get the residue...
 		}
 		else if (resaprcl2 == 1)				// BPSW PRP candidate
 			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", strp, nbdg2);
@@ -15252,7 +15265,8 @@ int isWSPRP (
 		else if (resaprcl == 12)
 			sprintf (buf,"%s is prime! (%lu decimal digits, Trial divisions)", sgk, nbdg);
 		else if (resaprcl == 0)
-			goto WSTFCONTINUE;							// Continue the PRP test to get the residue...
+// BUG!			goto WSTFCONTINUE;							// Continue the PRP test to get the residue...
+			sprintf (buf,"%s is not prime. (APRCL test)", sgk);
 		else if (resaprcl == 1)
 			sprintf (buf,"%s is a probable BPSW prime! (%lu decimal digits, APRCL test) ", sgk, nbdg);
 		else if (resaprcl == 2)
