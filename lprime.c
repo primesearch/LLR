@@ -635,6 +635,13 @@ void SetPriority ()
 	int	p;
 	p = (8 - (int) PRIORITY) * 20 / 7;
 	setpriority (PRIO_PROCESS, getpid (), p);
+#if !defined (__APPLE__)
+	if (CPU_AFFINITY != 99) {
+		char affstring [80];
+		sprintf (affstring, "taskset -p %d %d\n", CPU_MASK, getpid());
+		if (system (affstring) != 0);
+	}
+#endif
 }
 
 #else
@@ -650,7 +657,8 @@ void SetPriority (void)
 		(PRIORITY == 4 || PRIORITY == 9) ? THREAD_PRIORITY_NORMAL :
 		(PRIORITY == 5 || PRIORITY == 10) ? THREAD_PRIORITY_ABOVE_NORMAL :
 		THREAD_PRIORITY_HIGHEST);
-
+	if (CPU_AFFINITY != 99)
+		SetProcessAffinityMask (GetCurrentProcess (), CPU_MASK);
 }
 
 #endif

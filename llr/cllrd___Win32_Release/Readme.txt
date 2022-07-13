@@ -1,8 +1,11 @@
 
-		Welcome to LLR program Version 4.0.1 !
+		Welcome to LLR program Version 4.0.2 !
 
 0) What is new in this version :
-
+  The Affinity managing was not really implemented on LLR...
+  This issue is now fixed on Linux and WIN32 versions.
+  The option -oAffinity=2 allows the progam to run on logical core 2.
+  You may choose a list of cores by setting -oAffinity="2,3,5" for example.
   In previous Version 4.0.0, one call to free() function was missing in
   Gerbicz error checking code ; this caused an important memory leak...
   This issue is now fixed here!

@@ -226,6 +226,7 @@ char	HARDWARE_GUID[33] = {0};
 int volatile ERRCHK = 0;
 unsigned int PRIORITY = 1;
 unsigned int CPU_AFFINITY = 99;
+unsigned int CPU_MASK = 0;
 EXTERNC unsigned int volatile CPU_TYPE = 0;
 unsigned long volatile ITER_OUTPUT = 0;
 unsigned long volatile ITER_OUTPUT_RES = 99999999;
@@ -1299,6 +1300,7 @@ void nameIniFiles (
 void readIniFiles () 
 { 
 	int	temp; 
+	const char *p;
  
 	getCpuInfo (); 
  
@@ -1318,6 +1320,18 @@ void readIniFiles ()
 	ERRCHK = (temp != 0); 
 	PRIORITY = (unsigned int) IniGetInt (INI_FILE, "Priority", 1); 
 	CPU_AFFINITY = (unsigned int) IniGetInt (INI_FILE, "Affinity", 99); 
+        if (CPU_AFFINITY!=99) {
+            CPU_MASK = 1<<CPU_AFFINITY;
+            p = IniSectionGetNthStringRaw (INI_FILE, NULL, "Affinity", 1);
+            p = strchr (p, ',');
+            while (p != NULL) {
+                p++;
+                sscanf (p, "%d", &CPU_AFFINITY);
+                CPU_MASK |= 1<<CPU_AFFINITY;
+                p = strchr (p, ',');
+            }
+//            printf ("CPU_MASK = %d\n", CPU_MASK);
+        }
 	HIDE_ICON = (int) IniGetInt (INI_FILE, "HideIcon", 0); 
 	TRAY_ICON = (int) IniGetInt (INI_FILE, "TrayIcon", 1); 
  

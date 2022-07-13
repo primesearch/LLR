@@ -50,8 +50,8 @@ void SetPriority (void)
 		(PRIORITY == 4 || PRIORITY == 9) ? THREAD_PRIORITY_NORMAL :
 		(PRIORITY == 5 || PRIORITY == 10) ? THREAD_PRIORITY_ABOVE_NORMAL :
 		THREAD_PRIORITY_HIGHEST);
-	if (CPU_AFFINITY != 99 && !isWindows95 ())
-		SetThreadAffinityMask (WORKER_THREAD, 1 << CPU_AFFINITY);
+	if (CPU_AFFINITY != 99)
+		SetProcessAffinityMask (GetCurrentProcess (), CPU_MASK);
 }
 
 /* Return the number of CPUs in the system */
