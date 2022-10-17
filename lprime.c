@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-#define $LLF "%qi"
+//#define B64b "%qi"
 #define __int64 long long
 #else
 #include <direct.h>
@@ -35,7 +35,7 @@
 #include <time.h>
 #include <process.h>
 #include <windows.h>
-#define $LLF "%I64d"
+//#define B64b "%I64u"
 #endif
 #include <sys/timeb.h>
 #include "lprime.h"
@@ -486,10 +486,12 @@ DIGITSONLY:
 
 /* Determine the names of the INI files */
 /* Read the INI files */
-
+//	trace(0);
 	nameIniFiles (named_ini_files);
+//	trace(1);
 
         readIniFiles ();
+//		trace(2);
 
 // Copy the options in the init. file
 
@@ -740,7 +742,7 @@ ok:	IniWriteInt (INI_FILE, "Pid", my_pid);
 	w = (struct work_unit *) malloc (sizeof (struct work_unit));
 //	if (w == NULL) goto nomem;
 	memset (w, 0, sizeof (struct work_unit));
-
+//	trace(1);
 	completed = primeContinue ();
 	IniWriteInt (INI_FILE, "Pid", 0);
 	_unlink ("$temp.npg");

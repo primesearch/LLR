@@ -1,7 +1,12 @@
 
-		Welcome to LLR program Version 4.0.2 !
+		Welcome to LLR program Version 4.0.3 !
 
 0) What is new in this version :
+  I added two new ABC formats, principally to help PRP searchers.
+  - k*b^n+c format with k, b, c fixed, for example : ABC 22*17^n+13
+  - (k*b^n+c)/d format with k, b, c, d fixed, for example : ABC (1*16^n+619)/5
+  - In Proth or LLR tests, even values of k yield a false result...
+  These bugs are now fixed.
   The Affinity managing was not really implemented on LLR...
   This issue is now fixed on Linux and WIN32 versions.
   The option -oAffinity=2 allows the progam to run on logical core 2.

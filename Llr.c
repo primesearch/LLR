@@ -4,11 +4,11 @@
 | in one of the source code files of each port.  See Llr.h for the
 | common #defines and common routine definitions.
 +---------------------------------------------------------------------*/
- 
+
 #define CHECK_IF_ANY_ERROR(X,J,N,K) \
 		checknumber = K;\
 		restarting = FALSE;\
-		will_try_larger_fft = FALSE;\
+ 		will_try_larger_fft = FALSE;\
 /* If the sum of the output values is an error (such as infinity) */\
 /* then raise an error. */\
 \
@@ -128,16 +128,26 @@ char grepustring[] = "($a^$b-1)/($a-1)";// PRP test for generalized repunits num
 char diffnumpstring[] = "$a^$b-$a^$c+%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c+%d so, form K*B^N+C
 char diffnummstring[] = "$a^$b-$a^$c-%d";// If $b>$c, it is [$a^($b-$c)-1]*$a^$c-%d so, form K*B^N+C
 char diffnumstring[] = "$a^$b-$a^$c$d";	// General diffnum format
+
 // Fixed k and c forms for k*b^n+c
 
-char fkpstring[] = ""$LLF"*$a^$b+%d";
-char fkmstring[] = ""$LLF"*$a^$b-%d";
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+char fkpstring[] = "%qi*$a^$b+%d";
+char fkmstring[] = "%qi*$a^$b-%d";
+#else
+char fkpstring[] = "%I64u*$a^$b+%d";
+char fkmstring[] = "%I64u*$a^$b-%d";
+#endif
 
 // Fixed b and c forms for k*b^n+c
 
-char fbpstring[]  = "$a*"$LLF"^$b+%d";
-char fbmstring[]  = "$a*"$LLF"^$b-%d";
-
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+char fbpstring[]  = "$a*%qi^$b+%d";
+char fbmstring[]  = "$a*%qi^$b-%d";
+#else
+char fbpstring[] = "$a*%I64u^$b+%d";
+char fbmstring[] = "$a*%I64u^$b-%d";
+#endif
 // Fixed n and c forms for k*b^n+c
 
 char fnpstring[] = "$a*$b^%lu+%d";
@@ -145,11 +155,21 @@ char fnmstring[] = "$a*$b^%lu-%d";
 
 // Fixed k forms for k*b^n+c
 
-char fkastring[]  = ""$LLF"*$a^$b$c";
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+char fkastring[] = "%qi*$a^$b$c";
+#else
+char fkastring[] = "%I64u*$a^$b$c";
+#endif
+
+
 
 // Fixed b forms for k*b^n+c
 
-char fbastring[] = "$a*"$LLF"^$b$c";
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+char fbastring[] = "$a*%qi^$b$c";
+#else
+char fbastring[] = "$a*%I64u^$b$c";
+#endif
 
 // Fixed n forms for k*b^n+c
 
@@ -164,9 +184,17 @@ char abcmstring[]  = "$a*$b^$c-%d";
 
 char abcastring[] = "$a*$b^$c$d";
 
+// k*b^n+c format with k, b, c fixed
+
+char abcnstring[] = "%lu*%lu^n%d";
+
 // General (k*b^n+c)/d format 
 
 char abcadstring[] = "($a*$b^$c$d)/$e";
+
+// (k*b^n+c)/d format with k, b, c, d fixed
+
+char abcndstring[] = "(%lu*%lu^n%d)/%lu";
 
 // Test the primality of a number given as a string
 
@@ -180,7 +208,9 @@ char wftstring[] = "$a$b";
 
 char wfsstring[] = "$a$b$c";
 
-#define ABCDP	28  // Format used for DivPhi()
+#define ABCVARAQS   19 // k, b, n, c and divisor specified on each input line or header
+#define ABCVARAS	18 // k, b, n, and c specified on each input line or header
+#define ABCDP	    28 // Format used for DivPhi()
 
 
 /* Process a number from newpgen output file */
@@ -287,6 +317,7 @@ giant	gb = NULL;		/* Generalized Fermat base may be a large integer... */
 
 unsigned long Nlen = 0;	/* Bit length of number being LLRed or PRPed */
 unsigned long klen = 0;	/* Number of bits of k multiplier */
+unsigned long n_orig;	/* exponent associated to initial base sgb */
 unsigned long OLDFFTLEN = 0; /* previous value of FFTLEN, used by setuponly option */
 unsigned long ndiff = 0;/* used for b^n-b^m+c number processing */
 unsigned long gformat;	/* used for b^n-b^m+c number processing */
@@ -323,7 +354,7 @@ char sgd[sgkbufsize];
 char sgb[sgkbufsize];
 char bpfstring[sgkbufsize];
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 void setupf();
 int factor64();
@@ -558,6 +589,19 @@ int gwpinvg (giant g1, giant g2) {
     mpz_clear (op1);
     mpz_clear (op2);
     return (result);
+}
+
+unsigned long hasasmalldivisor (giant x, unsigned long lim) {
+    unsigned long	i, divisor, rem = 69;
+    if (lim > 997)
+        return (0);
+    for (i = 0 ; smallprime[i] <= lim ; i++) {
+        divisor = smallprime[i];
+        rem = gmodi (divisor, x);
+        if (rem == 0)
+            return (divisor);
+    }
+    return (0);
 }
 
 //*******************************************************************************
@@ -3194,7 +3238,7 @@ gwprint(
 	return 0;
 }
 
-int setupok (gwhandle *gwdata, int errcode)		// Test if the call to gwsetup is successful
+int setupok (gwhandle *gwdata, int errcode) // Test if the call to gwsetup is successful
 {
 	char buff[256];
 	if (!errcode)
@@ -3212,7 +3256,7 @@ int setupok (gwhandle *gwdata, int errcode)		// Test if the call to gwsetup is s
 char res64[40]; /* VP : This variable has been made global */
 char alt_res64[40]; /* JP 01/07/20 : This variable has been made global */
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 /* Make a string out of a 96-bit value (a found factor) */
 
@@ -3312,6 +3356,9 @@ unsigned int factorLimit (
 	if (work_type == WORK_DBLCHK) test--;
 	return (test);
 }
+#endif
+
+#if !defined(X86_64) && !defined(_WIN64)
 
 /* Prepare for making a factoring run */
 
@@ -3351,7 +3398,7 @@ void factorSetup (unsigned long p)
 /* The address to XMM_BITS30 was returned in SRCARG. */
 
 
-// #ifndef X86_64 // useless
+// #if !defined(X86_64) && !defined(_WIN64) // useless
 	if (CPU_FLAGS & CPU_SSE2) {
 		unsigned long i, bits_in_factor;
 		unsigned long *xmm_data;
@@ -4191,7 +4238,7 @@ void pfactorSetup (unsigned long p)
 	SSE2_LOOP_COUNTER	DD	0 */
 /* The address to XMM_BITS30 was returned in SRCARG. */
 
-// #ifndef X86_64 // useless
+// #if !defined(X86_64) && !defined(_WIN64) // useless
 	if (CPU_FLAGS & CPU_SSE2) {
 		unsigned long i, bits_in_factor;
 		unsigned long *xmm_data;
@@ -5352,7 +5399,7 @@ void	presieve (unsigned long ndp, unsigned long *t, unsigned long *ta, unsigned 
 	*pphi = phi;
 }
 
-#if defined (WIN32) || defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+#if defined (WIN32) || defined (_WIN64) || defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 
 int aprcltest (int prptest, int verbose)		// Primality test using compiled APRCL code
 {
@@ -6159,7 +6206,7 @@ int isexpdiv (
 				 a, (unsigned long)tmp->n[1], (unsigned long)tmp->n[0], bit);
 			OutputBoth (buf);
 		}
-		CHECK_IF_ANY_ERROR (x, (bit), Nlen, 6);
+		CHECK_IF_ANY_ERROR (x, (bit), Nlen, 6)
 
 /* That iteration succeeded, bump counters */
 
@@ -7362,7 +7409,7 @@ int GerbiczTest (
 
 /* Format the string representation of the test number */
 
-	if (w->known_factors == NULL) {
+	if ((w->known_factors == NULL) || (format == ABCVARAQS)) {
 		strcpy (string_rep, /*gwmodulo_as_string (gwdata)*/str); // 02/07/20
 		string_rep_truncated = FALSE;
 	} else {
@@ -10386,8 +10433,8 @@ int isPRPinternal (
 #define ABCFNGS		15				// Fixed n:  k and b specified on each input line
 #define ABCFNAS		16				// Fxied n:  k, b, and c specified on each input line
 #define ABCVARGS	17				// k, b, and n specified on each input line
-#define ABCVARAS	18				// k, b, n, and c specified on each input line
-#define ABCVARAQS	19				// k, b, n, c and divisor specified on each input line
+//#define ABCVARAS	18				// k, b, n, and c specified on each input line
+//#define ABCVARAQS	19				// k, b, n, c and divisor specified on each input line
 #define	ABCRU		20				// (10^n-1)/9 Repunits
 #define	ABCGRU		21				// (b^n-1)/(b-1) Generalized Repunits
 #define ABCGF		22				// ABC format for generalized Fermat numbers
@@ -10409,7 +10456,7 @@ int IsPRP (							// General PRP test
 	int	*res) 
 {  
 	char	str[sgkbufsize+256], sgk1[sgkbufsize], buf[sgkbufsize+256]; 
-	unsigned long bits, retval, smallbase = 0;
+	unsigned long bits, retval, smallbase = 0, div;
 	int resaprcl;
 	double dk;
 	giant gd, gr;
@@ -10428,17 +10475,17 @@ int IsPRP (							// General PRP test
 
 	if (format == ABCRU || format == ABCGRU) {	// Repunits or Generalized Repunits
 		if (smallbase)
-			sprintf (str, "(%lu^%lu-1)/%lu", smallbase, n, smallbase-1);
+			sprintf (str, "(%lu^%lu-1)/%lu", smallbase, n_orig, smallbase-1);
 		else
-			sprintf (str, "(%s^%lu-1)/(%s-1)", sgb, n, sgb);
+			sprintf (str, "(%s^%lu-1)/(%s-1)", sgb, n_orig, sgb);
 		gk = allocgiant (1);
 		setone (gk);
 	}
  	else if (format == ABCDP) {				// DivPhi
  		if (smallbase)
- 			sprintf (str, "%s*%lu^%lu+1", sgk, smallbase, n);
+ 			sprintf (str, "%s*%lu^%lu+1", sgk, smallbase, n_orig);
  		else
- 			sprintf (str, "%s*%s^%lu+1", sgk, sgb, n);
+ 			sprintf (str, "%s*%s^%lu+1", sgk, sgb, n_orig);
 		gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
  		ctog (sgk, gk);						// Convert k string to giant
  		strong = 0;
@@ -10449,7 +10496,7 @@ int IsPRP (							// General PRP test
 		gshiftleft (shift, gk);				// Shift k multiplier if requested
 		gtoc (gk, sgk1, sgkbufsize);		// Updated k string
 		if (mask & MODE_DUAL) {
-			sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+			sprintf (str, "%s^%lu%c%d", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 		}
 		else if (format != NPGAP) {			// Not MODE_AP
 			if (!strcmp(sgk1, "1"))
@@ -10457,28 +10504,28 @@ int IsPRP (							// General PRP test
 					char *p;
 					while ((p = strchr (sgd,'.'))!=NULL)
 						*p = '/';
-					sprintf (str, "(%s^%lu%c%d)/%s", sgb, n, incr < 0 ? '-' : '+', abs(incr), sgd);
+					sprintf (str, "(%s^%lu%c%d)/%s", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr), sgd);
 				}
 				else
-					sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+					sprintf (str, "%s^%lu%c%d", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 			else
 				if (format == ABCVARAQS) {
 					char *p;
 					while ((p = strchr (sgd,'.'))!=NULL)
 						*p = '/';
-					sprintf (str, "(%s*%s^%lu%c%d)/%s", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr), sgd);
+					sprintf (str, "(%s*%s^%lu%c%d)/%s", sgk1, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr), sgd);
 				}
 				else
 					if ((n != 0) || (incr != 0))
-						sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+						sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 					else
 						sprintf (str, "%s", sgk1);
 		}
 		else {								// MODE_AP
 			if (!strcmp(sgk1, "1"))
-				sprintf (str, "%s^%lu+1", sgb, n);
+				sprintf (str, "%s^%lu+1", sgb, n_orig);
 			else
-				sprintf (str, "%s^%lu+2*%s-1", sgb, n, sgk1);
+				sprintf (str, "%s^%lu+2*%s-1", sgb, n_orig, sgk1);
 		}
 	}
 	else {
@@ -10487,11 +10534,11 @@ int IsPRP (							// General PRP test
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
 			uladdg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n_orig, '-', n-1);
 		}
 		else {
 			ulsubg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n_orig, '-', n-1);
 		}
 	}
 
@@ -10501,7 +10548,7 @@ int IsPRP (							// General PRP test
 		gtog (gb, gk);
 		power (gk, ndiff);
 		iaddg (-1, gk);
-		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 	}
 
 	if (smallbase)
@@ -10557,10 +10604,20 @@ int IsPRP (							// General PRP test
 			return TRUE;
 		}
 		iaddg (-1, gb);
-		divg (gb, N);				// Divide N by (base-1)
+		divg (gb, N);		// Divide N by (base-1)
 		iaddg (1, gb);
 		quotient = TRUE;
-//		strong = FALSE;				// Do a simple Fermat PRP test (not strong).
+//		strong = FALSE;		// Do a simple Fermat PRP test (not strong).
+                div = hasasmalldivisor (N, IniGetInt(INI_FILE, "sdivuntil", 3));
+                // Test if N has a small divisor.
+                if (div) {
+                    sprintf (buf, "%s has a small factor : %lu !!\n", str, div);
+                    OutputBoth (buf); 
+                    free(gk);
+                    free(N);
+                    *res = FALSE;
+                    return(TRUE);
+                }
 	}
 	else if (format == ABCVARAQS) {
 		char factor[sgkbufsize+256], *p, *p2;
@@ -10609,6 +10666,18 @@ int IsPRP (							// General PRP test
 		w->known_factors = sgd;
 		quotient = TRUE;
 //		strong = FALSE;			// Do a simple Fermat PRP test (not strong).
+                div = hasasmalldivisor (N, IniGetInt(INI_FILE, "sdivuntil", 3));
+                // Test if N has a small divisor.
+                if (div) {
+                    sprintf (buf, "%s has a small factor : %lu !!\n", str, div);
+                    OutputBoth (buf); 
+                    free(gk);
+                    free(N);
+                    free(gd);
+                    free(gr);
+                    *res = FALSE;
+                    return(TRUE);
+                }
 	}
 
 	if ((nbdg = gnbdg(N, 10)) < 200) {		// Attempt an APRCL test...
@@ -10759,13 +10828,13 @@ int IsCCP (	// General test for the next prime in a Cunningham chain
 	gshiftleft (shift, gk);				// Shift k multiplier if requested
 	gtoc (gk, sgk1, sgkbufsize);		// Updated k string
 	if (mask & MODE_DUAL) {
-		sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+		sprintf (str, "%s^%lu%c%d", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 	}
 	else {
 		if (!strcmp(sgk1, "1"))
-			sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+			sprintf (str, "%s^%lu%c%d", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 		else
-				sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+				sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 	}
 	
 	if (smallbase)	
@@ -11892,7 +11961,7 @@ int plusminustest (
 		gtog (gb, gk);
 		power (gk, ndiff);
 		iaddg (-1, gk);
-		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n+ndiff, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+		sprintf (str, "%s^%lu-%s^%lu%c%d", sgb, n_orig+ndiff, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 	}
 	else {
 		gk = allocgiant (strlen(sgk)/2 + 8);	// Allocate one byte per decimal digit + spares
@@ -11901,9 +11970,9 @@ int plusminustest (
 		gshiftleft (shift, gk);				// Shift k multiplier if requested
 		gtoc (gk, sgk1, sgkbufsize);		// Updated k string
 		if (!strcmp(sgk1, "1"))
-			sprintf (str, "%s^%lu%c%d", sgb, n, incr < 0 ? '-' : '+', abs(incr));
+			sprintf (str, "%s^%lu%c%d", sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 		else
-			sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n, incr < 0 ? '-' : '+', abs(incr));
+			sprintf (str, "%s*%s^%lu%c%d", sgk1, sgb, n_orig, incr < 0 ? '-' : '+', abs(incr));
 	}
 
 	bits = n * bitlen(gb) + bitlen(gk); 
@@ -12963,7 +13032,7 @@ int isLLRP (
 			if (b_else != 1)	// Lei, J.P.
 				sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '-');// Number N to test, as a string
 			else
-				sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+				sprintf (str, "%s*2^%lu%c1", sgk1, n_orig, '-');	// Number N to test, as a string
 		}
 
 //	gk must be odd for the LLR test, so, adjust gk and n if necessary.
@@ -12980,11 +13049,11 @@ int isLLRP (
 		gshiftleft (n-2, gk);				// Warning : here, n is exponent+1 !
 		if (format == ABCK) {
 			uladdg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu+1)^2 - 2", sgk, n_orig, '-', n-1);
 		}
 		else {
 			ulsubg (1, gk);
-			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n, '-', n-1);
+			sprintf (str, "%s*2^%lu%c1 = (2^%lu-1)^2 - 2", sgk, n_orig, '-', n-1);
 		}
 	}
 
@@ -13178,7 +13247,8 @@ restart:
 
 	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (dk >= 1.0) {
-		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, -1))) { 
+//		if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, -1))) { BUG!
+		if (!setupok (gwdata, gwsetup (gwdata, dk, 2, n, -1))) { // JP 05/10/22
 			free(gk);
 			free(N);
 			free(gwdata);
@@ -13186,7 +13256,7 @@ restart:
 			return FALSE;
 		}
 		w->k = dk;
-		w->n = ninput;
+		w->n = n; // JP 05/10/22
 	}
 	else {
 		if (!setupok (gwdata, gwsetup_general_mod_giant (gwdata, N))) {
@@ -13890,7 +13960,7 @@ int isLLRW (
 	else
 		strcpy (sgk1, sgk);
 
-	sprintf (str, "%s*2^%lu%c1", sgk1, n, '-');	// Number N to test, as a string
+	sprintf (str, "%s*2^%lu%c1", sgk1, n_orig, '-');	// Number N to test, as a string
 
 	bits = n + bitlen(gk);				// Bit length of N
 	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
@@ -13932,7 +14002,7 @@ int isProthW (
 	else
 		strcpy (sgk1, sgk);
 
-	sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
+	sprintf (str, "%s*2^%lu%c1", sgk1, n_orig, '+');	// Number N to test, as a string
 
 	bits = n + bitlen(gk);				// Bit length of N
 	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
@@ -14045,12 +14115,19 @@ int isProthP (
 		if (b_else != 1)	// Lei, J.P.
 			sprintf (str, "%s*%lu^%lu%c1", sgk, binput, ninput, '+');// Number N to test, as a string
 		else
-			sprintf (str, "%s*2^%lu%c1", sgk1, n, '+');	// Number N to test, as a string
+			sprintf (str, "%s*2^%lu%c1", sgk1, n_orig, '+');	// Number N to test, as a string
 	}
 
 
 	bits = n + bitlen(gk);				// Bit length of N
 	N =  allocgiant ((bits>>4) + 8);		// Allocate memory for N
+
+//	gk must be odd for the Proth test, so, adjust gk and n if necessary.
+        
+	while (bitval(gk, 0) == 0) {
+	    gshiftright (1, gk);			// update k as a giant
+	    n++;							// update the exponent
+	}
 
 //	Compute the number we are testing.
 
@@ -14058,13 +14135,6 @@ int isProthP (
 	gshiftleft (n, N);
 	mulg (gk, N); 
 	iaddg (1, N);
-
-//	gk must be odd for the Proth test, so, adjust gk and n if necessary.
-
-	while (bitval(gk, 0) == 0) {
-	    gshiftright (1, gk);			// update k as a giant
-	    n++;							// update the exponent
-	}
 
 	Nlen = bitlen (N); 
 	klen = bitlen(gk);
@@ -14247,7 +14317,8 @@ restart:
 		}			// end dk == 0.0
 		else {
 			gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
-			if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) {
+//		        if (!setupok (gwdata, gwsetup (gwdata, dk, binput, ninput, +1))) { BUG!
+			if (!setupok (gwdata, gwsetup (gwdata, dk, 2, n, +1))) { // JP 05/10/22
 				free(gk);
 				free(N);
 				free(gwdata);
@@ -14412,8 +14483,8 @@ int isGMNP (
 	}
 
 	sign = (((n&7) == 3) || ((n&7) == 5))? 1 : 0;	// 1 if positive, 0 if negative
-	sprintf (str, "2^%lu%c%s+1",  n, (sign) ? '+' : '-', sgk);	// Number N to test, as a string
-	sprintf (strp, "(2^%lu%c%s+1)/5",  n, (sign) ? '-' : '+', sgk);	// Number N' to test, as a string
+	sprintf (str, "2^%lu%c%s+1",  n_orig, (sign) ? '+' : '-', sgk);	// Number N to test, as a string
+	sprintf (strp, "(2^%lu%c%s+1)/5",  n_orig, (sign) ? '-' : '+', sgk);	// Number N' to test, as a string
 
 	bits = 2*n;							// Bit length of M = N*N'
 	M = allocgiant ((bits>>4) + 8);		// Allocate memory for M = N*N'
@@ -14600,7 +14671,7 @@ COFCONTINUE:
 
 //	res1 = res2 = 1;				// Assume N and NP are prime...
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 	strcpy (facnstr, "1");
 	strcpy (facnpstr, "1");
@@ -14781,7 +14852,7 @@ COFCONTINUE:
 	if (fileExists (filename))
 		goto resume;
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 // If not resuming, prefactor if necessary.
 
@@ -14981,7 +15052,7 @@ restart:
 /* Assume intermediate results of the length of N*N'. */ 
 
 		gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
-		if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) { 	// Setup the DWT mode
+		if (!setupok (gwdata, gwsetup (gwdata, dk, 2, 2*n, +1))) {// Setup the DWT mode
 			*res = res1 = res2 = FALSE;
 			free(gk);
 			free(N);
@@ -15351,7 +15422,7 @@ int isWSPRP (
 
 WSTFCONTINUE:
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 	if (facto) {				// There is a request for a prefactoring only job...
 
@@ -15424,7 +15495,7 @@ WSTFCONTINUE:
 	if (nofac || IniGetInt(INI_FILE, "Verify", 0))
 		goto process;
 
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 
 	// Prepare to trial factor the number
 
@@ -16040,7 +16111,8 @@ error:
 }
 
 
-static unsigned __int64 li, smallbase, smallk, lastfactor;
+ unsigned __int64 li, smallbase, smallk, lastfactor;
+// static unsigned long li, smallbase, smallk, lastfactor;
 
 int ispoweroftwo (
 	unsigned long n)
@@ -16069,8 +16141,8 @@ int process_num (
 	unsigned long ninput = n, base, binput, b_2up = 1, b_else = 1, superPRP = 1;
 	long mult;
 // Lei end
-
-	gformat = format; // save format in a global.
+        n_orig = n;        // save initial n value.
+	gformat = format;  // save format in a global.
 
 	if((mult = IniGetInt(INI_FILE, "StopOnPrimedK", 0))) {
 		sprintf (outbuf, "ks%s", sgk);
@@ -16097,36 +16169,34 @@ int process_num (
 	if (format == ABCGM)
 		return (isGMNP (sgk, n, res));	// Do the primality test of a Gaussian Mersenne norm
 
-	if (format == ABCSP)				// Do the PRP test of a Wagstaff number
+	if (format == ABCSP)			// Do the PRP test of a Wagstaff number
 		return (isWSPRP (sgk, n, res));
 
 	gb = allocgiant (strlen(sgb)/2 + 8);	// Allocate one byte per decimal digit + spares
-	ctog (sgb, gb);						// Convert b string to giant
-	if (gb->sign == 1) {				// Test if the base is a small integer...
-		binput = base = gb->n[0];		// Then, get the base in an unsigned long
+	ctog (sgb, gb);				// Convert b string to giant
+	if (gb->sign == 1) {			// Test if the base is a small integer...
+		binput = base = gb->n[0];	// Then, get the base in an unsigned long
 		while (!(base&1) && base > 2) {	// Divide the base by two as far as possible
 			base >>= 1;
 			n += ninput;
 		}
-
-		if (base != 2) {				// Test if the base was a power of two
-
+		if (base != 2) {		// Test if the base was a power of two
 // Lei
 			n -= ninput;
-			b_else = base;				// Is odd...
-			b_2up = binput / b_else;	// binput = b_else*b_2up
-			if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK) || (format == ABCRU)
-												|| (format == ABCGRU) || (format == ABCVARAQS)))) {
-				superPRP = 0;			// Then b_2up^ninput > b_else^ninput
-			}							// N = k*binput^ninput+c = (k*b_else^ninput)*2^n+c
+			b_else = base;		// Is odd...
+			b_2up = binput / b_else;// binput = b_else*b_2up
+			if ((b_2up > b_else) && (!((format == ABCC) || (format == ABCK) || (format == ABCRU) || (format == ABCGRU) || (format == ABCVARAQS)))) {
+				superPRP = 0;	// Then b_2up^ninput > b_else^ninput
+			}		// N = k*binput^ninput+c = (k*b_else^ninput)*2^n+c
 			else {
 // Lei end
-				base = binput;			// Do not modify because PRP will be forced...
-				n = ninput;
+                            base = binput;  // Do not modify because PRP will be forced...
+                            n = ninput;
 			}
 		}
 
-		globalb = base;					// Keep the base of the candidate in a global
+		globalb = base;		// Keep the base of the candidate in a global
+		gb->n[0] = base;        // Update the base as a giant. JP 30/09/22
 
 // Lei mod
  		if (format == ABCDP) {
@@ -16194,7 +16264,7 @@ int primeContinue ()
 	    char	inputfile[80], outputfile[80], oldinputfile[80], cmaxroundoff[10], cpcfftlim[10], sgk[sgkbufsize], buff[sgkbufsize+256];
 		char	hbuff[sgkbufsize+256], outbuf[sgkbufsize+256], last_processed_k[sgkbufsize+256], sstart[1000], sstop[1000];
 	    FILE *fd;
-	    unsigned long i, chainlen, n, nfudge, nn;
+	    unsigned long i, chainlen, n, nfudge, nn, k, b, d;
 	    int	firstline, line, hline, resultline,
 			outfd, outfdp, outfdm, res, incr, sign, argcnt, validheader = FALSE;
 	    char c;
@@ -16258,7 +16328,7 @@ int primeContinue ()
 OPENFILE :
 //	    fd = fopen (inputfile, "r");
 
-		for (i=0;i<5;i++) {
+		for (i=0;i<10;i++) {
 			if ((fd = fopen (inputfile, "r")) != NULL)
 				break;
 		}
@@ -16272,7 +16342,7 @@ OPENFILE :
 
 // Process each line in the output file
 
-		for (line=0; ; line++) {
+		for (line=1; ; line++) {
 
 // Set termination on error conditions
 
@@ -16324,9 +16394,24 @@ OPENFILE :
 				}
 				else if (!strcmp (pinput, abcadstring)) {
 					format = ABCVARAQS;
+						nargs = 5;
 				}
-				else if (!strcmp (pinput, diffnumstring))
+				else if (nargs = sscanf (pinput, abcndstring, &k, &b, &incr, &d)==4) {
+					format = ABCVARAQS;
+                    sprintf (sgk, "%lu", k); // convert to string
+                    sprintf (sgb, "%lu", b); // convert to string
+                    sprintf (sgd, "%lu", d); // convert to string
+                    nargs = 1;
+				}
+				else if (nargs = sscanf(pinput, abcnstring, &k, &b, &incr) == 3) {
+					format = ABCVARAS;
+					sprintf(sgk, "%lu", k); // convert to string
+					sprintf(sgb, "%lu", b); // convert to string
+					nargs = 1;
+				}
+				else if (!strcmp(pinput, diffnumstring)) {
 					format = ABCDNG;
+				}
 				else if (!strcmp (pinput, ckstring)) {
 					format = ABCK;
 				}
@@ -16341,6 +16426,7 @@ OPENFILE :
 				}
 				else if (!strcmp (pinput, abcastring)) {
 					format = ABCVARAS;
+					nargs = 4;
 				}
 				else if (!strcmp (pinput, ffstring)) {
 					format = ABCFF;
@@ -16387,68 +16473,104 @@ OPENFILE :
 					format = ABCDN;
 					incr = - incr;
 				}
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
 				else if (sscanf(pinput, fkpstring, &smallk, &incr) == 2) {
-					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
+					sprintf (sgk, "%qi", smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
 				}
 				else if (sscanf(pinput, fkmstring, &smallk, &incr) == 2) {
-					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
+					sprintf (sgk, "%qi", smallk);	// unsigned fixed k...	
 					format = ABCFKGS;
 					incr = - incr;
 				}
 				else if (sscanf(pinput, fkpstring, &smallk) == 1) { 
-					sprintf (sgk, $LLF, smallk);	// unsigned fixed k...	
+					sprintf (sgk, "%qi", smallk);	// unsigned fixed k...	
 					format = ABCFKAS;
 				}
 				else if (sscanf(pinput, fbpstring, &smallbase, &incr) == 2) {
-					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
+					sprintf (sgb, "%qi", smallbase);	// unsigned fixed base...	
 					format = ABCFBGS;
 				}
 				else if (sscanf(pinput, fbmstring, &smallbase, &incr) == 2) {
-					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
+					sprintf (sgb, "%qi", smallbase);	// unsigned fixed base...	
 					format = ABCFBGS;
 					incr = - incr;
 				}
 				else if (sscanf(pinput, fbastring, &smallbase) == 1) { 
-					sprintf (sgb, $LLF, smallbase);	// unsigned fixed base...	
+					sprintf (sgb, "%qi", smallbase);	// unsigned fixed base...	
 					format = ABCFBAS;
 				}
+#else
+				else if (sscanf(pinput, fkpstring, &smallk, &incr) == 2) {
+				sprintf(sgk, "%I64u", smallk);	// unsigned fixed k...	
+				format = ABCFKGS;
+				}
+				else if (sscanf(pinput, fkmstring, &smallk, &incr) == 2) {
+				sprintf(sgk, "%I64u", smallk);	// unsigned fixed k...	
+				format = ABCFKGS;
+				incr = -incr;
+				}
+				else if (sscanf(pinput, fkpstring, &smallk) == 1) {
+				sprintf(sgk, "%I64u", smallk);	// unsigned fixed k...	
+				format = ABCFKAS;
+				}
+				else if (sscanf(pinput, fbpstring, &smallbase, &incr) == 2) {
+				sprintf(sgb, "%I64u", smallbase);	// unsigned fixed base...	
+				format = ABCFBGS;
+				}
+				else if (sscanf(pinput, fbmstring, &smallbase, &incr) == 2) {
+				sprintf(sgb, "%I64u", smallbase);	// unsigned fixed base...	
+				format = ABCFBGS;
+				incr = -incr;
+				}
+				else if (sscanf(pinput, fbastring, &smallbase) == 1) {
+				sprintf(sgb, "%I64u", smallbase);	// unsigned fixed base...	
+				format = ABCFBAS;
+				}
+#endif
 				else {
-					OutputBoth ("Invalid ABC format, next data lines will be flushed...\n");
+					OutputBoth("Invalid ABC format, next data lines will be flushed...\n");
 					validheader = FALSE;		// Invalid header found...
 				}
-
 				if (format == ABCGM) {
 					if (!facto)
-						sprintf (pinput+strlen (gmstring),
+						sprintf(pinput + strlen(gmstring),
 							" // Let GM(p) = (1+/-i)^p-1, GQ(p) = ((1+/-i)^p+1)/(2+/-i) if p>3, (1+/-i)^p+1 if p<=3\n");
-					if (!facto && !fileExists (outpf)) {
-						outfdp = _open (outpf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
+					if (!facto && !fileExists(outpf)) {
+						outfdp = _open(outpf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
 						if (outfdp) {
-							writelg = _write (outfdp, gqpstring, strlen (gqpstring));
-							_close (outfdp);
-						}	
+							writelg = _write(outfdp, gqpstring, strlen(gqpstring));
+							_close(outfdp);
+						}
 					}
-					if (!facto && !fileExists (outmf)) {
-						outfdm = _open (outmf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
+					if (!facto && !fileExists(outmf)) {
+						outfdm = _open(outmf, _O_TEXT | _O_RDWR | _O_CREAT, 0666);
 						if (outfdm) {
-							writelg = _write (outfdm, gqmstring, strlen (gqmstring));
-							_close (outfdm);
+							writelg = _write(outfdm, gqmstring, strlen(gqmstring));
+							_close(outfdm);
 						}
 					}
 				}
 				continue;				// Read next line, but do not change PgenLine!
 			}							// End ABC format header found
-
-			else if (((argcnt = sscanf (buff, $LLF":%c:%lu:"$LLF":%lu\n", &li, &c, &chainlen, &smallbase, &mask)) > 1) || !line) {
+			//else if ((argcnt = sscanf(buff, "%lu:%c:%lu:%lu:%lu\n", &li, &c, &chainlen, &smallbase, &mask))>1) {
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+			else if ((argcnt = sscanf(buff, "%qi:%c:%lu:%qi:%lu\n", &li, &c, &chainlen, &smallbase, &mask)) > 1) {
+#else
+			else if ((argcnt = sscanf(buff, "%I64u:%c:%lu:%I64u:%lu\n", &li, &c, &chainlen, &smallbase, &mask)) > 1) {
+#endif
 				if (argcnt < 4) {
 					OutputBoth ("Missing or invalid NewPGen header, next data lines will be flushed...\n");
 					validheader = FALSE;				// Invalid NewPGen header...
 				}
 				else {
-					sprintf (sgb, $LLF, smallbase);	// Newpgen format admits only unsigned base...	
+#if defined (__linux__) || defined (__FreeBSD__) || defined (__APPLE__)
+					sprintf (sgb, "%qi", smallbase);	// Newpgen format admits only unsigned base...	
+#else
+					sprintf(sgb, "%I64u", smallbase);	// Newpgen format admits only unsigned base...	
+#endif
 					validheader = TRUE;
-					if (argcnt == 4)
+					if (argcnt < 5)
 						mask = 0;
 					strcpy (hbuff, buff);			// Save the header
 					IniWriteInt (INI_FILE, "HeaderLine", line);	// Save the header line number
@@ -17301,8 +17423,8 @@ OPENFILE :
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
-				else if (format == ABCVARAS)	{	// k, b, n, and c specified on each input line
-					if (sscanf (buff+begline, "%s %s %lu %d", sgk, sgb, &n, &incr) != 4)
+				else if ((format == ABCVARAS) && (nargs == 4))	{	// k, b, n, and c specified on each input line
+					if (sscanf(buff + begline, "%s %s %lu %d", sgk, sgb, &n, &incr)!=4)
 						continue;				// Skip invalid line
 					if (!isDigitString(sgk))
 						continue;				// Skip invalid line
@@ -17328,6 +17450,33 @@ OPENFILE :
 							_close (outfd);
 						}
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+				}
+				else if ((format == ABCVARAS) && (nargs == 1)) {	// Only n specified on each input line
+					if (sscanf(buff + begline, "%lu", &n)!=1)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (!isDigitString(sgb))
+						continue;				// Skip invalid line
+					if (rising_ns && (n <= last_processed_n))
+						continue;				// Skip already processed n's
+					if (rising_ns)
+						fclose(fd);			// Unlock the file during the test...
+					if (!process_num(format, sgk, sgb, n, incr, shift, &res))
+						goto done;
+					if (res) {
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open(outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								writelg = _write(outfd, hbuff, strlen(hbuff));
+							}
+							sprintf(outbuf, "%lu\n", n);
+							writelg = _write(outfd, outbuf, strlen(outbuf));
+							_close(outfd);
+						}
+						IniWriteInt(INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
 				else if (format == ABCRU)	{	// Repunits, n is the only parameter.
@@ -17468,7 +17617,7 @@ OPENFILE :
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
-				else if (format == ABCVARAQS)	{	// k, b, n, c and d specified on each input line
+				else if (format == ABCVARAQS && nargs == 5) {	// k, b, n, c and d specified on each input line
 					if (sscanf (buff+begline, "%s %s %lu %d %s", sgk, sgb, &n, &incr, sgd) != 5)
 						continue;				// Skip invalid line
 					if (!isDigitString(sgk))
@@ -17499,6 +17648,37 @@ OPENFILE :
 						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
 					}
 				}
+				else if (format == ABCVARAQS && nargs == 1) {	// Only n specified on each input line.
+					if (sscanf (buff+begline, "%lu", &n) != 1)
+						continue;				// Skip invalid line
+					if (!isDigitString(sgk))
+						continue;				// Skip invalid line
+					if (!isDigitString (sgb))
+						continue;				// Skip invalid line
+//					if (!isDigitString(sgd))
+//						continue;				// Skip invalid line
+					if (rising_ns && (n <= last_processed_n))
+						continue;				// Skip already processed n's
+//					if (rising_ks && !rising_ns && (digitstrcmp (sgk, last_processed_k) <= 0))
+//						continue;				// Skip already processed k's
+					if (rising_ns)
+						fclose (fd);			// Unlock the file during the test...
+					if (! process_num (format, sgk, sgb, n, incr, shift, &res))
+						goto done;
+					if (res) {
+						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
+						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
+						if (outfd) {
+							if (hline >= resultline) {	// write the relevant header
+								writelg = _write (outfd, hbuff, strlen (hbuff));
+							}
+							sprintf (outbuf, "%lu\n", n); 
+							writelg = _write (outfd, outbuf, strlen (outbuf));
+							_close (outfd);
+						}
+						IniWriteInt (INI_FILE, "ResultLine", line);	// update the result line
+					}
+				}
 				else if (format == ABCGM)	{	// Gaussian Mersenne
 					if ((nargs = sscanf (buff+begline, "%lu %lu %lu", &n, &facn, &facnp)) < 1)
 						continue;				// Skip invalid line
@@ -17517,7 +17697,7 @@ OPENFILE :
 						fclose (fd);			// Unlock the file during the test...
 					if (! process_num (format, sgk, "2", n, +1, shift, &res))
 						goto done;
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 					if (facto) {				// If factoring, print a job progress message every so often
 						if (n/pdivisor-pquotient == 1) {
 							sprintf (outbuf, "%lu candidates factored, %lu factors found, %lu remaining\n"
@@ -17534,7 +17714,7 @@ OPENFILE :
 						sign = (((n&7) == 3) || ((n&7) == 5))? 1 : 0;	// 1 if positive, 0 if negative
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
 						if (outfd) {
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 							if (facto)
 								if (n >= LOWFACTORLIMIT)
 									sprintf (outbuf, "%lu %lu\n", n, facto); 
@@ -17602,7 +17782,7 @@ OPENFILE :
 						fclose (fd);			// Unlock the file during the test...
 					if (! process_num (format, sgk, "2", n, +1, shift, &res))
 						goto done;
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 					if (facto) {				// If factoring, print a job progress message every so often
 						if (n/pdivisor-pquotient == 1) {
 								sprintf (outbuf, "%lu candidates factored, %lu factors found, %lu remaining\n"
@@ -17617,7 +17797,7 @@ OPENFILE :
 					if (res) {
 						resultline = IniGetInt(INI_FILE, "ResultLine", 0);
 						outfd = _open (outputfile, _O_TEXT | _O_RDWR | _O_APPEND | _O_CREAT, 0666);
-#ifndef X86_64
+#if !defined(X86_64) && !defined(_WIN64)
 						if (facto)
 							if (n >= LOWFACTORLIMIT)
 								sprintf (outbuf, "%lu %lu\n", n, facto); 
@@ -17756,4 +17936,3 @@ done:
 	aborted = FALSE;
 	return (completed);
 }
-

@@ -6,14 +6,14 @@
 --------------------Configuration: cllrd - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP14.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9B.tmp" with contents
 [
 /nologo /MT /W3 /GX /O2 /I "../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllrd___Win32_Release/cllrd.pch" /YX /Fo"cllrd___Win32_Release/" /Fd"cllrd___Win32_Release/" /FD /c 
-"I:\D\Jean\LLR\llr402src\lmenu.c"
-"I:\D\Jean\LLR\llr402src\lprime.c"
+"I:\D\Jean\LLR\llr403_32src\lmenu.c"
+"I:\D\Jean\LLR\llr403_32src\lprime.c"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP14.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP15.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9B.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9C.tmp" with contents
 [
 /nologo /subsystem:console /incremental:no /pdb:"cllrd___Win32_Release/cllrd.pdb" /machine:I386 /nodefaultlib:"LIBC" /out:"cllrd___Win32_Release/cllrd.exe" 
 .\cllrd___Win32_Release\lmenu.obj
@@ -24,7 +24,7 @@ Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP15.tmp" with cont
 .\libhwloc.lib
 .\gmp.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP15.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP9C.tmp"
 <h3>Output Window</h3>
 Compiling...
 lmenu.c

@@ -107,6 +107,10 @@ SOURCE=..\gmp.h
 # End Group
 # Begin Source File
 
+SOURCE=..\hwloc\deprecated.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\factor32p.obj
 # End Source File
 # Begin Source File
