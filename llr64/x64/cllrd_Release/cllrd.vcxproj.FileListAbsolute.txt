@@ -1,0 +1,2 @@
+C:\Users\jpenn\LLR\llr402devsrc\llr64\x64\cllrd_Release\cllrd64.exe
+C:\Users\jpenn\LLR\llr403src\llr64\x64\cllrd_Release\cllrd64.exe

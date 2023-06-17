@@ -224,7 +224,7 @@ char wfsstring[] = "$a$b$c";
 #define MODE_4MINUS  0x20	/* k.b^(n+2)-1 (*) */
 #define MODE_PRIMORIAL 0x40	/* PRIMORIAL - can't handle this */
 #define MODE_PLUS5  0x80	/* k.b^n+5 */
-#define MODE_2MINUS3 0x100	/* 2k.b^n-3 JP 23/08/17 */
+#define MODE_2MINUS3 0x2000	/* 2k.b^n-3 JP 10/02/23 */
 #define MODE_AP	    0x200	/* 2^n+2k-1 */
 #define MODE_PLUS7  0x800	/* k.b^n+7 */
 #define MODE_2PLUS3 0x1000	/* 2k.b^n+3 */
@@ -8630,7 +8630,7 @@ int commonPRP (
  			if (usingDivPhi_m)
  				sprintf (buf, "%s does not divide %lu^%s^%d-1", str, a, sgb, usingDivPhi_m);
  			else
-			if (IniGetInt (INI_FILE, "OldRes64", 1))
+			if (IniGetInt (INI_FILE, "OldRes64", 0))
 				sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 			else
 				sprintf (buf, "%s is not prime.  RES64: %s", str, res64);
@@ -12003,12 +12003,16 @@ int plusminustest (
 
 	iaddg (incr, N);
 
-	klen = bitlen(gk);
+        klen = bitlen(gk);
 
-	if (klen > 53 || generic || (abs(gb->sign) > 1)) {	// we must use generic reduction
-		dk = 0.0;
-	}
-	else {								// we can use DWT ; compute the multiplier as a double
+        if (format == ABCDN && n == ndiff) { 			// Batalov 31/05/23
+                klen = 1; generic = FALSE; dk = 1.0;
+                globalb = base = gb->n[0];
+        } else
+        if (klen > 53 || generic || (abs(gb->sign) > 1)) {      // we must use generic reduction
+                dk = 0.0;
+        }
+	else {							// we can use DWT ; compute the multiplier as a double
 		dk = (double)gk->n[0];
 		if (gk->sign > 1)
 			dk += 4294967296.0*(double)gk->n[1];
@@ -12242,12 +12246,27 @@ PLMCONTINUE:
 
 	gwset_larger_fftlen_count(gwdata, (char)IniGetInt(INI_FILE, "FFT_Increment", 0));
 	if (incr == +1) {
-		gwsetmaxmulbyconst (gwdata, a);
-		divg (gb, tmp);					// tmp = (N-1)/base
-		explen = bitlen (tmp);
-		if (dk >= 1.0) {
-			if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, +1))) {
-				free(gk);
+                gwsetmaxmulbyconst (gwdata, a);
+                divg (gb, tmp);                                 // tmp = (N-1)/base
+                explen = bitlen (tmp);
+                if (format == ABCDN && n == ndiff) {		// Batalov 31/05/23
+                        dk = 1.0;
+                        if (!setupok (gwdata, gwsetup (gwdata, dk, base, 3*ndiff, +1))) {
+                                free(gk);
+                                free(N);
+                                free (M);
+                                free (tmp);
+                                free (tmp2);
+                                free (tmp3);
+                                *res = FALSE;           // Not proven prime...
+                                free (gwdata);
+                                return FALSE;
+                        }
+                        fprintf (stderr,"Found Phi(3,-%lu^%lu)...\n",base,ndiff);
+                } else
+                if (dk >= 1.0) {
+                        if (!setupok (gwdata, gwsetup (gwdata, dk, base, n, +1))) {
+                                free(gk);
 				free(N);
 				free (M);
 				free (tmp);
@@ -12604,6 +12623,7 @@ PLMCONTINUE:
 
 	ReplaceableLine (2);	/* Replace line */
 	gwtogiant (gwdata, x, tmp);
+        if (format == ABCDN && n == ndiff) modg (N, tmp); // Batalov 31/05/23
 	if (!isone (tmp)) {
 		*res = FALSE;	/* Not a prime */
 		if (abs(tmp->sign) < 2)	// make a 32 bit residue correct !!
@@ -12615,7 +12635,7 @@ PLMCONTINUE:
 			sprintf (oldres64, "%08lX%08lX", (unsigned long)0, (unsigned long)tmp->n[0]);
 		else
 			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
-		if (IniGetInt (INI_FILE, "OldRes64", 1))
+		if (IniGetInt (INI_FILE, "OldRes64", 0))
 			sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", str, res64, oldres64);
 		else
 			sprintf (buf, "%s is not prime.  RES64: %s", str, res64);
@@ -12723,6 +12743,7 @@ DoLucas:
 					bit++;
 				}
 				gwtogiant (gwdata, x, tmp);
+                                if (format == ABCDN && n == ndiff) modg (N, tmp); // Batalov 31/05/23
 				if (isone (tmp)) {
 					if (frestart)
 						continue;
@@ -12762,6 +12783,7 @@ DoLucas:
 				}
 				else {
 					ulsubg (1, tmp);
+                                        if (format == ABCDN && n == ndiff) modg (N, tmp); // this one is likely unnecessary ; Batalov 31/05/23
 //					gcdg (N, tmp);
 					gwpgcdg (N, tmp);
 					if (isone (tmp)) {
@@ -15937,12 +15959,12 @@ restart:
 		else
 			sprintf (oldres64, "%08lX%08lX", (unsigned long)tmp->n[1], (unsigned long)tmp->n[0]);
 		if (vrbareix && !dovrbareix)
-			if (IniGetInt (INI_FILE, "OldRes64", 1))
+			if (IniGetInt (INI_FILE, "OldRes64", 0))
 				sprintf (buf, "%s is not prime, although Vrba-Reix PSP!!  RES64: %s.  OLD64: %s", sgk, res64, oldres64);
 			else
 				sprintf (buf, "%s is not prime, although Vrba-Reix PSP!!  RES64: %s", sgk, res64);
 		else if (!vrbareix && !dovrbareix)
-			if (IniGetInt (INI_FILE, "OldRes64", 1))
+			if (IniGetInt (INI_FILE, "OldRes64", 0))
 				sprintf (buf, "%s is not prime.  RES64: %s.  OLD64: %s", sgk, res64, oldres64);
 			else
 				sprintf (buf, "%s is not prime.  RES64: %s", sgk, res64);
@@ -16309,7 +16331,7 @@ int primeContinue ()
 		nofac =  IniGetInt(INI_FILE, "NoPrefactoring", 0);
 		maxaprcl = IniGetInt(INI_FILE, "MaxAprcl", 200);
 		primolimit = IniGetInt(INI_FILE, "PrimoLimit", 30000);
-		nextifnear = IniGetInt(INI_FILE, "NextFFTifNearLimit", 1);
+		nextifnear = IniGetInt(INI_FILE, "NextFFTifNearLimit", 0); // Default FALSE Requested by Batalov 31/05/23
 		maxfftinc = IniGetInt(INI_FILE, "MaxFFTinc", 5);
 
 /* A new option to create interim save files every N iterations. */
@@ -16768,7 +16790,7 @@ OPENFILE :
 // #define MODE_4MINUS  0x20	/* k.b^(n+2)-1 (*)
 // #define MODE_PRIMORIAL 0x40	/* PRIMORIAL - can't handle this
 // #define MODE_PLUS5  0x80	/* k.b^n+5
-// #define MODE_2MINUS3 0x100	/* 2k.b^n-3 JP 23/08/17 */
+// #define MODE_2MINUS3 0x2000	/* 2k.b^n-3 JP 10/02/23 */
 // #define MODE_AP	    0x200	/* 2^n+2k-1
 // #define MODE_PLUS7  0x800	/* k.b^n+7
 // #define MODE_2PLUS3 0x1000	/* 2k.b^n+3
