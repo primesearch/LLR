@@ -9,8 +9,8 @@
 Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7.tmp" with contents
 [
 /nologo /G5 /MT /W3 /GX /Zi /O2 /I "../" /D "WIN32" /D "NDEBUG" /D "_CONSOLE" /D "_MBCS" /Fp"cllr___Win32_Release/cllr.pch" /YX /Fo"cllr___Win32_Release/" /Fd"cllr___Win32_Release/" /FD /c 
-"I:\D\Jean\LLR\llr404src\lmenu.c"
-"I:\D\Jean\LLR\llr404src\lprime.c"
+"I:\D\Jean\LLR\llr405devsrc\lmenu.c"
+"I:\D\Jean\LLR\llr405devsrc\lprime.c"
 ]
 Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7.tmp" 
 Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP8.tmp" with contents

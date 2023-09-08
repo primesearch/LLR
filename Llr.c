@@ -1480,6 +1480,15 @@ void tempFileName (
 	sprintf (buf, "%c%07i", c, remainder % 10000000); 
 } 
 
+void LtempFileName ( 
+	char	*buf, char *prefix, giant NN) 
+{ 
+	int remainder;
+ 
+	remainder = gmodi(19999981, NN);
+	sprintf (buf, "%s%07i", prefix, remainder % 10000000); 
+} 
+
 /* See if the given file exists */
 
 int fileExists (
@@ -2307,21 +2316,26 @@ int write_gwnum298 (
 	unsigned long *sum)
 {
 	giant	tmp;
-	unsigned long i, len, bytes;
+	unsigned long j, i=0, len, bytes;
 
 	tmp = popg (&gwdata->gdata, ((int) gwdata->bit_length >> 5) + 10);
 	if (tmp == NULL) return (FALSE);
+	i=100;
 	if (gwtogiant (gwdata, g, tmp)) goto err;
 	len = tmp->sign;
+	i=200;
 	if (len == 0) goto err;
+	i=300;
 	if (!write_long298 (fd, len, sum)) goto err;
 	bytes = len * sizeof (uint32_t);
+	i=400;
 	if ((unsigned long)_write (fd, tmp->n, bytes) != bytes) goto err;
 	*sum = (uint32_t) (*sum + len);
-	for (i = 0; i < len; i++) *sum = (uint32_t) (*sum + tmp->n[i]);
+	for (j = 0; j < len; j++) *sum = (uint32_t) (*sum + tmp->n[j]);
 	pushg (&gwdata->gdata, 1);
 	return (TRUE);
 err:	pushg (&gwdata->gdata, 1);
+	trace (i);
 	return (FALSE);
 }
 
@@ -5025,27 +5039,29 @@ int areTwoPRPValsEqual (
 
 struct program_state {
 	gwnum	x;			/* The current value in our left-to-right exponentiation */
-	gwnum	y;					/* used when some interim value is needed. */
+	gwnum	sqx;			/* square root of x */
+	gwnum	y;			/* used when some interim value is needed. */
+	gwnum	sqy;			/* square root of y */
 	unsigned long counter;		/* Current "iteration" counter */
 	unsigned long units_bit;	/* For shifting FFT data -- allows more robust double-checking */
 	unsigned long units_bit2;	/* Keep the shift count for y */
 	unsigned long error_count;	/* Count of any errors that have occurred during test */
 	unsigned int prp_base;		/* Fermat PRP base, default is 3 */
-	int	two_power_opt;			/* TRUE is power of two optimizations are enabled (N adjusted to create long run of squarings) */
-	int	residue_type;			/* Type of residue to generate (5 different residue types are supported) */
-	int	error_check_type;		/* 0=none, 1=Gerbicz, 2=double-checking */
-	int	state;					/* State variable see definitions below */
-	gwnum	alt_x;				/* When doing ERRCHK_DBLCHK, this is the alternate x value */
-								/* When doing ERRCHK_GERBICZ, this is the comparison checksum value being calculated */
-	unsigned long alt_units_bit;/* When doing ERRCHK_DBLCHK, this is the alternate shift count */
-	gwnum	u0;					/* Saved first value of the Gerbicz checksum function */
-	gwnum	d;					/* Last computed value of the Gerbicz checksum function */
-	unsigned long L;			/* Iterations between multiplies in computing Gerbicz checksum */
+	int	two_power_opt;		/* TRUE is power of two optimizations are enabled (N adjusted to create long run of squarings) */
+	int	residue_type;		/* Type of residue to generate (5 different residue types are supported) */
+	int	error_check_type;	/* 0=none, 1=Gerbicz, 2=double-checking */
+	int	state;			/* State variable see definitions below */
+	gwnum	alt_x;			/* When doing ERRCHK_DBLCHK, this is the alternate x value */
+					/* When doing ERRCHK_GERBICZ, this is the comparison checksum value being calculated */
+	unsigned long alt_units_bit;	/* When doing ERRCHK_DBLCHK, this is the alternate shift count */
+	gwnum	u0;			/* Saved first value of the Gerbicz checksum function */
+	gwnum	d;			/* Last computed value of the Gerbicz checksum function */
+	unsigned long L;		/* Iterations between multiplies in computing Gerbicz checksum */
 	unsigned long start_counter;	/* Counter at start of current Gerbicz or double-check block */
 	unsigned long next_mul_counter;	/* Counter when next Gerbicz multiply takes place */
 	unsigned long end_counter;	/* Counter when current Gerbicz or double-check block ends */
-	giant gx;					/* x result of the test in giant form */
-	giant gy;					/* y result of the test in giant form */
+	giant gx;			/* x result of the test in giant form */
+	giant gy;			/* y result of the test in giant form */
 } ps;
 
 #define ERRCHK_NONE		0	/* No high-reliability error-checking */
@@ -5107,64 +5123,95 @@ int writeSaveFile (
 	struct work_unit *w,
 	struct program_state *ps)
 {
-	int	fd, i;
+	int	fd, j, i = 0;
 	unsigned long sum = 0;
 
 /* Now save to the intermediate file */
 	fd = openWriteSaveFile (write_save_file_state);
+	i=1;
 	if (fd < 0) return (FALSE);
-
+	i=2;
 	if (!write_header (fd, PRP_MAGICNUM, PRP_VERSION, w)) goto err;
-
+	i=3;
 	if (!write_long298 (fd, ps->error_count, &sum)) goto err;
+	i=4;
 	if (!write_long298 (fd, ps->counter, &sum)) goto err;
+	i=5;
 	if (!write_long298 (fd, ps->prp_base, &sum)) goto err;
+	i=6;
 	if (!write_long298 (fd, ps->units_bit, &sum)) goto err;
+	i=7;
 	if (!write_long298 (fd, ps->units_bit2, &sum)) goto err;
+	i=8;
 	if (!write_long298 (fd, ps->two_power_opt, &sum)) goto err;
+	i=9;
 	if (!write_long298 (fd, ps->residue_type, &sum)) goto err;
+	i=10;
 	if (!write_long298 (fd, ps->error_check_type, &sum)) goto err;
+	i=11;
 	if (!write_long298 (fd, ps->state, &sum)) goto err;
+	i=12;
 	if (!write_long298 (fd, ps->alt_units_bit, &sum)) goto err;
+	i=13;
 	if (!write_long298 (fd, ps->L, &sum)) goto err;
+	i=14;
 	if (!write_long298 (fd, ps->start_counter, &sum)) goto err;
+	i=15;
 	if (!write_long298 (fd, ps->next_mul_counter, &sum)) goto err;
+	i=16;
 	if (!write_long298 (fd, ps->end_counter, &sum)) goto err;
+	i=17;
 	if (!write_gwnum298 (fd, gwdata, ps->x, &sum)) goto err;
+	i=18;
+//	if(ps->state == STATE_NORMAL || ps->state == STATE_DCHK_PASS1 || ps->state == STATE_GERB_MID_BLOCK) { // Be sure it is not an error checking iteration!
+	    if (!write_gwnum298 (fd, gwdata, ps->sqx, &sum)) goto err;
+//	}
+	i=19;
 	if (!write_gwnum298 (fd, gwdata, ps->y, &sum)) goto err;
-
+	i=20;
+//	if(ps->state == STATE_NORMAL || ps->state == STATE_DCHK_PASS1 || ps->state == STATE_GERB_MID_BLOCK) { // Be sure it is not an error checking iteration!
+	    if (!write_gwnum298 (fd, gwdata, ps->sqy, &sum)) goto err;
+//	}
+	i=21;
 	if (ps->state != STATE_NORMAL && ps->state != STATE_GERB_MID_BLOCK && ps->state != STATE_GERB_MID_BLOCK_MULT) {
 		if (!write_gwnum298 (fd, gwdata, ps->alt_x, &sum)) goto err;
 	}
+	i=22;
 
 	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
 	    ps->state != STATE_GERB_START_BLOCK && ps->state != STATE_GERB_FINAL_MULT) {
 		if (!write_gwnum298 (fd, gwdata, ps->u0, &sum)) goto err;
 	}
+	i=23;
 
 	if (ps->state != STATE_NORMAL && ps->state != STATE_DCHK_PASS1 && ps->state != STATE_DCHK_PASS2 &&
 	    ps->state != STATE_GERB_START_BLOCK) {
 		if (!write_gwnum298 (fd, gwdata, ps->d, &sum)) goto err;
 	}
+	i=24;
 	
 /* Save the five timers */
 
-	for (i=0; i<5; i++) {
-		if (timers[i+5] != 0.0) {// if the timer was running
-			end_timer (i);			// update and save it
-			if (! write_double (fd, timers[i], (long*)&sum)) {
-				start_timer (i);	// and then, restart it, even if write is in error!
+	for (j=0; j<5; j++) {
+		if (timers[j+5] != 0.0) {// if the timer was running
+			end_timer (j);			// update and save it
+			if (! write_double (fd, timers[j], (long*)&sum)) {
+				start_timer (j);	// and then, restart it, even if write is in error!
+				i=25;
 				goto err;
 			}
-			if (! write_double (fd, timers[i+5], (long*)&sum)) { // save the timer status
-				start_timer (i);	// and then, restart it, even if write is in error!
+			if (! write_double (fd, timers[j+5], (long*)&sum)) { // save the timer status
+				start_timer (j);	// and then, restart it, even if write is in error!
+				i=26;
 				goto err;
 			}
-			start_timer (i);	// and then, restart it!
+			start_timer (j);	// and then, restart it!
 		}
 		else {
-			if (! write_double (fd, timers[i], (long*)&sum)) goto err;	// save the timer
-			if (! write_double (fd, timers[i+5], (long*)&sum)) goto err;	// save its status
+			if (! write_double (fd, timers[j], (long*)&sum)) goto err;	// save the timer
+			i=27;
+			if (! write_double (fd, timers[j+5], (long*)&sum)) goto err;	// save its status
+			i=28;
 		}
 	}
 	
@@ -5177,6 +5224,7 @@ int writeSaveFile (
 /* An error occured.  Delete the current file. */
 
 err:	deleteWriteSaveFile (write_save_file_state, fd);
+	trace (i);
 	return (FALSE);
 }
 
@@ -5188,7 +5236,7 @@ int readPRPSaveFile (
 	struct work_unit *w,		/* Work unit */
 	struct program_state *ps)		/* PRP state structure to read and fill in */
 {
-	int	fd, i;
+	int	fd, j, i=0;
 	unsigned long savefile_prp_base, sum, filesum, version;
 	fd = _open (filename, _O_BINARY | _O_RDONLY);
 	if (fd <= 0) return (FALSE);
@@ -5243,7 +5291,12 @@ int readPRPSaveFile (
 
 	// All PRP states wrote an x value
 	if (!read_gwnum298 (fd, gwdata, ps->x, &sum)) goto err;
+	i=1000;
+	if (!read_gwnum298 (fd, gwdata, ps->sqx, &sum)) goto err;
 	if (!read_gwnum298 (fd, gwdata, ps->y, &sum)) goto err;
+	i=2000;
+	if (!read_gwnum298 (fd, gwdata, ps->sqy, &sum)) goto err;
+	i=3000;
 
 	// In version 3, we only wrote x to the save file at Gerbicz start block.  In version 4, we write x and the
 	// identical alt_x.  There is added error protection by always having at least two gwnum values in memory.
@@ -5269,10 +5322,10 @@ int readPRPSaveFile (
 	
 /* Read the five timers and their status, and restart them! */
 
-	for (i=0; i<5; i++) {
-		if (! read_double (fd, &timers[i], (long*)&sum)) goto err;
-		if (! read_double (fd, &timers[i+5], (long*)&sum)) goto err;
-		start_timer (i);
+	for (j=0; j<5; j++) {
+		if (! read_double (fd, &timers[j], (long*)&sum)) goto err;
+		if (! read_double (fd, &timers[j+5], (long*)&sum)) goto err;
+		start_timer (j);
 	}
 
 	// Validate checksum and return
@@ -5281,6 +5334,8 @@ int readPRPSaveFile (
 	_close (fd);
 	return (TRUE);
 err:	_close (fd);
+	trace(i);
+	trace(j);
 	return (FALSE);
 }
 
@@ -7137,13 +7192,14 @@ int GerbiczTest (
 {
 	unsigned long explen, final_counter, iters, errchk, bit, init_units_bit = 0, init_alt_units_bit = 0; 
 	unsigned long restart_error_count = 0;		/* On a restart, use this error count rather than the one from a save file */
-	int	have_res2048;
+	int	have_res2048, have_to_multiply = 0, firstone = 0;
 	unsigned long final_counter_y, max_counter, loopshift = 0, last_counter = 0xFFFFFFFF;	/* Iteration of last error */
 	long		restart_counter = -1;			/* On a restart, this specifies how far back to rollback save files */
-	giant	exp, tmp, tmp2, tmp3; 
+	giant	exp, tmp, tmp2, tmp3, tmp4, tmp5; 
+	mpz_t sqrtm1modProth;		// J.P. 17/08/23
 //	struct	program_state ps;
 	int		interim_counter_off_one, interim_mul, mul_final, PositiveResult;
-	int		first_iter_msg, echk, near_fft_limit, stopping; 
+	int		first_iter_msg, echk, near_fft_limit, stopping, sign; 
 	double	inverse_explen;
 	double	reallyminerr = 1.0; 
 	double	reallymaxerr = 0.0; 
@@ -7154,6 +7210,7 @@ int GerbiczTest (
 	long	write_time = DISK_WRITE_TIME * 60; 
 	int	string_rep_truncated;
 	int	error_count_messages;
+	gwnum sqR;
 //	readSaveFileState read_save_file_state; /* Manage savefile names during reading */
 	writeSaveFileState write_save_file_state; /* Manage savefile names during writing */
 
@@ -7216,11 +7273,15 @@ int GerbiczTest (
 		exp = newgiant (4*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
 		tmp = newgiant (4*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
 		tmp2 = newgiant (4*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
+		tmp3 = newgiant (4*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);// 15/08/23
+		tmp4 = newgiant (4*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);// 05/09/23
 	}
 	else {
 		exp = newgiant (2*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
 		tmp = newgiant (2*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
 		tmp2 = newgiant (2*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);
+		tmp3 = newgiant (2*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);// 15/08/23
+		tmp4 = newgiant (2*gwdata->FFTLEN*sizeof(double)/sizeof(short) + 16);// 05/09/23
 	}
 
 /* As a small optimization, base 2 numbers are computed as a^(k*2^n) or a^(k*2^(n-1)) mod N with the final result */
@@ -7268,12 +7329,19 @@ int GerbiczTest (
 
 	explen = Nlen = bitlen (exp);
 	final_counter = explen - 1;
+	sign = (((w->n&7) == 3) || ((w->n&7) == 5))? 1 : 0;	// 1 if positive, 0 if negative
 	final_counter_y = (final_counter/2)-1;	// Warning : ps.counter starts from 0 !
 
 /* Allocate memory */
 
 	ps.x = gwalloc (gwdata);
 	ps.y = gwalloc (gwdata);
+	ps.sqx = gwalloc (gwdata);
+	ps.sqy = gwalloc (gwdata);
+	sqR = gwalloc (gwdata);
+	gwzero (gwdata, ps.sqx);
+	gwzero (gwdata, ps.sqy);
+	
 	if (ps.error_check_type == ERRCHK_GERBICZ || ps.error_check_type == ERRCHK_DBLCHK)
 		ps.alt_x = gwalloc (gwdata);
 	if (ps.error_check_type == ERRCHK_GERBICZ) {
@@ -7294,11 +7362,11 @@ int GerbiczTest (
 			init_units_bit = IniGetInt (INI_FILE, "InitialShiftCount", init_units_bit);
 			// Initial shift count can't be larger than n-64 (the -64 avoids wraparound in setting intial value)
 			init_units_bit = init_units_bit % ((ps.residue_type == GMN_TYPE)?2*(w->n - 64):(w->n - 64));
-			tmp3 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
-			ultog (ps.prp_base, tmp3);
-			gshiftleft (init_units_bit, tmp3);
+			tmp5 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+			ultog (ps.prp_base, tmp5);
+			gshiftleft (init_units_bit, tmp5);
 			ps.units_bit = init_units_bit;
-			gianttogw (gwdata, tmp3, ps.x);
+			gianttogw (gwdata, tmp5, ps.x);
 			pushg (&gwdata->gdata, 1);
 		} else {
 			ps.units_bit = ps.alt_units_bit = init_units_bit = 0;
@@ -7306,6 +7374,8 @@ int GerbiczTest (
 		}
 
 		gwcopy (gwdata, ps.x, ps.y);	// temporary...
+		gwcopy (gwdata, ps.x, ps.sqx);	// temporary...
+		gwcopy (gwdata, ps.x, ps.sqy);	// temporary...
 		ps.units_bit2 = 0;
 
 /* The easy state case is no high-reliability error-checking */
@@ -7313,8 +7383,8 @@ int GerbiczTest (
 		if (ps.error_check_type == ERRCHK_NONE) {
 			ps.state = STATE_NORMAL;
 			ps.start_counter = 0;			// Value not used
-			ps.end_counter = 0;				// Value not used
-			ps.alt_units_bit = ps.units_bit; // JP
+			ps.end_counter = 0;			// Value not used
+			ps.alt_units_bit = ps.units_bit; 	// JP
 		}
 
 /* The next easiest case is double-the-work error-checking comparing residues at specified intervals */
@@ -7469,8 +7539,14 @@ int GerbiczTest (
 			else
 				sprintf (buf, "Starting Proth prime test of %s\n", string_rep);
 		else if (ps.residue_type == PRP_TYPE_SPRP)
+			if (showdigits)
+				sprintf (buf, "Starting Strong PRP test of %s (%lu decimal digits)\n", string_rep, nbdg);
+			else
 				sprintf (buf, "Starting Strong PRP test of %s\n", string_rep);
 		else
+			if (showdigits)
+				sprintf (buf, "Starting Fermat PRP test of %s (%lu decimal digits)\n", string_rep, nbdg);
+			else
 				sprintf (buf, "Starting Fermat PRP test of %s\n", string_rep);
 		OutputStr (buf);
 		if (verbose || restarting)
@@ -7517,14 +7593,15 @@ int GerbiczTest (
 		gwnum	x;			/* Pointer to number to square */
 		unsigned long *units_bit;	/* Pointer to units_bit to update */
 		int	saving, saving_highly_reliable, sending_residue, interim_residue, interim_file, stop_reason;
-		int	actual_frequency, have_to_multiply = 0;
+		int	actual_frequency/*, have_to_multiply = 0*/;
 
 /* If this is the first iteration of a Gerbicz error-checking block, then */
 /* determine "L" -- the number of squarings between each Gerbicz multiplication */
 /* We end this Gerbicz block after L^2 iterations.  */
 /* If there aren't many iterations left, revert to simple double-checking. */
 
-		if (ps.state == STATE_GERB_START_BLOCK) {
+			have_to_multiply = 0;
+			if (ps.state == STATE_GERB_START_BLOCK) {
 			int	iters_left = final_counter - ps.counter;
 			if (iters_left < 49) {
 				ps.state = STATE_DCHK_PASS1;
@@ -7637,6 +7714,11 @@ int GerbiczTest (
 
                         gwerror_checking (gwdata, echk);    // Set roundoff error checking
                         have_to_multiply = bitval (exp, final_counter-ps.counter-1);
+			if (ps.counter == (final_counter-1)) {
+			    if(ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_MID_BLOCK) // Be sure it is not an error checking iteration!
+				gwcopy (gwdata, x, ps.sqx);
+				// save sqrt (-1) modulo a Proth prime 29/07/23
+			}
                         if ((ps.counter <= (care_limit+loopshift)) || (ps.counter >= (max_counter-care_limit)) || (maxerr_recovery_mode[6] && ps.counter == last_counter)) {
 				gwmul3_carefully (gwdata, x, x, x, 0 | (have_to_multiply?GWMUL_MULBYCONST:0));
                                 care = TRUE;    // 24/05/21
@@ -7653,11 +7735,16 @@ int GerbiczTest (
 			if ((*units_bit) >= ((ps.residue_type == GMN_TYPE)?2*(w->n):w->n)) {
 				(*units_bit) -= (ps.residue_type == GMN_TYPE)?2*(w->n):w->n;
 			}
-			if ((ps.residue_type == GMN_TYPE) && (ps.counter == final_counter_y)) {
+			if (ps.residue_type == GMN_TYPE) {
+			    if (ps.counter == (final_counter_y))	{
 				gwcopy (gwdata, x, ps.y);
 				ps.units_bit2 = *units_bit;
 				loopshift = final_counter_y;
 				max_counter = final_counter;
+			    }
+			    else if (ps.counter == (final_counter_y - 1))
+				if(ps.state == STATE_NORMAL || ps.state == STATE_DCHK_PASS1 || ps.state == STATE_GERB_MID_BLOCK) // Be sure it is not an error checking iteration!
+				    gwcopy (gwdata, x, ps.sqy);
 			}
 
 		}
@@ -8058,8 +8145,8 @@ int GerbiczTest (
 /* Output the 64-bit residue at specified interims. */
 
 		if (interim_residue) {
-			tmp3 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
-			if (gwtogiant (gwdata, x, tmp3)) {
+			tmp5 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 5);
+			if (gwtogiant (gwdata, x, tmp5)) {
 				pushg (&gwdata->gdata, 1);
 				OutputBoth (ERRMSG80);
 				inc_error_count (2, &ps.error_count);
@@ -8068,22 +8155,22 @@ int GerbiczTest (
 				sleep5 = TRUE;
 				goto restart;
 			}
-			rotategp (tmp3, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, *units_bit);
+			rotategp (tmp5, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, *units_bit);
 			if (interim_mul)
-				basemulg (tmp3, w, ps.prp_base, -1);
+				basemulg (tmp5, w, ps.prp_base, -1);
 			if (w->known_factors && ps.residue_type != PRP_TYPE_COFACTOR)
-				modg (N, tmp3);
+				modg (N, tmp5);
 			if ((ps.residue_type == PROTH_TYPE)||(ps.residue_type == GMN_TYPE))
 				sprintf (buf, "%s interim Proth residue %08lX%08lX at iteration %ld\n",
-					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					string_rep, (unsigned long) tmp5->n[1], (unsigned long) tmp5->n[0],
 					ps.counter - interim_counter_off_one);
 			else if (ps.residue_type == PRP_TYPE_SPRP)
 				sprintf (buf, "%s interim Strong PRP residue %08lX%08lX at iteration %ld\n",
-					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					string_rep, (unsigned long) tmp5->n[1], (unsigned long) tmp5->n[0],
 					ps.counter - interim_counter_off_one);
 			else
 				sprintf (buf, "%s interim Fermat PRP residue %08lX%08lX at iteration %ld\n",
-					string_rep, (unsigned long) tmp3->n[1], (unsigned long) tmp3->n[0],
+					string_rep, (unsigned long) tmp5->n[1], (unsigned long) tmp5->n[0],
 					ps.counter - interim_counter_off_one);
 			OutputBoth (buf);
 			pushg (&gwdata->gdata, 1);
@@ -8191,12 +8278,119 @@ int GerbiczTest (
 		if (gwtogiant (gwdata, ps.y, tmp2)) {
 			OutputBoth (ERRMSG8);
 			inc_error_count (2, &ps.error_count);
-			restart_counter = -1;			/* rollback to any save file */
+			restart_counter = -1;	/* rollback to any save file */
 			sleep5 = TRUE;
 			goto restart;
 		}
 		rotategp (tmp2, (ps.residue_type == GMN_TYPE)?2*(w->n):w->n, ps.units_bit2);
 		ps.gy = tmp2;
+		gtog (ps.gx, tmp3);
+		modg (M, tmp3);
+		gtog (ps.gy, tmp4);
+		modg (M, tmp4);
+		if (sign) {
+		    mulg (tmp4, tmp3);
+		    modg (N, tmp3);
+		    iaddg (1, tmp3);	// Compute the (unnormalized) residue
+//		    if (gcompg (N, tmp3) != 0) 
+//			OutputBoth ("\nProth Error for sign = PLUS.\n");
+		}
+		else {
+		    gwpinvg (N, tmp4);
+		    mulg (tmp4, tmp3);
+		    modg (N, tmp3);
+		    iaddg (1, tmp3);	// Compute the (unnormalized) residue
+//		    if (gcompg (N, tmp3) != 0) 
+//			OutputBoth ("\nProth Error for sign = MINUS.\n");
+		}
+		if (gcompg (N, tmp3) == 0) {	// if Positive result
+		    char mpztxtfilename[40], mpzfilename[40], gfilename[40],  *mpzchain;
+		    int mpzbase;
+		    FILE *fout, *foutr;
+		    gwtogiant (gwdata, ps.sqx, tmp3);
+		    modg (M, tmp3);
+		    gwtogiant (gwdata, ps.sqy, tmp4);
+		    modg (M, tmp4);
+		    if (sign) {
+			mulg (tmp4, tmp3);
+			modg (N, tmp3);
+		    }
+		    else {
+			gwpinvg (N, tmp4);
+			mulg (tmp4, tmp3);
+			modg (N, tmp3);
+		    }
+		    LtempFileName (mpztxtfilename, (char*)"tsqrtm1_", N);
+		    LtempFileName (mpzfilename, (char*)"zsqrtm1_", N);
+		    LtempFileName (gfilename, (char*)"gsqrtm1_", N);
+		    if ((IniGetInt (INI_FILE, "Svgsqrtm1", 0))||(IniGetInt (INI_FILE, "Prtsqrtm1", 0))||(IniGetInt (INI_FILE, "Svtsqrtm1", 0))||(IniGetInt (INI_FILE, "Svzsqrtm1", 0))) {
+			int ysign;
+			mpz_t mpzsqrtm1modProth;
+			mpz_init (mpzsqrtm1modProth);
+			gtompz (tmp3, mpzsqrtm1modProth);
+			ysign = tmp3->sign;
+			squareg (tmp3);		// Verification 30/07/23
+			iaddg (1,tmp3);
+			modg (N, tmp3);
+			if (isZero(tmp3)) {	// Verification OK!
+			    mpztog (mpzsqrtm1modProth, tmp3);	// Restore the result sqR.
+			    if (IniGetInt (INI_FILE, "Svgsqrtm1", 0)) {
+				gianttogw (gwdata, tmp3, sqR);
+				writeToFile (gwdata, gdata, gfilename, ps.counter, sqR, NULL);
+			    }
+			    if (mpzbase = IniGetInt (INI_FILE, "Prtsqrtm1", 0)) {
+				if (mpzbase == 1) {
+				    sprintf (res64, "%08lX%08lX", (unsigned long) ((ysign > 1) ? tmp3->n[1] : 0), (unsigned long) tmp3->n[0]);
+				    sprintf (buf,"\nsqrt(-1) mod N res64 = %s\n", (ysign)? res64:"0");
+				    OutputStr(buf);
+				}
+				else if (mpzbase <= 36) {
+				    mpzchain = (char*)malloc (mpz_sizeinbase(mpzsqrtm1modProth, mpzbase)+2);
+				    mpz_get_str (mpzchain, mpzbase, mpzsqrtm1modProth);
+				    printf ("\n%s\n", mpzchain);
+				    free (mpzchain);
+				}
+				else {
+				    sprintf (buf, "%d : base too large, conversion not done for printing \n", mpzbase);
+				    OutputStr(buf);
+				}
+			    }		// End Prtsqrtm1
+			    if (mpzbase = IniGetInt (INI_FILE, "Svtsqrtm1", 0)) {
+				if (mpzbase < 2) {
+				    sprintf (buf, "%d : base too small, conversion not done for saving.\n", mpzbase);
+				    OutputStr(buf);				
+				}
+				else if (mpzbase <= 36) {
+				    mpzchain = (char*)malloc (mpz_sizeinbase(mpzsqrtm1modProth, mpzbase)+2);
+				    mpz_get_str(mpzchain, mpzbase, mpzsqrtm1modProth);
+				    fout = fopen  (mpztxtfilename, "w");
+				    fprintf(fout, "%s\n", mpzchain);
+				    fclose(fout);
+				    free (mpzchain);
+				}
+				else {
+				    sprintf (buf, "%d : base too large, conversion not done for saving.\n", mpzbase);
+				    OutputStr(buf);
+				}
+			    }	// End Svtsqrtm1
+			    if (IniGetInt (INI_FILE, "Svzsqrtm1", 0)) {
+				foutr = fopen ( mpzfilename, "w");
+				if (!__gmpz_out_raw(foutr, mpzsqrtm1modProth)) {
+				    sprintf(buf, "mpz_out_raw : disk output error.\n");
+				    OutputStr(buf);
+				}
+				else
+				    fclose(foutr);			
+			    }		    
+			}
+			else  {
+			    sprintf (buf, "\nERROR, sqR != sqrt(-1) modulo %s.\n", string_rep);
+			    OutputBoth (buf);
+			}
+			gwfree (gwdata, sqR);
+			mpz_clear (sqrtm1modProth);
+		}
+	    }
 
 	/* Delete the continuation files. */
 
@@ -8204,38 +8398,112 @@ int GerbiczTest (
 	
 	}
 	else {
+		
+	    /* Print results */
 
-		/* Print results */
-
-		if (PositiveResult) {
-			if (ps.residue_type == PROTH_TYPE)
-				sprintf (buf, "%s is prime", string_rep);
-			else	if (ps.residue_type == PRP_TYPE_SPRP) {
-				sprintf (buf, "%s is a Strong Probable prime", string_rep);
-				if (ps.prp_base != 3)
-					sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
+	    if (PositiveResult) {
+		char mpztxtfilename[40], mpzfilename[40], gfilename[40],  *mpzchain;
+		int mpzbase;
+		FILE *fout, *foutr;
+		LtempFileName (mpztxtfilename, (char*)"tsqrtm1_", N);
+		LtempFileName (mpzfilename, (char*)"zsqrtm1_", N);
+		LtempFileName (gfilename, (char*)"gsqrtm1_", N);
+		if (ps.residue_type == PROTH_TYPE) {
+		    if ((IniGetInt (INI_FILE, "Svgsqrtm1", 0))||(IniGetInt (INI_FILE, "Prtsqrtm1", 0))||(IniGetInt (INI_FILE, "Svtsqrtm1", 0))||(IniGetInt (INI_FILE, "Svzsqrtm1", 0))) {
+		    int ysign;
+		    mpz_t mpzsqrtm1modProth;
+		    mpz_init (mpzsqrtm1modProth);
+		    gwtogiant (gwdata, ps.sqx, tmp3);
+		    gtompz (tmp3, mpzsqrtm1modProth);
+		    ysign = tmp3->sign;
+		    squareg (tmp3);		// Verification 30/07/23
+		    iaddg (1,tmp3);
+		    modg (N, tmp3);
+		    if (isZero(tmp3)) {
+			if (IniGetInt (INI_FILE, "Svgsqrtm1", 0))
+			    writeToFile (gwdata, gdata, gfilename, ps.counter, ps.sqx, NULL);
+			if (mpzbase = IniGetInt (INI_FILE, "Prtsqrtm1", 0)) {
+			    if (mpzbase == 1) {
+				gwtogiant (gwdata, ps.sqx, tmp3);
+				sprintf (res64, "%08lX%08lX", (unsigned long) ((ysign > 1) ? tmp3->n[1] : 0), (unsigned long) tmp3->n[0]);
+				sprintf (buf,"\nsqrt(-1) mod N res64 = %s\n", (ysign)? res64:"0");
+				OutputStr(buf);
+			    }
+			    else if (mpzbase <= 36) {
+				mpzchain = (char*)malloc (mpz_sizeinbase(mpzsqrtm1modProth, mpzbase)+2);
+				mpz_get_str (mpzchain, mpzbase, mpzsqrtm1modProth);
+				printf ("\n%s\n", mpzchain);
+				free (mpzchain);
+			    }
+			    else {
+				sprintf (buf, "%d : base too large, conversion not done for printing \n", mpzbase);
+				OutputStr(buf);
+			    }
+			}	// End Prtsqrtm1
+			if (mpzbase = IniGetInt (INI_FILE, "Svtsqrtm1", 0)) {
+			    if (mpzbase < 2) {
+				sprintf (buf, "%d : base too small, conversion not done for saving.\n", mpzbase);
+				OutputStr(buf);				
+			    }
+			    else if (mpzbase <= 36) {
+				mpzchain = (char*)malloc (mpz_sizeinbase(mpzsqrtm1modProth, mpzbase)+2);
+				mpz_get_str(mpzchain, mpzbase, mpzsqrtm1modProth);
+				fout = fopen  (mpztxtfilename, "w");
+//				__gmpz_out_str(fout, mpzbase, mpzsqrtm1modProth);
+				fprintf(fout, "%s\n", mpzchain);
+				fclose(fout);
+				free (mpzchain);
+			    }
+			    else {
+				sprintf (buf, "%d : base too large, conversion not done for saving.\n", mpzbase);
+				OutputStr(buf);
+			    }
+			}	// End Svtsqrtm1
+			if (IniGetInt (INI_FILE, "Svzsqrtm1", 0)) {
+			    foutr = fopen ( mpzfilename, "w");
+				if (!__gmpz_out_raw(foutr, mpzsqrtm1modProth)) {
+					sprintf(buf, "mpz_out_raw : disk output error.\n");
+					OutputStr(buf);
+				}
+				else
+					fclose(foutr);
+			
+			}		    
+		    }
+		    else  {
+		    sprintf (buf, "\nERROR, y != sqrt(-1) modulo %s.\n", string_rep);
+		    OutputBoth (buf);
+		    }
+		    mpz_clear (sqrtm1modProth);
+		    }
+		    sprintf (buf, "%s is prime", string_rep);
+		}   // End Proth Type
+		else	if (ps.residue_type == PRP_TYPE_SPRP) {
+			    sprintf (buf, "%s is a Strong Probable prime", string_rep);
+			    if (ps.prp_base != 3)
+				sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
 			}
 			else {
 				sprintf (buf, "%s is a Fermat Probable prime", string_rep);
 				if (ps.prp_base != 3)
-					sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
+				    sprintf (buf+strlen(buf), " (%u-PRP)", ps.prp_base);
 			}
 
 			strcat (buf, "!");
 			sprintf (buf+strlen(buf), " (%lu decimal digits)", nbdg); 
 			*res = TRUE;
-		}
-		else {
-			sprintf (buf, "%s is not prime.  ", string_rep);
-			if (ps.prp_base != 3)
-				sprintf (buf+strlen(buf), "Base-%u ", ps.prp_base);
-			if (ps.residue_type == PROTH_TYPE)
-				sprintf (buf+strlen(buf), "Proth ");
-			else if (ps.residue_type != PRP_TYPE_FERMAT)
-				sprintf (buf+strlen(buf), "Type-%d ", ps.residue_type);
-			sprintf (buf+strlen(buf), "RES64: %s.", res64);
-			*res = FALSE;
-		}
+	    }
+	    else {
+		    sprintf (buf, "%s is not prime.  ", string_rep);
+		    if (ps.prp_base != 3)
+			sprintf (buf+strlen(buf), "Base-%u ", ps.prp_base);
+		    if (ps.residue_type == PROTH_TYPE)
+			sprintf (buf+strlen(buf), "Proth ");
+		    else if (ps.residue_type != PRP_TYPE_FERMAT)
+			sprintf (buf+strlen(buf), "Type-%d ", ps.residue_type);
+		    sprintf (buf+strlen(buf), "RES64: %s.", res64);
+		    *res = FALSE;
+	    }
 
 /* Print known factors */
 
@@ -8262,6 +8530,7 @@ int GerbiczTest (
 		free (tmp);
 		free (tmp2);
 		gwfree (gwdata, ps.x);
+		gwfree (gwdata, ps.sqx);
 		gwfree (gwdata, ps.y);
                 free (exp); // this missing free caused a memory leak... 12/02/22
 

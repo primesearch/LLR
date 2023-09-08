@@ -1,0 +1,95 @@
+﻿  gwutil.c
+  lmenu.c
+  lprime.c
+C:\Users\jpenn\LLR\llr405devsrc\factor.c(106,23): warning C4996: 'getpid': The POSIX name for this item is deprecated. Instead, use the ISO C and C++ conformant name: _getpid. See online help for details.
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(284,31): warning C4267: '=' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(437,35): warning C4267: '=' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(613,31): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(811,31): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(1594,34): warning C4267: '=' : conversion de 'size_t' en 'long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\mpz_aprcl.c(1678,18): warning C4267: '=' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(1449,31): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(1454,30): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(1463,35): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(1542,23): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(3257,56): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(5375,23): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(5593,38): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(5697,38): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(10585,34): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(10590,34): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(10720,34): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(10922,33): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(11883,31): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(11901,32): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12063,34): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12241,37): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12252,37): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12279,36): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12286,36): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12859,33): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12869,33): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(12887,33): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(13112,27): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(14070,11): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(14112,11): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(14197,26): warning C4267: '=' : conversion de 'size_t' en 'unsigned long', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(16293,33): warning C4267: 'fonction' : conversion de 'size_t' en 'int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(16660,44): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(16667,44): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17147,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17150,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17175,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17181,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17234,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17237,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17288,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17291,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17317,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17320,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17346,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17349,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17371,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17374,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17398,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17401,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17425,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17428,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17452,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17455,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17479,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17482,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17506,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17509,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17535,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17538,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17564,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17567,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17591,40): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17594,40): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17616,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17619,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17653,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17656,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17679,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17682,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17704,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17707,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17729,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17732,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17760,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17763,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17791,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17794,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17859,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17861,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17869,44): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17877,44): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17933,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17935,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17966,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+C:\Users\jpenn\LLR\llr405devsrc\Llr.c(17969,41): warning C4267: 'fonction' : conversion de 'size_t' en 'unsigned int', perte possible de données
+  Génération de code en cours...
+C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppBuild.targets(1371,5): warning MSB8012: TargetPath(C:\Users\jpenn\LLR\llr405devsrc\llr64\x64\Debug\cllr.exe) ne correspond pas à la valeur de la propriété OutputFile (C:\Users\jpenn\LLR\llr405devsrc\llr64\cllr___Win32_Debug\cllr.exe) de Linker. Cela peut entraîner une génération incorrecte de votre projet. Pour corriger ce problème, vérifiez que les valeurs des propriétés $(OutDir), $(TargetName) et $(TargetExt) correspondent à la valeur spécifiée dans %(Link.OutputFile).
+LINK : warning LNK4098: conflit entre la bibliothèque par défaut 'LIBCMT' et les autres bibliothèques ; utilisez /NODEFAULTLIB:library
+  cllr.vcxproj -> C:\Users\jpenn\LLR\llr405devsrc\llr64\x64\Debug\cllr.exe

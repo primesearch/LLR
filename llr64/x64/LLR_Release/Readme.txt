@@ -1,7 +1,14 @@
 
-		Welcome to LLR program Version 4.0.4 !
+		Welcome to LLR program Version 4.0.5 !
 
 0) What is new in this version :
+  The only new feature in this development version is to allow the access to
+  sqrt(-1) modulo P when P is a Proth or Gaussian Mersenne norm prime.
+  To do that, four options are implemented :
+  -oPrtsqrtm1=<base> : print data if 2<=base<=36 , 64bit residue if base = 1
+  -oSvtsqrtm1=<base> : Save the data on disk as characters in this base.
+  -oSvzsqrtm1=1 : Save the data on disk in raw GMP form.
+  -oSvgsqrtm1=1 : Save the data on disk to be read further in giant format.
   I implemented the patch sent to me by Serge Batalov to process the special
   case of Phi(3,-b^n)=b^2n-b^n+1 using the pattern (ABC $a^$b-$a^$c+1) for
   the input file. Using the modulus b^3n+1=(b^2n-b^n+1)(b^n+1) allows to

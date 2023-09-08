@@ -4,7 +4,7 @@ CC = gcc
 
 LFLAGS =
 LIBELF = ../gwnum/gwnum.a
-LIBS   = $(LIBELF)  ./libgmp.a ./libhwloc.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
+LIBS   = $(LIBELF)  ./libgmp.so ./libhwloc.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++
 LIBS2  = $(LIBELF)  ./libgmp.a ./libhwloc.a ../gwnum/gwnum.ld -lm  -lpthread -lstdc++ -static
 
 FACTOROBJ = factor64p.o factor64lp.o
