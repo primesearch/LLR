@@ -1,0 +1,6 @@
+Using all-complex FMA3 FFT length 24K, Pass1=512, Pass2=48, clm=2, a = 3
+93500^65536-93500^32768+1 : Using all-complex FMA3 FFT length 96K, Pass1=384, Pass2=256, clm=4, a = 3
+96873^131072-96873^65536+1 : Using all-complex FMA3 FFT length 192K, Pass1=128, Pass2=1536, clm=2, a = 3
+40301^16384-40301^8192+1 : Using all-complex FMA3 FFT length 24K, Pass1=512, Pass2=48, clm=2, a = 3
+93500^65536-93500^32768+1 : Using all-complex FMA3 FFT length 96K, Pass1=384, Pass2=256, clm=4, a = 3
+96873^131072-96873^65536+1 : Using all-complex FMA3 FFT length 192K, Pass1=128, Pass2=1536, clm=2, a = 3

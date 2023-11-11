@@ -4,7 +4,7 @@ ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 
 CC = gcc
 LFLAGS = -Wl -mmacosx-version-min=10.5 -arch i386
-LIBMAC = ../gwnum/release/gwnum.a
+LIBMAC = ../gwnum/gwnum.a # JP 08/11/23
 LIBS   = $(LIBMAC) ./libgmp.a -lm ./libhwloc.a -lstdc++
 LIBS2  = $(LIBMAC) ./libgmp.a -lm -lstdc++ -static
 

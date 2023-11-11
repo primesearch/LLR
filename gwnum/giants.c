@@ -2070,7 +2070,7 @@ void addsignal (
 	ASSERTG (x->n[x->sign-1] != 0);
 }
 
-int FFTsquareg(
+int FFTsquareg (
 	ghandle *gdata,	/* Free memory blocks for temporaries */
 	giant	x)
 {

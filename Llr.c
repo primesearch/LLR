@@ -13257,7 +13257,7 @@ int isLLRP (
 	unsigned long idk = 0;
 	giant gk1;
 // Lei end
-
+	
 // init. gwnum code
 	gwdata = (gwhandle*) malloc(sizeof(gwhandle));
 	gwinit (gwdata);
@@ -13361,7 +13361,6 @@ int isLLRP (
 	N =  allocgiant ((bits >> 4) + 8);	// Allocate memory for N
 
 //	Compute the number we are testing.
-
 	setone (N);
 	gshiftleft (n, N);
 	mulg (gk, N); 
@@ -13725,7 +13724,6 @@ restart:
 				free (gwdata);
 				return(!stopping);
 			}
-
 			sprintf (buf, "V1 = %d ; Computing U0...", v1);
 			OutputStr (buf); 
 			LineFeed();

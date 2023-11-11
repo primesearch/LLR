@@ -1,5 +1,5 @@
 /*----------------------------------------------------------------------
-| Copyright 1995-2021 Mersenne Research, Inc.  All rights reserved
+| Copyright 1995-2023 Mersenne Research, Inc.  All rights reserved
 |
 | This file contains routines to QA the gwnum FFT routines.
 | QA can be activated by using Advanced/Time menu choice on exponent 9900.
@@ -215,6 +215,20 @@ void gen_data (gwhandle *gwdata, gwnum x, giant g)
 	}
 //	len = 1; g->n[0] = 30000;
 	g->sign = len;
+
+// Read an LLR cert file
+
+	int fd = _open ("foo", _O_BINARY | _O_RDONLY);
+	if (fd > 0) {
+		_read (fd, g->n, 16); //ignore 16 bytes
+		_read (fd, &len, 4); //length in bytes
+		_read (fd, g->n, len); //data
+		memset ((char*) g->n + len, 0, 8);
+		g->sign = divide_rounding_up (len, 4);
+	}
+
+// Convert to gwnum
+
 	specialmodg (gwdata, g);
 	gianttogw (gwdata, g, x);
 }
@@ -241,7 +255,7 @@ void set_seed (
 /* practical. */
 
 void test_it_all (
-	int	thread_num,		/* Worker thread number */
+	int	thread_num,		/* Worker number */
 	struct PriorityInfo *sp_info,	/* SetPriority information */
 	double	k,
 	unsigned long b,
@@ -381,7 +395,7 @@ void test_it_all (
 		diff = fabs (gwsuminp (&gwdata, x) - gwsumout (&gwdata, x));
 		if (diff > maxdiff) maxdiff = diff;
 		gwmul_carefully (&gwdata, x, x);
-		gwfree (&gwdata, gwdata.GW_RANDOM); gwdata.GW_RANDOM = NULL;
+		gwfree_internal_memory (&gwdata);	// Free GW_RANDOM
 		diff = fabs (gwsuminp (&gwdata, x) - gwsumout (&gwdata, x));
 		if (diff > maxdiff) maxdiff = diff;
 		gwsetaddin (&gwdata, 0);
@@ -416,8 +430,7 @@ void test_it_all (
 		gwsmalladd (&gwdata, GWSMALLADD_MAX, x);
 		gwsmallmul (&gwdata, GWSMALLMUL_MAX-1.0, x);
 
-/* Do some multiplies to make sure that the adds and subtracts above */
-/* normalized properly. */
+/* Do some multiplies to make sure that the adds and subtracts above normalized properly. */
 
 		gwfft (&gwdata, x, x);
 		gwfftfftmul (&gwdata, x, x, x);
@@ -502,7 +515,7 @@ nomem:	OutputBoth (thread_num, "Out of memory\n");
 /* Thoroughly test the current setup */
 
 void test_it (
-	int	thread_num,		/* Worker thread number */
+	int	thread_num,		/* Worker number */
 	gwhandle *gwdata)
 {
 	gwnum	x, x2, x3, x4, x5;
@@ -520,7 +533,7 @@ void test_it (
 	num_inverses = IniSectionGetInt (INI_FILE, "QA", "NUM_INVERSES", 0);
 	compare_counter = 0;
 
-/* Alloc and init numbers */
+/* Alloc numbers */
 
 	x = gwalloc (gwdata);
 	x2 = gwalloc (gwdata);
@@ -531,9 +544,6 @@ void test_it (
 	g2 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 20);
 	g3 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 20);
 	g4 = popg (&gwdata->gdata, ((unsigned long) gwdata->bit_length >> 4) + 20);
-	gen_data (gwdata, x, g);
-	if (CHECK_OFTEN) compare (thread_num, gwdata, x, g);
-	gwcopy (gwdata, x, x2); gtog (g, g2);
 
 /* Test single, double, and triple FFT words.  Handy when first developing an FFT. */
 
@@ -604,6 +614,12 @@ void test_it (
 		compare_with_text_and_int (thread_num, gwdata, x, g, "ExtraTest", 4);
 	}
 
+/* Init with random starting QA values */
+
+	gen_data (gwdata, x, g);
+	if (CHECK_OFTEN) compare (thread_num, gwdata, x, g);
+	gwcopy (gwdata, x, x2); gtog (g, g2);
+
 /* Test 50 squarings */	
 
 	gwsetnormroutine (gwdata, 0, 1, 0);	/* Enable error checking */
@@ -631,6 +647,9 @@ void test_it (
 			if (i & 1) gwmul3 (gwdata, x, x3, x4, 0);
 			else gwmul3 (gwdata, x3, x, x4, 0);
 			gwcopy (gwdata, x4, x);
+		} else if (i % 50 == 34) {				// Test postfft with unfft (zero padding had issues in past)
+			gwmul3 (gwdata, x, x, x4, GWMUL_STARTNEXTFFT);
+			gwunfft (gwdata, x4, x);
 		} else
 			gwsquare (gwdata, x);
 
@@ -783,13 +802,24 @@ void test_it (
 	if (CHECK_OFTEN) compare_with_text (thread_num, gwdata, x, g, "square mul-const careful");
 
 	gwmul_carefully (gwdata, x, x);
-	gwfree (gwdata, gwdata->GW_RANDOM); gwdata->GW_RANDOM = NULL;
+	gwfree_internal_memory (gwdata);	// Free GW_RANDOM
 	diff = fabs (gwsuminp (gwdata, x) - gwsumout (gwdata, x));
 	if (diff > maxdiff) maxdiff = diff;
 	squaregi (&gwdata->gdata, g); imulg (3, g);
 	specialmodg (gwdata, g);
 	if (CHECK_OFTEN) compare_with_text (thread_num, gwdata, x, g, "mul mul-const careful");
 	gwsetnormroutine (gwdata, 0, 1, 0);
+
+/* Test gwunfft */
+
+	gwfft (gwdata, x, x);
+	gwunfft (gwdata, x, x);
+	if (CHECK_OFTEN) compare_with_text (thread_num, gwdata, x, g, "unfft1");
+	gwmul3 (gwdata, x, x, x, GWMUL_STARTNEXTFFT);
+	gwunfft (gwdata, x, x);
+	squaregi (&gwdata->gdata, g);
+	specialmodg (gwdata, g);
+	if (CHECK_OFTEN) compare_with_text (thread_num, gwdata, x, g, "unfft2");
 
 /* Test gwaddquick, gwsubquick */
 
@@ -1071,7 +1101,7 @@ done:	if (!CHECK_OFTEN) compare_with_text (thread_num, gwdata, x, g, "final");
 /* again giants code performing the same operations. */
 
 int test_randomly (
-	int	thread_num,		/* Worker thread number */
+	int	thread_num,		/* Worker number */
 	struct PriorityInfo *sp_info)	/* SetPriority information */
 {
 	gwhandle gwdata;
@@ -1088,10 +1118,9 @@ int test_randomly (
 
 /* Get control variables */
 
-	MAX_THREADS = IniSectionGetInt (INI_FILE, "QA", "MAX_THREADS", NUM_CPUS * CPU_HYPERTHREADS);
+	MAX_THREADS = IniSectionGetInt (INI_FILE, "QA", "MAX_THREADS", HW_NUM_THREADS);
 	if (MAX_THREADS < 1) MAX_THREADS = 1;
-//	if (MAX_THREADS > (int) (NUM_CPUS * CPU_HYPERTHREADS))
-//		MAX_THREADS = NUM_CPUS * CPU_HYPERTHREADS;
+//	if (MAX_THREADS > (int) HW_NUM_THREADS) MAX_THREADS = HW_NUM_THREADS;
 	MIN_K_BITS = IniSectionGetInt (INI_FILE, "QA", "MIN_K_BITS", 1);
 	MAX_K_BITS = IniSectionGetInt (INI_FILE, "QA", "MAX_K_BITS", 49);
 	MAX_C_BITS_FOR_SMALL_K = IniSectionGetInt (INI_FILE, "QA", "MAX_C_BITS_FOR_SMALL_K", 4);
@@ -1162,6 +1191,9 @@ again:		gwinit (&gwdata);
 			sprintf (buf, "Trying gwsetup on %s.\n", numstr);
 			OutputBoth (thread_num, buf);
 		}
+//gwdata.force_general_mod = 1;
+//static int junk = 0;
+//gwset_larger_fftlen_count(&gwdata,junk++);
 		gwset_maxmulbyconst (&gwdata, 5);
 		gwset_minimum_fftlen (&gwdata, SPECIFIC_FFTLEN);
 		gwset_num_threads (&gwdata, threads);
@@ -1227,7 +1259,7 @@ again:		gwinit (&gwdata);
 /* and non-SSE2). */
 
 int test_all_impl (
-	int	thread_num,		/* Worker thread number */
+	int	thread_num,		/* Worker number */
 	struct PriorityInfo *sp_info)	/* SetPriority information */
 {
 	int	kbits, cbits, threads, stop_reason;
@@ -1240,10 +1272,9 @@ int test_all_impl (
 
 /* Get control variables */
 
-	MAX_THREADS = IniSectionGetInt (INI_FILE, "QA", "MAX_THREADS", NUM_CPUS * CPU_HYPERTHREADS);
+	MAX_THREADS = IniSectionGetInt (INI_FILE, "QA", "MAX_THREADS", HW_NUM_THREADS);
 	if (MAX_THREADS < 1) MAX_THREADS = 1;
-//	if (MAX_THREADS > (int) (NUM_CPUS * CPU_HYPERTHREADS))
-//		MAX_THREADS = NUM_CPUS * CPU_HYPERTHREADS;
+//	if (MAX_THREADS > (int) HW_NUM_THREADS) MAX_THREADS = HW_NUM_THREADS;
 	MIN_K_BITS = IniSectionGetInt (INI_FILE, "QA", "MIN_K_BITS", 1);
 	MAX_K_BITS = IniSectionGetInt (INI_FILE, "QA", "MAX_K_BITS", 49);
 	MAX_C_BITS_FOR_SMALL_K = IniSectionGetInt (INI_FILE, "QA", "MAX_C_BITS_FOR_SMALL_K", 4);

@@ -1,10 +1,10 @@
 /*----------------------------------------------------------------------
-| gwthread.c
+| gwthread.cpp
 |
-| This file contains the C routines and global variables that are used
-| to implement multi-threading, mutexes, and locking.
+| This file contains the C++ routines and global variables that are used
+| to implement atomics, multi-threading, mutexes, and locking.
 | 
-|  Copyright 2006-2009 Mersenne Research, Inc.  All rights reserved.
+|  Copyright 2006-2023 Mersenne Research, Inc.  All rights reserved.
 +---------------------------------------------------------------------*/
 
 /* Include files */
@@ -22,12 +22,73 @@
 
 #include "gwcommon.h"
 #include "gwthread.h"
+#include <atomic>
 #include <memory.h>
+
+/******************************************************************************
+*                            Atomic Int Routines                              *
+******************************************************************************/
+
+// Hack to workaround MSVC's appalling lack of support for atomics in C, gcc 4.8's missing stdatomic.h, and gcc 8's inability to mix _Atomic in C++ code.
+// Instead we use C++11 std::atomic in gwthread.cpp and export the few routines we need in a simple C interface.
+
+#define cast_as_atomic_int(a)	((std::atomic<int64_t> *)(a))
+
+extern "C"
+void	gwatomic_set (gwatomic *x, int64_t val) {
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	cast_as_atomic_int(x)->store (val, std::memory_order_relaxed);
+}
+
+extern "C"
+int64_t	gwatomic_get (gwatomic *x) {
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	return (cast_as_atomic_int(x)->load (std::memory_order_relaxed));
+}
+
+extern "C"
+int64_t	gwatomic_fetch_increment (gwatomic *x) {
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	return (cast_as_atomic_int(x)->fetch_add (1, std::memory_order_relaxed));
+}
+
+extern "C"
+int64_t	gwatomic_fetch_decrement (gwatomic *x) {
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	return (cast_as_atomic_int(x)->fetch_sub (1, std::memory_order_relaxed));
+}
+
+extern "C"
+int64_t	gwatomic_fetch_add (gwatomic *x, int64_t val) {
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	return (cast_as_atomic_int(x)->fetch_add (val, std::memory_order_relaxed));
+}
+
+
+extern "C"
+void	gwatomic_spinwait (gwatomic *x, int64_t val) {
+#ifndef MACOSX
+//	ASSERTG (sizeof (std::atomic_int) <= sizeof (gwatomic);
+	while (cast_as_atomic_int(x)->load (std::memory_order_relaxed) != val) {
+#ifdef _MSC_VER
+		_mm_pause();
+#else
+		__builtin_ia32_pause();
+#endif
+	}
+}
+#else
+	while (*x != val);	// JP 09/11/23
+}
+#endif
+
+
 
 /******************************************************************************
 *                         Mutex and Events Routines                           *
 ******************************************************************************/
 
+extern "C"
 void gwmutex_init (
 	gwmutex	*mutex)			/* Mutex to init */
 {
@@ -42,9 +103,11 @@ void gwmutex_init (
 #endif
 }
 
+extern "C"
 void gwmutex_lock (
 	gwmutex	*mutex)			/* Mutex to lock */
 {
+	if (*mutex == NULL) return;
 #ifdef _WIN32
 	EnterCriticalSection ((LPCRITICAL_SECTION) *mutex);
 #else
@@ -52,9 +115,11 @@ void gwmutex_lock (
 #endif
 }
 
+extern "C"
 void gwmutex_unlock (
 	gwmutex	*mutex)			/* Mutex to unlock */
 {
+	if (*mutex == NULL) return;
 #ifdef _WIN32
 	LeaveCriticalSection ((LPCRITICAL_SECTION) *mutex);
 #else
@@ -62,19 +127,18 @@ void gwmutex_unlock (
 #endif
 }
 
-
+extern "C"
 void gwmutex_destroy (
 	gwmutex	*mutex)			/* Mutex to destroy */
 {
-	if (mutex != NULL) {
+	if (*mutex == NULL) return;
 #ifdef _WIN32
-		DeleteCriticalSection ((LPCRITICAL_SECTION) *mutex);
+	DeleteCriticalSection ((LPCRITICAL_SECTION) *mutex);
 #else
-		pthread_mutex_destroy ((pthread_mutex_t *) *mutex);
+	pthread_mutex_destroy ((pthread_mutex_t *) *mutex);
 #endif
-		free (*mutex);
-		*mutex = NULL;
-	}
+	free (*mutex);
+	*mutex = NULL;
 }
 
 /* Data structures for implementing events */
@@ -92,6 +156,7 @@ struct event_data {
 
 /* Event routines */
 
+extern "C"
 void gwevent_init (
 	gwevent	*event)			/* Event to init */
 {
@@ -116,6 +181,7 @@ void gwevent_init (
 #endif
 }
 
+extern "C"
 int gwevent_wait (
 	gwevent	*event,			/* Event to wait on */
 	int	seconds)		/* Seconds until timeout */
@@ -158,7 +224,7 @@ int gwevent_wait (
 /* Loop until we timeout or the signalled_count changes.  According to */
 /* pthreads documentation the conditional wait can return even though no */
 /* signal took place! */
-		
+
 		e->threads_waiting++;
 		for ( ; ; ) {
 			int	signalled_count;
@@ -185,6 +251,7 @@ int gwevent_wait (
 #endif
 }
 
+extern "C"
 void gwevent_signal (
 	gwevent	*event)			/* Event to signal */
 {
@@ -208,6 +275,7 @@ void gwevent_signal (
 #endif
 }
 
+extern "C"
 void gwevent_reset (
 	gwevent	*event)			/* Event to reset */
 {
@@ -226,7 +294,7 @@ void gwevent_reset (
 #endif
 }
 
-
+extern "C"
 void gwevent_destroy (
 	gwevent	*event)			/* Event to destroy */
 {
@@ -259,6 +327,7 @@ struct threaddata {
 };
 
 #ifdef _WIN32
+extern "C"
 void __cdecl ThreadStarter (
 	void	*arg)
 {
@@ -269,6 +338,7 @@ void __cdecl ThreadStarter (
 	free (arg);
 }
 
+extern "C"
 unsigned __stdcall ThreadExStarter (
 	void	*arg)
 {
@@ -280,6 +350,7 @@ unsigned __stdcall ThreadExStarter (
 	return (0);
 }
 #else
+extern "C"
 void *ThreadStarter (
 	void	*arg)
 {
@@ -297,6 +368,7 @@ void *ThreadStarter (
 /* necessary). There is no way for another thread to wait for the thread */
 /* to end. */
 
+extern "C"
 void gwthread_create (
 	gwthread *thread_id,
 	void	(*thread_proc)(void *),
@@ -332,6 +404,7 @@ void gwthread_create (
 /* returns.  Another thread must wait for this thread by calling */
 /* gwthread_wait_for_exit. */
 
+extern "C"
 void gwthread_create_waitable (
 	gwthread *thread_id,
 	void	(*thread_proc)(void *),
@@ -371,6 +444,7 @@ void gwthread_create_waitable (
 /* Wait for a thread to end then cleanup.  Thread_id is no longer valid */
 /* when this routine returns. */
 
+extern "C"
 void gwthread_wait_for_exit (
 	gwthread *thread_id)
 {
@@ -384,8 +458,3 @@ void gwthread_wait_for_exit (
 }
 
 
-void gwthread_kill (gwthread *thread_id)
-{
-/*BUG	call QueueUserAPC and catch/throw or setjmp/longjmp ????? */
-/*BUG	or is this impossible to program cleanly ????? */
-}

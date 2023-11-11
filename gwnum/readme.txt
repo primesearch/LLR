@@ -21,7 +21,7 @@ Windows:
 		make -f makemw64
 	to build the MinGW-w64 64-bit libraries.
 
-Linux:
+Linux 32-bit:
 	The assembly code object files have already been converted to ELF format using
 	Agner Fog's objconv on a Windows machine.
 
@@ -41,7 +41,7 @@ Linux 64-bit:
 	A C application using gwnum must link with:
 		gwnum.a gwnum.ld -lpthread -lstdc++
 
-FreeBSD:
+FreeBSD 32-bit:
 	The assembly code object files have already been converted to ELF format using
 	Agner Fog's objconv on a Windows machine.
 
@@ -85,7 +85,7 @@ Haiku (probably no longer works):
 
 -> Legal stuff
 
-Copyright (c) 1996-2021, Mersenne Research, Inc.  All rights reserved. 
+Copyright (c) 1996-2022, Mersenne Research, Inc.  All rights reserved. 
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are 
@@ -108,5 +108,5 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
-  
+
 

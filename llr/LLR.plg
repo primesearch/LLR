@@ -6,27 +6,27 @@
 --------------------Configuration: LLR - Win32 Release--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr405devsrc\llr\Prime95.rc"" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP4.tmp" with contents
+Creating command line "rc.exe /l 0x40c /fo"Release/Prime95.res" /d "NDEBUG" "I:\D\Jean\LLR\llr405src\llr\Prime95.rc"" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP15.tmp" with contents
 [
 /nologo /G5 /MT /W3 /GX /O2 /I ".." /I "..\gwnum" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /Fp"Release/LLR.pch" /YX /Fo"Release/" /Fd"Release/" /FD /c 
-"I:\D\Jean\LLR\llr405devsrc\llr\AffinityDlg.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\ContentsDlg.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\CpuDlg.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\EditDropFiles.cpp"
-"I:\D\Jean\LLR\llr405devsrc\kronecker.c"
-"I:\D\Jean\LLR\llr405devsrc\llr\MainFrm.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\PreferencesDlg.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\Prime95.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\Prime95Doc.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\Prime95View.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\Priority.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\service.c"
-"I:\D\Jean\LLR\llr405devsrc\llr\StdAfx.cpp"
-"I:\D\Jean\LLR\llr405devsrc\llr\TestDlg.cpp"
+"I:\D\Jean\LLR\llr405src\llr\AffinityDlg.cpp"
+"I:\D\Jean\LLR\llr405src\llr\ContentsDlg.cpp"
+"I:\D\Jean\LLR\llr405src\llr\CpuDlg.cpp"
+"I:\D\Jean\LLR\llr405src\llr\EditDropFiles.cpp"
+"I:\D\Jean\LLR\llr405src\kronecker.c"
+"I:\D\Jean\LLR\llr405src\llr\MainFrm.cpp"
+"I:\D\Jean\LLR\llr405src\llr\PreferencesDlg.cpp"
+"I:\D\Jean\LLR\llr405src\llr\Prime95.cpp"
+"I:\D\Jean\LLR\llr405src\llr\Prime95Doc.cpp"
+"I:\D\Jean\LLR\llr405src\llr\Prime95View.cpp"
+"I:\D\Jean\LLR\llr405src\llr\Priority.cpp"
+"I:\D\Jean\LLR\llr405src\llr\service.c"
+"I:\D\Jean\LLR\llr405src\llr\StdAfx.cpp"
+"I:\D\Jean\LLR\llr405src\llr\TestDlg.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP4.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP5.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP15.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP16.tmp" with contents
 [
 gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map:"Release/LLR.map" /machine:I386 /nodefaultlib:"LIBC" /out:"Release/LLR.exe" /libpath:"..\gwnum\\" 
 .\Release\AffinityDlg.obj
@@ -49,7 +49,7 @@ gwnum.lib /nologo /subsystem:windows /incremental:no /pdb:"Release/LLR.pdb" /map
 .\libhwloc.lib
 .\gmp.lib
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP5.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP16.tmp"
 <h3>Output Window</h3>
 Compiling resources...
 Compiling...
@@ -68,11 +68,85 @@ service.c
 StdAfx.cpp
 TestDlg.cpp
 Linking...
+gwnum.lib(gwdbldbl.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:_MSC_VER=1900"; ignored
+gwnum.lib(gwdbldbl.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:_ITERATOR_DEBUG_LEVEL=0"; ignored
+gwnum.lib(gwdbldbl.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:RuntimeLibrary=MT_StaticRelease"; ignored
+gwnum.lib(gwdbldbl.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:_CRT_STDIO_ISO_WIDE_SPECIFIERS=0"; ignored
+gwnum.lib(gwthread.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:_MSC_VER=1900"; ignored
+gwnum.lib(gwthread.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:_ITERATOR_DEBUG_LEVEL=0"; ignored
+gwnum.lib(gwthread.obj) : warning LNK4044: unrecognized option "FAILIFMISMATCH:RuntimeLibrary=MT_StaticRelease"; ignored
+gwnum.lib(gwbench.obj) : warning LNK4044: unrecognized option "alternatename:___isa_available=___isa_available_default"; ignored
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol ___report_rangecheckfailure
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol ___report_rangecheckfailure
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol ___report_rangecheckfailure
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol ___stdio_common_vsprintf
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol ___stdio_common_vsprintf
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol ___stdio_common_vsprintf
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol _atoll
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol __localtime64
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol __time64
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __time64
+gwnum.lib(gwutil.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(gwtables.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(cpuid.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol @__security_check_cookie@4
+gwnum.lib(gwutil.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(gwtables.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(gwini.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(cpuid.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol ___security_cookie
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __dtoui3
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol __dtoui3
+gwnum.lib(cpuid.obj) : error LNK2001: unresolved external symbol __dtoui3
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __dtoui3
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __dtoui3
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol __libm_sse2_atan_precise
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol __libm_sse2_cos_precise
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol __libm_sse2_sin_precise
+gwnum.lib(giants.obj) : error LNK2001: unresolved external symbol __libm_sse2_sqrt_precise
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __libm_sse2_sqrt_precise
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __libm_sse2_sqrt_precise
+gwnum.lib(cpuid.obj) : error LNK2001: unresolved external symbol __except_handler4
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol _log2
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol _log2
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __dclass
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __ftol2
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __ftol2_sse
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __libm_sse2_log_precise
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __libm_sse2_log_precise
+gwnum.lib(gwnum.obj) : error LNK2001: unresolved external symbol __libm_sse2_pow_precise
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __libm_sse2_pow_precise
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol __libm_sse2_pow_precise
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol ___stdio_common_vsscanf
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol ___stdio_common_vsscanf
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __libm_sse2_exp_precise
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __ltod3
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __ltod3
+gwnum.lib(gwdbldbl.obj) : error LNK2001: unresolved external symbol __ultod3
+gwnum.lib(gwtables.obj) : error LNK2001: unresolved external symbol __wassert
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol _rand_s
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __localtime64_s
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __alldvrm
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol __alldvrm
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __aulldvrm
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __dtol3
+gwnum.lib(radix.obj) : error LNK2001: unresolved external symbol __dtol3
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol __dtoul3
+gwnum.lib(gwbench.obj) : error LNK2001: unresolved external symbol ___isa_available
+Release/LLR.exe : fatal error LNK1120: 31 unresolved externals
+Error executing link.exe.
 
 
 
 <h3>Results</h3>
-LLR.exe - 0 error(s), 0 warning(s)
+LLR.exe - 65 error(s), 8 warning(s)
 </pre>
 </body>
 </html>

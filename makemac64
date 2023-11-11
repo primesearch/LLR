@@ -5,10 +5,10 @@ D = ./mac64llr
 ENVP= MACOSX_DEPLOYMENT_TARGET=10.5
 
 CC = gcc
-CFLAGS = -I./include -I. -I./gwnum -O2 -m64 -DX86_64 -mmacosx-version-min=10.5 -arch x86_64
+CFLAGS = -I./include -I. -I./gwnum -O2 -m64  -DX86_64 -mmacosx-version-min=10.5 -arch x86_64
 
 CPP = g++
-CPPFLAGS = -I. -I./gwnum -O2 -m64 -DX86_64 -mmacosx-version-min=10.5 -arch x86_64
+CPPFLAGS = -I. -I./gwnum -O2 -m64  -DX86_64 -mmacosx-version-min=10.5 -arch x86_64
 
 COMPOBJS = lprime.o lmenu.o
 

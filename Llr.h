@@ -86,6 +86,8 @@ extern unsigned int CPU_AFFINITY;	/* NT Processor affinity */
 #define FAC56	1000000L
 
 short default_work_type (void);
+/* Structures and definitions dealing with the worktodo.ini file */
+
 #define WORK_FACTOR		0
 #define WORK_TEST		1
 #define WORK_DBLCHK		2
@@ -111,9 +113,9 @@ struct work_unit {		/* One line from the worktodo file */
 	double	sieve_depth;	/* How far it has been trial factored */
 	double	factor_to;	/* How far we should trial factor to */
 	int	pminus1ed;	/* TRUE if has been P-1 factored */
-	double	B1;		/* ECM, P-1, P+1 - Stage 1 bound */
-	double	B2;		/* ECM, P-1, P+1 - Stage 2 bound */
-	double	B2_start;	/* P-1 - Stage 2 start */
+	uint64_t B1;		/* ECM, P-1, P+1 - Stage 1 bound */
+	uint64_t B2;		/* ECM, P-1, P+1 - Stage 2 bound */
+	uint64_t B2_start;	/* P-1 - Stage 2 start */
 	int	nth_run;	/* P+1 - 1 for start 2/7, 2 for start 6/5, 3+ for random start */
 	unsigned int curves_to_do; /* ECM - curves to try */
 	double	curve;		/* ECM - Specific curve to test (debug tool) */

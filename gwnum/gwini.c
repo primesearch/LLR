@@ -8,7 +8,7 @@
 | NOTE:  These routines only work if you open no more than 10 ini files.  Also,
 | you must not change the working directory at any time during program execution.
 |
-| Copyright 2016-2020 Mersenne Research, Inc.  All rights reserved
+| Copyright 2016-2023 Mersenne Research, Inc.  All rights reserved
 +---------------------------------------------------------------------*/
 
 /* Include files */
@@ -18,6 +18,7 @@
 #include <malloc.h>
 #else
 #include <unistd.h>
+#include <strings.h>
 #define _O_APPEND	O_APPEND
 #define _O_RDONLY	O_RDONLY
 #define _O_WRONLY	O_WRONLY
@@ -427,7 +428,7 @@ void IniWriteNthString (		/* Write keyword's Nth string value to a specified sec
 void IniSectionWriteNthString (		/* Write keyword's Nth string value to a specified section of the INI file. */
 	const char *filename,
 	const char *section,
-	const char *keyword,
+	const char *keyword,		/* If NULL, insert a comment line */
 	int	nth,
 	const char *val)		/* New value.  If NULL, delete all occurrences of keyword entry */
 {
@@ -467,8 +468,7 @@ void IniSectionWriteNthString (		/* Write keyword's Nth string value to a specif
 				i++;
 				break;
 			}
-			if (p->lines[i]->line_type == INI_LINE_HEADER &&
-			    _stricmp (section, p->lines[i]->keyword) == 0) {
+			if (p->lines[i]->line_type == INI_LINE_HEADER && _stricmp (section, p->lines[i]->keyword) == 0) {
 				i++;
 				break;
 			}
@@ -480,10 +480,8 @@ void IniSectionWriteNthString (		/* Write keyword's Nth string value to a specif
 	insertion_point = i;
 	lines_were_deleted = FALSE;
 	for ( ; ; i++) {
-		if (i == p->num_lines ||
-		    p->lines[i]->line_type == INI_LINE_HEADER ||
-		    (p->lines[i]->line_type != INI_LINE_COMMENT &&
-		     _stricmp (p->lines[i]->keyword, "Time") == 0)) {
+		if (i == p->num_lines || p->lines[i]->line_type == INI_LINE_HEADER ||
+		    (p->lines[i]->line_type != INI_LINE_COMMENT && _stricmp (p->lines[i]->keyword, "Time") == 0)) {
 
 /* Ignore request if we are deleting line */
 
@@ -499,34 +497,34 @@ void IniSectionWriteNthString (		/* Write keyword's Nth string value to a specif
 /* Shuffle entries down to make room for this entry */
 
 			i = insertion_point;
-			for (j = p->num_lines; j > i; j--)
-				p->lines[j] = p->lines[j-1];
+			for (j = p->num_lines; j > i; j--) p->lines[j] = p->lines[j-1];
 
 /* Allocate and fill in a new line structure */
 
 			p->lines[i] = (struct IniLine *) malloc (sizeof (struct IniLine));
-			p->lines[i]->line_type = INI_LINE_NORMAL;
-			p->lines[i]->keyword = (char *) malloc (strlen (keyword) + 1);
-			strcpy (p->lines[i]->keyword, keyword);
+			if (keyword == NULL) {
+				p->lines[i]->line_type = INI_LINE_COMMENT;
+				p->lines[i]->keyword = NULL;
+			} else {
+				p->lines[i]->line_type = INI_LINE_NORMAL;
+				p->lines[i]->keyword = (char *) malloc (strlen (keyword) + 1);
+				strcpy (p->lines[i]->keyword, keyword);
+			}
 			p->lines[i]->value = NULL;
 			p->num_lines++;
 			break;
 		}
 
-/* If this is not a blank line, then if we need to insert a new line, */
-/* insert it after this line.  In other words, insert new entries before */
-/* any blank lines at the end of a section */
+/* If this is not a blank line, then if we need to insert a new line, insert it after this line. */
+/* In other words, insert new entries before any blank lines at the end of a section. */
 
-		if (p->lines[i]->line_type != INI_LINE_COMMENT ||
-		    p->lines[i]->value[0]) {
+		if (p->lines[i]->line_type != INI_LINE_COMMENT || p->lines[i]->value[0]) {
 			insertion_point = i + 1;
 		}
 
-/* If this is the keyword we are looking for, then we will replace the */
-/* value if it has changed. */
+/* If this is the keyword we are looking for, then we will replace the value if it has changed. */
 
-		if (p->lines[i]->line_type == INI_LINE_NORMAL &&
-		    _stricmp (keyword, p->lines[i]->keyword) == 0) {
+		if (p->lines[i]->line_type == INI_LINE_NORMAL && keyword != NULL && _stricmp (keyword, p->lines[i]->keyword) == 0) {
 
 /* Delete the entry (all occurrences) if there is no new value */
 
@@ -634,6 +632,65 @@ void IniSectionWriteInt (		/* Write an integer value to specified section of the
 {
 	char	buf[20];
 	sprintf (buf, "%ld", val);
+	IniSectionWriteString (filename, section, keyword, buf);
+}
+
+int64_t IniGetInt64 (			/* Get an integer value from the global section of the INI file */
+	const char *filename,
+	const char *keyword,
+	int64_t	default_val)
+{
+	return (IniSectionGetInt64 (filename, NULL, keyword, default_val));
+}
+
+int64_t IniSectionGetInt64 (		/* Get an integer value from specified section of the INI file */
+	const char *filename,
+	const char *section,
+	const char *keyword,
+	int64_t	default_val)
+{
+	unsigned int seconds;
+	return (IniSectionGetTimedInt64 (filename, section, keyword, default_val, &seconds));
+}
+
+int64_t IniGetTimedInt64 (		/* Get a time-sensitive integer value from the global section of the INI file */
+	const char *filename,
+	const char *keyword,
+	int64_t	default_val,
+	unsigned int *seconds)		/* Return length of time this timed INI setting is good for. */
+{
+	return (IniSectionGetTimedInt64 (filename, NULL, keyword, default_val, seconds));
+}
+
+int64_t IniSectionGetTimedInt64 (	/* Get a time-sensitive integer value from specified section of the INI file */
+	const char *filename,
+	const char *section,
+	const char *keyword,
+	int64_t	default_val,
+	unsigned int *seconds)		/* Return length of time this timed INI setting is good for. */
+{
+	char	buf[30], defval[30];
+	sprintf (defval, "%" PRIi64, default_val);
+	IniSectionGetTimedString (filename, section, keyword, buf, 30, defval, seconds);
+	return (atoll (buf));
+}
+
+void IniWriteInt64 (			/* Write an integer value to the global section of the INI file */
+	const char *filename,
+	const char *keyword,
+	int64_t	val)
+{
+	IniSectionWriteInt64 (filename, NULL, keyword, val);
+}
+
+void IniSectionWriteInt64 (		/* Write an integer value to specified section of the INI file */
+	const char *filename,
+	const char *section,
+	const char *keyword,
+	int64_t	val)
+{
+	char	buf[30];
+	sprintf (buf, "%" PRIi64, val);
 	IniSectionWriteString (filename, section, keyword, buf);
 }
 
@@ -1022,8 +1079,7 @@ void parse_timed_ini_value (
 	min_wakeup_time = 0;
 	for ( ; ; ) {
 
-/* If we don't see a "during" clause, then either there are no timed sections */
-/* or we've reached the final else clause.  Return the else clause value. */
+/* If we don't see a "during" clause, then either there are no timed sections or we've reached the final else clause.  Return the else clause value. */
 
 		during_clause = strstr (rest_of_line, " during ");
 		if (during_clause == NULL) {
@@ -1033,8 +1089,20 @@ void parse_timed_ini_value (
 			break;
 		}
 
-/* We've got a timed section, see if the current time is */
-/* within this timed section. */
+/* We've got a timed section, if the "during" value is the same as the "else" value then return the during value but don't bother with setting */
+/* a new wake up time.  This prevents needless wakeups for memory settings such as "1024 during 2:00-4:00 else 1024". */
+
+		else_clause = strstr (rest_of_line, " else ");
+		if (else_clause != NULL &&
+		    during_clause - rest_of_line == strlen (else_clause + 6) &&
+		    memcmp (rest_of_line, else_clause + 6, during_clause - rest_of_line) == 0) {
+			*start_offset = (unsigned int) (rest_of_line - line);
+			*len = (unsigned int) (during_clause - rest_of_line);
+			*seconds_valid = min_wakeup_time;
+			break;
+		}
+
+/* We've got a timed section, see if the current time is within this timed section. */
 
 		if (analyzeTimeLine (during_clause+8, current_time, &wakeup_time)) {
 			*start_offset = (unsigned int) (rest_of_line - line);
@@ -1043,16 +1111,13 @@ void parse_timed_ini_value (
 			break;
 		}
 
-/* We're not in this timed section, remember which timed section */
-/* will come into effect first.  This will be the end time of the "else" */
-/* section. */
+/* We're not in this timed section, remember which timed section will come into effect first.  This will be the end time of the "else" section. */
 
 		if (min_wakeup_time == 0 || wakeup_time < min_wakeup_time)
 			min_wakeup_time = wakeup_time;
 
 /* Move on to the next timed section. */
 
-		else_clause = strstr (during_clause, " else ");
 		if (else_clause != NULL) rest_of_line = else_clause + 6;
 		else rest_of_line += strlen (rest_of_line);
 	}

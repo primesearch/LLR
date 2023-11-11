@@ -3,9 +3,9 @@
 
 0) What is new in this version :
   The only new feature in this development version is to allow the access to
-  sqrt(-1) modulo P when P is a Proth or Gaussian Mersenne norm prime.
+  sqrt(-1) modulo P when P is a Proth prime.
   To do that, four options are implemented :
-  -oPrtsqrtm1=<base> : print data if 2<=base<=36 , 64bit residue if base = 1
+  -oPrtsqrtm1=<base> : print data if 2<=base<=16 , 64bit residue if base = 1
   -oSvtsqrtm1=<base> : Save the data on disk as characters in this base.
   -oSvzsqrtm1=1 : Save the data on disk in raw GMP form.
   -oSvgsqrtm1=1 : Save the data on disk to be read further in giant format.

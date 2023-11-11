@@ -24,7 +24,7 @@ int gmodi (	/* Returns g%i as an integer */
 	uint32_t size, value;
 	uint32_t denval = den;
 	giant gmod;
-	giantstruct gdenstruct = {1, &denval};
+	giantstruct gdenstruct = {0, 1, &denval};
 	giant gden = &gdenstruct;
 	int sign;
 	if (den==1 || g->sign==0) return 0;
@@ -56,7 +56,7 @@ int gmodi (	/* Returns g%i as an integer */
 
 void uldivg (uint32_t den, giant num) {
 	uint32_t denval = den;
-	giantstruct gdenstruct = {1, &denval};
+	giantstruct gdenstruct = {0, 1, &denval};
 	giant gden = &gdenstruct;
 	divg (gden, num);
 }
