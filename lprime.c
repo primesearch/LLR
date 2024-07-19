@@ -191,7 +191,7 @@ int main (
 	int	named_ini_files = -1;
 	int	background = 0;
 	int	contact_server = 0;
-	int	i, lchd, opcnt = 0;
+	int	i, lchd, opcnt = 0, leftbracket = 0, errnb = 0;
 	char	*p;
 	char	*p2;
 	char	dnflag = ' ';
@@ -308,12 +308,13 @@ int main (
 			break;
 
 
-/* -Q - Test a single k*b^n+c or b^n-b^m+c or (k*b^n+c)/d number */
+/* -Q - Test a single k*b^n+c or b^n-b^m+c or (k*b^n+c)/d or (k*b^n+c)^2-2 number */
 
 		case 'Q':
 		case 'q':
 			if (*p == '(') {				// must begin with digits or (
-				quotient = TRUE;
+//				quotient = TRUE;
+			    leftbracket = 1;
 				p++;
 			}
 			if (!isdigit(*p))				// must be digits,now...
@@ -329,63 +330,88 @@ int main (
 				goto DIGITSONLY;
 			}
 			if (*p == '^')	{				// the multiplier was ommitted
-				strcpy (base, multiplier);	// get the base in place
-				strcpy (multiplier, "1");	// default multiplier = 1
+				strcpy (base, multiplier);		// get the base in place
+				strcpy (multiplier, "1");		// default multiplier = 1
 				p++;
 				goto NOMULTIPLIER;
 			}
-			else if (*p++ != '*')			// now, get the base
+			else if (*p++ != '*') {				// now, get the base
+			    errnb = 1;
 				goto errexpr;
-			if (!isdigit(*p))				// it must be a digit string
+			}
+			if (!isdigit(*p)) {				// it must be a digit string
+			    errnb = 2;
 				goto errexpr;
+			}
 			p2 = base;
 			while (isdigit(*p))				// copy the digits
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (*p++ != '^')				// must be power
+			if (*p++ != '^') {				// must be power
+			    errnb = 3;
 				goto errexpr;
+			}
 NOMULTIPLIER:
-			if (!isdigit(*p))				// must be digits...
+			if (!isdigit(*p)) {				// must be digits...
+			    errnb = 4;
 				goto errexpr;
+			}
 			p2 = exponent;					// get the exponent
 			while (isdigit(*p))				// copy the digits
 				*p2++ = *p++;
 			*p2 = '\0';
-			if (*p != '+' && *p != '-')		// must be plus or minus
+			if (*p != '+' && *p != '-') {			// must be plus or minus
+			    errnb = 5;
 				goto errexpr;
+			}
 			p2 = addin;
 			*p2++ = *p++;					// copy the sign
-			if (!isdigit(*p))
+			if (!isdigit(*p)) {
+			    errnb = 6;
 				goto errexpr;
+			}
 			while (isdigit(*p))				// copy the c value
 				*p2++ = *p++; 
 			*p2 = '\0';
 			dnflag = ' ';					// restore the dnflag
-			if ((*p == ')') && (*(p+1) == '/')) {	// get the divisor(s)
+			if (*p == ')') {
+			    if (*(p+1) == '/') {			// get the divisor(s)
 				quotient = TRUE;
 				p += 2;
-				strcpy (divisors, p);		// and that is all...
+				strcpy (divisors, p);			// and that is all...
+			    }
 			}
 			else {
-				if ((*p != '\0') && ((addin[0] != '-') || (*p != '^')))	// must be end of string or diffnum...
-					goto errexpr;
-				if (*p++ != '\0') {
-					if (strcmp (base, addin+1))	// The second base must be the same...
+				if ((*p != '\0')) { 
+					if ((addin[0] != '-') || (*p != '^')) { // must be end of string or diffnum...
+					    errnb = 7;
+					    goto errexpr;
+					}
+					if (strcmp (base, addin+1)) {	// The second base must be the same...
+					    errnb = 8;
 						goto errexpr;
-					if (!isdigit(*p))				// must be digits...
+					}
+					p++;
+					if (!isdigit(*p)) {		// must be digits...
+					    errnb = 9;
 						goto errexpr;
-					p2 = exponent2;					// get the exponent
-					while (isdigit(*p))				// copy the digits
+					}
+					p2 = exponent2;			// get the exponent
+					while (isdigit(*p))		// copy the digits
 						*p2++ = *p++;
 					*p2 = '\0';
-					if (*p != '+' && *p != '-')		// must be plus or minus
+					if (*p != '+' && *p != '-') {	// must be plus or minus
+					    errnb = 10;
 						goto errexpr;
-					dnflag = *p;					// dnflag = sign
+					}
+					dnflag = *p;			// dnflag = sign
 					p2 = addin;
-					*p2++ = *p++;					// copy the sign
-					if (!isdigit(*p))
+					*p2++ = *p++;			// copy the sign
+					if (!isdigit(*p)) {
+					    errnb = 11;
 						goto errexpr;
-					while (isdigit(*p))				// copy the c value
+					}
+					while (isdigit(*p))		// copy the c value
 						*p2++ = *p++; 
 				}
 			}
@@ -401,7 +427,11 @@ DIGITSONLY:
 					fprintf (in, "ABC ($a*$b^$c$d)/$e\n");// write ABC header and data
 					fprintf (in, "%s %s %s %s %s\n", multiplier, base, exponent, addin, divisors);
 				}
-				else {
+				else if (leftbracket){
+					fprintf (in, "ABC ($a^$b$c)^2-2\n");// write ABC header and data
+					fprintf (in, "%s %s %s\n", base, exponent, addin);
+				}
+				else	{
 					fprintf (in, "ABC $a*$b^$c$d\n");// write ABC header and data
 					fprintf (in, "%s %s %s %s\n", multiplier, base, exponent, addin);
 				}
@@ -570,7 +600,7 @@ usage:	printf ("Usage: cllr [-aN] [-dhmoqv] [-wDIR] [input file name]\n");
 
 /* Invalid expression message */
 
-errexpr:	printf ("Invalid expression in command line.\n");
+errexpr:	printf ("Invalid expression in command line : %s, errnb = %d\n", argv[i]+2, errnb);
 			return (2);
 }
 

@@ -630,7 +630,7 @@ long generalLucasBase(giant N, uint32_t *P0, uint32_t *Q) {
 	Nmod8 = N->n[0] & 7;
 
 	for (P=P0; (*P)*(*P)<=2147483647; (*P)++) {
-		for ((*Q)=2; 4*(*Q)<(*P)*(*P); (*Q)++) {
+		for ((*Q); 4*(*Q)<(*P)*(*P); (*Q)++) {
 			D = (*P)*(*P)-4*(*Q);
 			if ((uint32_t)(floor(sqrt ((double)D)) * floor(sqrt ((double)D))) == D) {
 				continue;

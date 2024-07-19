@@ -98,7 +98,7 @@ static	int large_pages_first_call = 1;
 // Jean Penne reports that MSVC6 does not define MEM_LARGE_PAGES.
 // Simple fix - we don't support large pages for older compilers.
 
-#if defined (_WIN32) && defined (MEM_LARGE_PAGES)
+#if 0/*defined (_WIN32) && defined (MEM_LARGE_PAGES)*/
 	{
 	DWORD	lasterr;
 	HANDLE	hToken;
